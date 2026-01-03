@@ -1,0 +1,253 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+import { Entity, EntityType } from '@/types';
+import { EntityCard } from '@/components/entity-card';
+import { cn } from '@/lib/utils';
+
+const entityTypes: EntityType[] = [
+  'Person',
+  'Project',
+  'Technology',
+  'Document',
+  'Organization',
+  'Concept',
+];
+
+export default function EntitiesPage() {
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
+  const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    async function loadEntities() {
+      try {
+        const params: Record<string, string> = {};
+        if (filterType !== 'all') {
+          params.entity_type = filterType;
+        }
+        const res = await api.entities.list(params);
+        setEntities(res.data?.entities || []);
+      } catch (err) {
+        console.error('Failed to load entities:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadEntities();
+  }, [filterType]);
+
+  const filteredEntities = entities.filter((entity) =>
+    entity.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-cm-coffee">Loading entities...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+            Knowledge Graph
+          </h1>
+          <p className="text-cm-coffee mt-1">
+            Browse and manage entities in the knowledge graph
+          </p>
+        </div>
+        <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors">
+          + New Entity
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-4 mb-6">
+        <input
+          type="text"
+          placeholder="Search entities..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex-1 max-w-md px-4 py-2 bg-cm-cream border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta text-cm-charcoal"
+        />
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setFilterType('all')}
+            className={cn(
+              'px-3 py-1.5 text-sm rounded-lg transition-colors',
+              filterType === 'all'
+                ? 'bg-cm-terracotta text-cm-ivory'
+                : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
+            )}
+          >
+            All
+          </button>
+          {entityTypes.map((type) => (
+            <button
+              key={type}
+              onClick={() => setFilterType(type)}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-lg transition-colors',
+                filterType === type
+                  ? 'bg-cm-terracotta text-cm-ivory'
+                  : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
+              )}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Entity grid */}
+      {filteredEntities.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-cm-coffee mb-4">No entities found.</p>
+          <p className="text-sm text-cm-coffee/70">
+            Create your first entity or adjust your filters.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredEntities.map((entity) => (
+            <EntityCard
+              key={entity.entity_key}
+              entity={entity}
+              selected={selectedEntity?.entity_key === entity.entity_key}
+              onClick={() => setSelectedEntity(entity)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Detail panel */}
+      {selectedEntity && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40">
+          <div className="bg-cm-ivory rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b border-cm-sand flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-cm-charcoal">
+                  {selectedEntity.name}
+                </h3>
+                <p className="text-sm text-cm-coffee">{selectedEntity.entity_type}</p>
+              </div>
+              <button
+                onClick={() => setSelectedEntity(null)}
+                className="text-cm-coffee hover:text-cm-charcoal transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Key</h4>
+                  <p className="font-mono text-sm text-cm-charcoal">
+                    {selectedEntity.entity_key}
+                  </p>
+                </div>
+
+                {selectedEntity.context_domain && (
+                  <div>
+                    <h4 className="text-sm font-medium text-cm-coffee mb-1">Context Domain</h4>
+                    <p className="font-mono text-sm text-cm-charcoal">
+                      {selectedEntity.context_domain}
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Confidence</h4>
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-32 rounded-full bg-cm-sand overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-cm-terracotta"
+                        style={{ width: `${selectedEntity.confidence * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm text-cm-charcoal">
+                      {Math.round(selectedEntity.confidence * 100)}%
+                    </span>
+                  </div>
+                </div>
+
+                {selectedEntity.properties && Object.keys(selectedEntity.properties).length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-cm-coffee mb-2">Properties</h4>
+                    <pre className="text-sm text-cm-charcoal bg-cm-sand/30 p-3 rounded-lg overflow-auto">
+                      {JSON.stringify(selectedEntity.properties, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {selectedEntity.relationships && (
+                  <>
+                    {selectedEntity.relationships.outgoing.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-cm-coffee mb-2">
+                          Outgoing Relationships ({selectedEntity.relationships.outgoing.length})
+                        </h4>
+                        <div className="space-y-2">
+                          {selectedEntity.relationships.outgoing.map((rel) => (
+                            <div
+                              key={rel.relationship_key}
+                              className="flex items-center gap-2 text-sm p-2 bg-cm-sand/30 rounded-lg"
+                            >
+                              <span className="text-cm-charcoal">{selectedEntity.name}</span>
+                              <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
+                                {rel.relationship_type}
+                              </span>
+                              <span className="text-cm-charcoal">
+                                {rel.to_entity?.name || rel.to_entity_key}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedEntity.relationships.incoming.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-cm-coffee mb-2">
+                          Incoming Relationships ({selectedEntity.relationships.incoming.length})
+                        </h4>
+                        <div className="space-y-2">
+                          {selectedEntity.relationships.incoming.map((rel) => (
+                            <div
+                              key={rel.relationship_key}
+                              className="flex items-center gap-2 text-sm p-2 bg-cm-sand/30 rounded-lg"
+                            >
+                              <span className="text-cm-charcoal">
+                                {rel.from_entity?.name || rel.from_entity_key}
+                              </span>
+                              <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
+                                {rel.relationship_type}
+                              </span>
+                              <span className="text-cm-charcoal">{selectedEntity.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

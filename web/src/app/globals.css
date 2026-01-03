@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+/* Collective Memory Brand Theme */
+@theme inline {
+  /* Primary Colors */
+  --color-cm-charcoal: var(--cm-charcoal);
+  --color-cm-terracotta: var(--cm-terracotta);
+  --color-cm-cream: var(--cm-cream);
+
+  /* Extended Palette */
+  --color-cm-amber: var(--cm-amber);
+  --color-cm-sienna: var(--cm-sienna);
+  --color-cm-sand: var(--cm-sand);
+  --color-cm-coffee: var(--cm-coffee);
+  --color-cm-ivory: var(--cm-ivory);
+
+  /* Functional Colors */
+  --color-cm-success: var(--cm-success);
+  --color-cm-warning: var(--cm-warning);
+  --color-cm-error: var(--cm-error);
+  --color-cm-info: var(--cm-info);
+
+  /* Component Colors */
+  --color-primary: var(--cm-terracotta);
+  --color-primary-foreground: var(--cm-ivory);
+  --color-background: var(--cm-cream);
+  --color-foreground: var(--cm-charcoal);
+  --color-muted: var(--cm-sand);
+  --color-muted-foreground: var(--cm-coffee);
+  --color-accent: var(--cm-amber);
+  --color-accent-foreground: var(--cm-charcoal);
+  --color-border: var(--cm-sand);
+  --color-card: var(--cm-ivory);
+  --color-card-foreground: var(--cm-charcoal);
+}
+
+:root {
+  /* Primary Colors (Anthropic-Inspired) */
+  --cm-charcoal: #131314;
+  --cm-terracotta: #d97757;
+  --cm-cream: #faf9f0;
+
+  /* Extended Palette - Warm Browns & Oranges */
+  --cm-amber: #e8a756;
+  --cm-sienna: #a85a3b;
+  --cm-sand: #e6dfd1;
+  --cm-coffee: #5c4d3c;
+  --cm-ivory: #fffef8;
+
+  /* Functional Colors */
+  --cm-success: #5d8a66;
+  --cm-warning: #d9a557;
+  --cm-error: #c45c5c;
+  --cm-info: #6b8fa8;
+
+  /* Spacing */
+  --radius: 0.5rem;
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--cm-cream);
+  color: var(--cm-charcoal);
+  line-height: 1.6;
+}
+
+/* Headings with accent font */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Source Serif Pro', Georgia, serif;
+  font-weight: 600;
+}
+
+/* Code with monospace font */
+code, pre {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cm-sand);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--cm-coffee);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cm-sienna);
+}
+
+/* Selection styling */
+::selection {
+  background-color: var(--cm-terracotta);
+  color: var(--cm-ivory);
+}

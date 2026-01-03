@@ -1,0 +1,77 @@
+"""
+Collective Memory Platform - Agent Model
+
+Agent registration and status tracking.
+"""
+from datetime import datetime, timezone, timedelta
+from sqlalchemy import Column, String, DateTime
+from sqlalchemy.dialects.postgresql import JSONB
+
+from api.models.base import BaseModel, db, get_key, get_now
+
+
+class Agent(BaseModel):
+    """
+    Registered agent in the collaboration system.
+
+    Tracks agent identity, capabilities, and current status.
+    """
+    __tablename__ = 'agents'
+
+    agent_key = Column(String(36), primary_key=True, default=get_key)
+    agent_id = Column(String(100), unique=True, nullable=False, index=True)
+    role = Column(String(100), nullable=False)
+    capabilities = Column(JSONB, default=list)
+    status = Column(JSONB, default=dict)
+    last_heartbeat = Column(DateTime(timezone=True), default=get_now)
+    created_at = Column(DateTime(timezone=True), default=get_now)
+    updated_at = Column(DateTime(timezone=True), default=get_now, onupdate=get_now)
+
+    _default_fields = ['agent_key', 'agent_id', 'role', 'capabilities', 'status']
+    _readonly_fields = ['agent_key', 'created_at']
+
+    @classmethod
+    def current_schema_version(cls) -> int:
+        return 1
+
+    @classmethod
+    def get_by_agent_id(cls, agent_id: str) -> 'Agent':
+        """Get agent by agent_id."""
+        return cls.query.filter_by(agent_id=agent_id).first()
+
+    @classmethod
+    def get_active_agents(cls, timeout_minutes: int = 15) -> list['Agent']:
+        """Get agents that have sent a heartbeat within timeout period."""
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        return cls.query.filter(cls.last_heartbeat > cutoff).all()
+
+    @classmethod
+    def get_by_role(cls, role: str) -> list['Agent']:
+        """Get agents by role."""
+        return cls.query.filter_by(role=role).all()
+
+    def update_heartbeat(self) -> bool:
+        """Update the agent's heartbeat timestamp."""
+        self.last_heartbeat = get_now()
+        return self.save()
+
+    def update_status(self, status: dict) -> bool:
+        """Update the agent's status."""
+        self.status = status
+        self.last_heartbeat = get_now()
+        return self.save()
+
+    @property
+    def is_active(self) -> bool:
+        """Check if agent is considered active (heartbeat within 15 minutes)."""
+        if not self.last_heartbeat:
+            return False
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+        return self.last_heartbeat > cutoff
+
+    def to_dict(self, include_active_status: bool = True) -> dict:
+        """Convert to dictionary."""
+        result = super().to_dict()
+        if include_active_status:
+            result['is_active'] = self.is_active
+        return result
