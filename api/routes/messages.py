@@ -49,6 +49,30 @@ def register_message_routes(api: Api):
 
     @ns.route('')
     class MessageList(Resource):
+        @ns.doc('list_all_messages')
+        @ns.param('limit', 'Maximum messages to return', type=int, default=50)
+        @ns.param('unread_only', 'Only return unread messages', type=bool, default=False)
+        @ns.marshal_with(response_model)
+        def get(self):
+            """Get all messages across all channels."""
+            limit = request.args.get('limit', 50, type=int)
+            unread_only = request.args.get('unread_only', 'false').lower() == 'true'
+
+            query = Message.query
+
+            if unread_only:
+                query = query.filter(Message.read_at.is_(None))
+
+            messages = query.order_by(Message.created_at.desc()).limit(limit).all()
+
+            return {
+                'success': True,
+                'msg': f'Retrieved {len(messages)} messages',
+                'data': {
+                    'messages': [m.to_dict() for m in messages]
+                }
+            }
+
         @ns.doc('post_message')
         @ns.expect(message_create)
         @ns.marshal_with(response_model, code=201)

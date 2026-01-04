@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { Entity, Relationship } from '@/types';
+import { KnowledgeGraph } from '@/components/graph';
 
 export default function GraphPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadGraph() {
@@ -20,12 +22,20 @@ export default function GraphPage() {
         setRelationships(relRes.data?.relationships || []);
       } catch (err) {
         console.error('Failed to load graph data:', err);
+        setError('Failed to load graph data');
       } finally {
         setLoading(false);
       }
     }
 
     loadGraph();
+  }, []);
+
+  const handleEntitySelect = useCallback((entity: Entity | null) => {
+    // Future: could sync with URL or global state
+    if (entity) {
+      console.log('Selected entity:', entity.name);
+    }
   }, []);
 
   if (loading) {
@@ -36,36 +46,40 @@ export default function GraphPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <p className="text-cm-terracotta mb-2">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-sm text-cm-coffee hover:text-cm-charcoal underline"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-6">
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-cm-sand bg-cm-ivory">
         <div>
-          <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+          <h1 className="font-serif text-xl font-semibold text-cm-charcoal">
             Knowledge Graph
           </h1>
-          <p className="text-cm-coffee mt-1">
+          <p className="text-sm text-cm-coffee">
             Visualize entities and their relationships
           </p>
         </div>
-        <div className="flex items-center gap-4 text-sm text-cm-coffee">
-          <span>{entities.length} entities</span>
-          <span>{relationships.length} relationships</span>
-        </div>
       </div>
 
-      {/* Graph visualization placeholder */}
-      <div className="flex-1 bg-cm-ivory rounded-xl border border-cm-sand overflow-hidden">
+      {/* Graph visualization */}
+      <div className="flex-1 overflow-hidden">
         {entities.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="text-cm-coffee mb-4">No entities in the graph yet.</p>
-              <p className="text-sm text-cm-coffee/70">
-                Create entities to see the knowledge graph visualization.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-full bg-cm-ivory">
             <div className="text-center">
               <div className="mb-6">
                 <svg
@@ -82,28 +96,19 @@ export default function GraphPage() {
                   />
                 </svg>
               </div>
-              <p className="text-cm-coffee mb-2">
-                Graph Visualization Coming Soon
-              </p>
+              <p className="text-cm-coffee mb-4">No entities in the graph yet.</p>
               <p className="text-sm text-cm-coffee/70 max-w-md">
-                React Flow integration will be added to visualize the knowledge
-                graph with interactive nodes and edges.
+                Create entities to see the knowledge graph visualization.
+                Use the chat interface or API to add data to your knowledge graph.
               </p>
-
-              {/* Preview stats */}
-              <div className="mt-6 grid grid-cols-3 gap-4 max-w-md mx-auto">
-                {['Person', 'Project', 'Technology'].map((type) => {
-                  const count = entities.filter((e) => e.entity_type === type).length;
-                  return (
-                    <div key={type} className="p-3 bg-cm-sand/30 rounded-lg">
-                      <p className="text-2xl font-semibold text-cm-charcoal">{count}</p>
-                      <p className="text-xs text-cm-coffee">{type}s</p>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
+        ) : (
+          <KnowledgeGraph
+            entities={entities}
+            relationships={relationships}
+            onEntitySelect={handleEntitySelect}
+          />
         )}
       </div>
     </div>

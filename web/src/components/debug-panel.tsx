@@ -101,10 +101,12 @@ export function DebugPanel() {
   const { entries, isOpen, filter, toggleOpen, setFilter, clearEntries } = useDebugStore();
   const filteredEntries = getFilteredEntries(entries, filter);
 
-  // Keyboard shortcut (Ctrl+Shift+D)
+  // Keyboard shortcut (Cmd+Shift+D on Mac, Ctrl+Shift+D on Windows/Linux)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+      if (modifier && e.shiftKey && e.key.toUpperCase() === 'D') {
         e.preventDefault();
         toggleOpen();
       }
@@ -114,16 +116,9 @@ export function DebugPanel() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleOpen]);
 
+  // Hidden when closed - use Cmd+Shift+D to open
   if (!isOpen) {
-    return (
-      <button
-        onClick={toggleOpen}
-        className="fixed bottom-4 right-4 px-3 py-2 bg-cm-charcoal text-cm-cream rounded-lg shadow-lg hover:bg-cm-coffee transition-colors text-sm font-medium z-50"
-        title="Open Debug Panel (Ctrl+Shift+D)"
-      >
-        Debug ({entries.length})
-      </button>
-    );
+    return null;
   }
 
   return (
@@ -159,7 +154,7 @@ export function DebugPanel() {
           <button
             onClick={toggleOpen}
             className="text-cm-coffee hover:text-cm-charcoal transition-colors"
-            title="Close (Ctrl+Shift+D)"
+            title="Close (⌘+Shift+D)"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

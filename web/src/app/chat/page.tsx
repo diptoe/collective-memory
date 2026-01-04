@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { useStreaming } from '@/hooks/use-streaming';
 import { Conversation, Persona, ChatMessage } from '@/types';
 import { ChatSidebar } from '@/components/chat/chat-sidebar';
 import { ChatWindow } from '@/components/chat/chat-window';
@@ -13,7 +14,7 @@ export default function ChatPage() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  const [streamingMessageKey, setStreamingMessageKey] = useState<string | null>(null);
 
   // Load conversations and personas
   useEffect(() => {
@@ -78,61 +79,83 @@ export default function ChatPage() {
     }
   };
 
-  const handleSendMessage = async (content: string) => {
-    if (!activeConversation || !content.trim()) return;
+  // Initialize streaming hook
+  const { isStreaming, content: streamingContent, startStream, stopStream } = useStreaming({
+    onContent: (newContent) => {
+      // Update the streaming message content in real-time
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.message_key === streamingMessageKey
+            ? { ...m, content: m.content + newContent }
+            : m
+        )
+      );
+    },
+    onComplete: (fullContent, messageKey) => {
+      // Replace streaming message with final message
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.message_key === streamingMessageKey
+            ? { ...m, message_key: messageKey, content: fullContent }
+            : m
+        )
+      );
+      setStreamingMessageKey(null);
+    },
+    onError: (error) => {
+      console.error('Streaming error:', error);
+      // Update message to show error
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.message_key === streamingMessageKey
+            ? { ...m, content: `Error: ${error}` }
+            : m
+        )
+      );
+      setStreamingMessageKey(null);
+    },
+  });
 
-    setSending(true);
+  const handleSendMessage = useCallback(async (content: string) => {
+    if (!activeConversation || !content.trim() || isStreaming) return;
 
     try {
       // Add user message immediately for responsiveness
-      const tempMessage: ChatMessage = {
-        message_key: `temp-${Date.now()}`,
+      const userMessageKey = `user-${Date.now()}`;
+      const userMessage: ChatMessage = {
+        message_key: userMessageKey,
         conversation_key: activeConversation.conversation_key,
         role: 'user',
         content,
         extra_data: {},
         created_at: new Date().toISOString(),
       };
-      setMessages([...messages, tempMessage]);
 
-      // Send to API
-      const res = await api.conversations.sendMessage(
-        activeConversation.conversation_key,
-        content
-      );
+      // Add streaming assistant message placeholder
+      const streamingKey = `streaming-${Date.now()}`;
+      const assistantMessage: ChatMessage = {
+        message_key: streamingKey,
+        conversation_key: activeConversation.conversation_key,
+        persona_key: activeConversation.persona_key,
+        role: 'assistant',
+        content: '',
+        extra_data: { streaming: true },
+        created_at: new Date().toISOString(),
+        persona: activeConversation.persona ? {
+          name: activeConversation.persona.name,
+          color: activeConversation.persona.color,
+        } : undefined,
+      };
 
-      if (res.success && res.data?.message) {
-        // Replace temp message with actual message
-        const newMessage = res.data.message;
-        setMessages((prev) =>
-          prev.map((m) => (m.message_key === tempMessage.message_key ? newMessage : m))
-        );
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setStreamingMessageKey(streamingKey);
 
-        // Add placeholder AI response (Phase 2 will have real streaming)
-        const aiResponse: ChatMessage = {
-          message_key: `ai-${Date.now()}`,
-          conversation_key: activeConversation.conversation_key,
-          persona_key: activeConversation.persona_key,
-          role: 'assistant',
-          content: `[${activeConversation.persona?.name || 'AI'}] This is a placeholder response. AI model integration will be added in Phase 2.`,
-          extra_data: {},
-          created_at: new Date().toISOString(),
-          persona: activeConversation.persona ? {
-            name: activeConversation.persona.name,
-            color: activeConversation.persona.color,
-          } : undefined,
-        };
-
-        setTimeout(() => {
-          setMessages((prev) => [...prev, aiResponse]);
-        }, 500);
-      }
+      // Start streaming response
+      startStream(activeConversation.conversation_key, { content });
     } catch (err) {
       console.error('Failed to send message:', err);
-    } finally {
-      setSending(false);
     }
-  };
+  }, [activeConversation, isStreaming, startStream]);
 
   if (loading) {
     return (
@@ -179,7 +202,7 @@ export default function ChatPage() {
             <ChatWindow messages={messages} />
 
             {/* Input */}
-            <ChatInput onSend={handleSendMessage} disabled={sending} />
+            <ChatInput onSend={handleSendMessage} disabled={isStreaming} />
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">

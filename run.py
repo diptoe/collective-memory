@@ -15,14 +15,15 @@ if __name__ == '__main__':
     ║           Collective Memory Platform                       ║
     ║           by Diptoe                                        ║
     ╠════════════════════════════════════════════════════════════╣
-    ║  API:      http://{config.API_HOST}:{config.API_PORT}/api             ║
-    ║  Swagger:  http://{config.API_HOST}:{config.API_PORT}/api/docs        ║
-    ║  Env:      {config.ENV_TYPE.ljust(44)}  ║
+    ║  API:      http://{config.API_HOST}:{config.API_PORT}/api             
+    ║  Swagger:  http://{config.API_HOST}:{config.API_PORT}/api/docs        
+    ║  Env:      {config.ENV_TYPE.ljust(44)}  
     ╚════════════════════════════════════════════════════════════╝
     """)
 
     app.run(
         host=config.API_HOST,
         port=config.API_PORT,
-        debug=config.DEBUG
+        debug=config.DEBUG,
+        use_reloader=config.USE_RELOADER
     )

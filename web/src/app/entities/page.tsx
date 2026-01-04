@@ -2,32 +2,43 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { Entity, EntityType } from '@/types';
+import { Entity } from '@/types';
 import { EntityCard } from '@/components/entity-card';
 import { cn } from '@/lib/utils';
 
-const entityTypes: EntityType[] = [
-  'Person',
-  'Project',
-  'Technology',
-  'Document',
-  'Organization',
-  'Concept',
-];
+interface EntityTypeInfo {
+  type: string;
+  count: number;
+}
 
 export default function EntitiesPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [entityTypes, setEntityTypes] = useState<EntityTypeInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
-  const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
+  const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Load entity types on mount
+  useEffect(() => {
+    async function loadTypes() {
+      try {
+        const res = await api.entities.types();
+        setEntityTypes(res.data?.types || []);
+      } catch (err) {
+        console.error('Failed to load entity types:', err);
+      }
+    }
+    loadTypes();
+  }, []);
+
+  // Load entities when filter changes
   useEffect(() => {
     async function loadEntities() {
       try {
         const params: Record<string, string> = {};
         if (filterType !== 'all') {
-          params.entity_type = filterType;
+          params.type = filterType;
         }
         const res = await api.entities.list(params);
         setEntities(res.data?.entities || []);
@@ -79,7 +90,7 @@ export default function EntitiesPage() {
           className="flex-1 max-w-md px-4 py-2 bg-cm-cream border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta text-cm-charcoal"
         />
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           <button
             onClick={() => setFilterType('all')}
             className={cn(
@@ -91,18 +102,19 @@ export default function EntitiesPage() {
           >
             All
           </button>
-          {entityTypes.map((type) => (
+          {entityTypes.map((typeInfo) => (
             <button
-              key={type}
-              onClick={() => setFilterType(type)}
+              key={typeInfo.type}
+              onClick={() => setFilterType(typeInfo.type)}
               className={cn(
                 'px-3 py-1.5 text-sm rounded-lg transition-colors',
-                filterType === type
+                filterType === typeInfo.type
                   ? 'bg-cm-terracotta text-cm-ivory'
                   : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
               )}
             >
-              {type}
+              {typeInfo.type}
+              <span className="ml-1 opacity-60">({typeInfo.count})</span>
             </button>
           ))}
         </div>

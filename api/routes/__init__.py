@@ -12,6 +12,9 @@ from api.routes.agents import register_agent_routes
 from api.routes.personas import register_persona_routes
 from api.routes.conversations import register_conversation_routes
 from api.routes.context import register_context_routes
+from api.routes.search import register_search_routes
+from api.routes.documents import register_document_routes
+from api.routes.ner import register_ner_routes
 
 
 def register_routes(api: Api):
@@ -23,3 +26,6 @@ def register_routes(api: Api):
     register_persona_routes(api)
     register_conversation_routes(api)
     register_context_routes(api)
+    register_search_routes(api)
+    register_document_routes(api)
+    register_ner_routes(api)

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "collective-memory"
+version = "1.0.0"
+description = "Collective Memory - Knowledge graph platform for AI collaboration"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0.0",
+    "flask-restx>=1.3.0",
+    "flask-sqlalchemy>=3.1.0",
+    "flask-cors>=4.0.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "mcp>=1.1.1",
+    "anthropic>=0.39.0",
+    "openai>=1.50.0",
+    "google-generativeai>=0.8.0",
+]
+
+[project.optional-dependencies]
+semantic = [
+    "pgvector>=0.2.0",
+    "spacy>=3.7.0",
+]
+
+[project.scripts]
+cm-mcp = "cm_mcp.server:run"
+
+[tool.setuptools.packages.find]
+include = ["api*", "cm_mcp*"]

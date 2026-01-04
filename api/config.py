@@ -28,6 +28,9 @@ SQLALCHEMY_ENGINE_OPTIONS = {
 API_HOST = os.getenv('API_HOST', '127.0.0.1')
 API_PORT = int(os.getenv('API_PORT', '5000'))
 DEBUG = ENV_TYPE == 'dev'
+# When DEBUG is on, Flask will auto-restart via the reloader (watchfiles).
+# We keep this OFF by default so restarts are manual while debugging.
+USE_RELOADER = os.getenv('API_USE_RELOADER', 'false').lower() in ('1', 'true', 'yes')
 
 # Hardcoded user for Phase 1 (no auth required)
 DEFAULT_USER = {
@@ -45,6 +48,8 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 CORS_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
 ]
 
 # Default Personas (seeded on first run)
@@ -84,5 +89,17 @@ DEFAULT_PERSONAS = [
             'communication_style': 'high-level with practical examples'
         },
         'capabilities': ['system_design', 'architecture', 'trade_off_analysis', 'scalability']
+    },
+    {
+        'name': 'Claude Consultant',
+        'model': 'claude-opus-4-5',
+        'role': 'consultant',
+        'color': '#7c5cbf',
+        'system_prompt': 'You are a senior technology consultant with broad expertise across software development, architecture, and business strategy. You provide thoughtful advice, ask clarifying questions, and help stakeholders make informed decisions. You balance technical depth with clear communication for non-technical audiences.',
+        'personality': {
+            'traits': ['insightful', 'collaborative', 'business-aware', 'articulate'],
+            'communication_style': 'consultative and adaptive to audience'
+        },
+        'capabilities': ['consulting', 'strategy', 'stakeholder_communication', 'requirements_analysis', 'technology_evaluation']
     }
 ]

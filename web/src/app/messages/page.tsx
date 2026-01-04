@@ -2,21 +2,64 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { Message } from '@/types';
+import { Message, Agent } from '@/types';
 import { MessageList } from '@/components/message-list';
 import { cn } from '@/lib/utils';
+
+interface ChannelTab {
+  id: string;
+  label: string;
+  isAgent: boolean;
+  isActive?: boolean;
+}
 
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
-  const [channel, setChannel] = useState('general');
-  const [channels] = useState(['general', 'backend', 'frontend', 'architect', 'testing']);
+  const [channel, setChannel] = useState('all');
+  const [channels, setChannels] = useState<ChannelTab[]>([
+    { id: 'all', label: 'All', isAgent: false },
+  ]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
 
+  // Load registered agents for channel tabs
+  useEffect(() => {
+    async function loadAgents() {
+      setAgentsLoading(true);
+      try {
+        const res = await api.agents.list({ active_only: false });
+        const agents = res.data?.agents || [];
+
+        // Build channel tabs: "All" + each registered agent
+        const agentTabs: ChannelTab[] = agents.map((agent: Agent) => ({
+          id: agent.agent_id,
+          label: agent.agent_id,
+          isAgent: true,
+          isActive: agent.is_active,
+        }));
+
+        setChannels([
+          { id: 'all', label: 'All', isAgent: false },
+          ...agentTabs,
+        ]);
+      } catch (err) {
+        console.error('Failed to load agents:', err);
+      } finally {
+        setAgentsLoading(false);
+      }
+    }
+
+    loadAgents();
+  }, []);
+
+  // Load messages for selected channel
   useEffect(() => {
     async function loadMessages() {
       setLoading(true);
       try {
-        const res = await api.messages.list(channel);
+        // Pass undefined for 'all' to get all messages, otherwise pass the agent_id as channel
+        const channelParam = channel === 'all' ? undefined : channel;
+        const res = await api.messages.list(channelParam);
         setMessages(res.data?.messages || []);
       } catch (err) {
         console.error('Failed to load messages:', err);
@@ -53,25 +96,38 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* Channel tabs */}
-      <div className="flex items-center gap-1 mb-6 border-b border-cm-sand">
-        {channels.map((ch) => (
-          <button
-            key={ch}
-            onClick={() => setChannel(ch)}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors relative',
-              channel === ch
-                ? 'text-cm-terracotta'
-                : 'text-cm-coffee hover:text-cm-charcoal'
-            )}
-          >
-            {ch}
-            {channel === ch && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cm-terracotta" />
-            )}
-          </button>
-        ))}
+      {/* Channel tabs - dynamically loaded from registered agents */}
+      <div className="flex items-center gap-1 mb-6 border-b border-cm-sand overflow-x-auto">
+        {agentsLoading ? (
+          <div className="px-4 py-2 text-sm text-cm-coffee">Loading agents...</div>
+        ) : (
+          channels.map((ch) => (
+            <button
+              key={ch.id}
+              onClick={() => setChannel(ch.id)}
+              className={cn(
+                'px-4 py-2 text-sm font-medium transition-colors relative whitespace-nowrap flex items-center gap-2',
+                channel === ch.id
+                  ? 'text-cm-terracotta'
+                  : 'text-cm-coffee hover:text-cm-charcoal'
+              )}
+            >
+              {ch.isAgent && (
+                <span
+                  className={cn(
+                    'w-2 h-2 rounded-full',
+                    ch.isActive ? 'bg-green-500' : 'bg-gray-400'
+                  )}
+                  title={ch.isActive ? 'Active' : 'Inactive'}
+                />
+              )}
+              {ch.label}
+              {channel === ch.id && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cm-terracotta" />
+              )}
+            </button>
+          ))
+        )}
       </div>
 
       {/* Messages */}

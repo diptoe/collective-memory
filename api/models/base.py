@@ -2,9 +2,10 @@
 Collective Memory Platform - Base Model
 
 Following Jai API patterns for SQLAlchemy model base class.
+Enhanced with schema versioning and migration support.
 """
 from datetime import datetime, timezone
-from typing import Optional, Type, TypeVar
+from typing import Optional, Type, TypeVar, List, Dict, Any
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
@@ -34,8 +35,17 @@ class BaseModel(db.Model):
     - Timestamp management
     - Common CRUD operations
     - Schema versioning support
+    - Migration hooks
+
+    Schema Versioning:
+    - Override _schema_version in subclasses to track schema changes
+    - Override _schema_migrations() to define migration steps
+    - Each version increment should correspond to a schema change
     """
     __abstract__ = True
+
+    # Schema version - increment when model schema changes
+    _schema_version: int = 1
 
     # Default and readonly field lists (override in subclasses)
     _default_fields: list = []
@@ -43,8 +53,66 @@ class BaseModel(db.Model):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        """Override in subclasses to track schema versions."""
-        return 1
+        """
+        Get current schema version for this model.
+
+        Override _schema_version class attribute to change version.
+        """
+        return cls._schema_version
+
+    @classmethod
+    def _schema_migrations(cls) -> Dict[int, str]:
+        """
+        Define schema migrations for each version.
+
+        Override in subclasses to provide migration descriptions.
+
+        Returns dict of version -> migration description.
+
+        Example:
+            @classmethod
+            def _schema_migrations(cls):
+                return {
+                    1: "Initial schema",
+                    2: "Added status column",
+                    3: "Added index on name column"
+                }
+        """
+        return {1: "Initial schema"}
+
+    @classmethod
+    def pre_migrate(cls, from_version: int, to_version: int) -> None:
+        """
+        Hook called before migration.
+
+        Override in subclasses to run pre-migration logic.
+
+        Args:
+            from_version: Current database schema version
+            to_version: Target schema version
+        """
+        pass
+
+    @classmethod
+    def post_migrate(cls, from_version: int, to_version: int) -> None:
+        """
+        Hook called after migration.
+
+        Override in subclasses to run post-migration logic
+        like data transformations.
+
+        Args:
+            from_version: Previous database schema version
+            to_version: New schema version
+        """
+        pass
+
+    @classmethod
+    def get_table_name(cls) -> str:
+        """Get the table name for this model."""
+        if hasattr(cls, '__tablename__'):
+            return cls.__tablename__
+        return cls.__name__.lower() + 's'
 
     @classmethod
     def get_by_key(cls: Type[T], key: str) -> Optional[T]:

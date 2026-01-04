@@ -1,0 +1,92 @@
+{
+    "version": "0.2.0",
+    "compounds": [
+        {
+            "name": "Web: Next.js (Server + Client)",
+            "configurations": [
+                "Web: Next.js (dev server)",
+                "Web: Next.js (Chrome)"
+            ]
+        },
+        {
+            "name": "Full Stack: API + Web",
+            "configurations": [
+                "API: Flask (debug run.py)",
+                "Web: Next.js (dev server)",
+                "Web: Next.js (Chrome)"
+            ]
+        }
+    ],
+    "configurations": [
+        {
+            "name": "API: Flask (debug run.py)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "CM_ENV": "dev",
+                "API_HOST": "127.0.0.1",
+                "API_PORT": "5001",
+                "API_USE_RELOADER": "false"
+            }
+        },
+        {
+            "name": "API: Flask (flask run)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "flask",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "CM_ENV": "dev",
+                "FLASK_APP": "run:app",
+                "FLASK_DEBUG": "1",
+                "API_HOST": "127.0.0.1",
+                "API_PORT": "5001"
+            },
+            "args": [
+                "run",
+                "--host",
+                "${env:API_HOST}",
+                "--port",
+                "${env:API_PORT}",
+                "--no-reload"
+            ]
+        },
+        {
+            "name": "Web: Next.js (dev server)",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/web",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": [
+                "run",
+                "dev",
+                "--",
+                "-p",
+                "3001"
+            ],
+            "env": {
+                "NEXT_PUBLIC_API_URL": "http://127.0.0.1:5001/api"
+            },
+            "console": "integratedTerminal",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "autoAttachChildProcesses": true
+        },
+        {
+            "name": "Web: Next.js (Chrome)",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3001",
+            "webRoot": "${workspaceFolder}/web"
+        }
+    ]
+}

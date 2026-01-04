@@ -2,86 +2,59 @@
 Collective Memory Platform - Migrations
 
 Auto-discovery migration system following Jai API patterns.
+
+This module provides backward compatibility with the original simple
+migrations interface while delegating to the enhanced MigrationManager.
 """
 import logging
-from api.models import db, Entity, Relationship, Message, Agent, Persona, Conversation, ChatMessage
-from api import config
+from api.migration_manager import (
+    run_migrations as _run_migrations,
+    migration_manager
+)
 
 logger = logging.getLogger(__name__)
 
 
-def run_migrations():
+def run_migrations(allow_column_removal: bool = False):
     """
     Run database migrations and seed default data.
 
     Called on application startup.
+
+    Args:
+        allow_column_removal: If True, columns in database that are not
+                              in the model will be dropped. Default False
+                              for safety - use with caution!
+
+    This is the main entry point that wraps the MigrationManager
+    for backward compatibility with existing code.
     """
-    logger.info("Running migrations...")
-
-    # Ensure all tables exist
-    db.create_all()
-    logger.info("Database tables created/verified")
-
-    # Seed default personas if none exist
-    seed_default_personas()
-
-    # Seed default user entity if none exist
-    seed_default_user()
-
-    logger.info("Migrations complete")
-
-
-def seed_default_personas():
-    """Seed default personas from config if none exist."""
-    existing_count = Persona.count()
-    if existing_count > 0:
-        logger.info(f"Found {existing_count} existing personas, skipping seed")
-        return
-
-    logger.info("Seeding default personas...")
-
-    for persona_data in config.DEFAULT_PERSONAS:
-        persona = Persona(
-            name=persona_data['name'],
-            model=persona_data['model'],
-            role=persona_data['role'],
-            color=persona_data['color'],
-            system_prompt=persona_data['system_prompt'],
-            personality=persona_data.get('personality', {}),
-            capabilities=persona_data.get('capabilities', []),
-            status='active'
-        )
-        persona.save()
-        logger.info(f"Created persona: {persona.name}")
-
-
-def seed_default_user():
-    """Seed the default user entity if it doesn't exist."""
-    user = config.DEFAULT_USER
-
-    # Check if user entity exists
-    existing = Entity.query.filter_by(
-        entity_type='Person',
-        name=user['name']
-    ).first()
-
-    if existing:
-        logger.info(f"Default user entity already exists: {user['name']}")
-        return
-
-    logger.info(f"Creating default user entity: {user['name']}")
-
-    entity = Entity(
-        entity_key=user['user_key'],
-        entity_type='Person',
-        name=user['name'],
-        properties={
-            'email': user['email'],
-            'role': 'owner'
-        },
-        context_domain='system',
-        confidence=1.0,
-        source='system'
+    return migration_manager.run_migrations(
+        seed_data=True,
+        allow_column_removal=allow_column_removal
     )
-    entity.save()
-    logger.info(f"Created user entity: {entity.name}")
+
+
+def get_table_registry():
+    """Get all registered tables with their status."""
+    return migration_manager.get_table_registry()
+
+
+def get_table_status(table_name: str):
+    """Get status for a specific table."""
+    return migration_manager.get_table_status(table_name)
+
+
+def update_row_counts():
+    """Update cached row counts for all registered tables."""
+    return migration_manager.update_row_counts()
+
+
+# Backward compatibility exports
+__all__ = [
+    'run_migrations',
+    'get_table_registry',
+    'get_table_status',
+    'update_row_counts',
+    'migration_manager'
+]

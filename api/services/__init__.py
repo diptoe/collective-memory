@@ -1,0 +1,27 @@
+"""
+Collective Memory Platform - Services
+
+Business logic services for AI chat, context retrieval, embeddings, NER, and checkpointing.
+"""
+
+from .context import ContextService, context_service
+from .chat import ChatService, chat_service
+from .checkpoint import CheckpointService, checkpoint_service
+from .embedding import EmbeddingService, embedding_service
+from .ner import NERService, ner_service
+from .document_processor import DocumentProcessor, document_processor
+
+__all__ = [
+    'ContextService',
+    'context_service',
+    'ChatService',
+    'chat_service',
+    'CheckpointService',
+    'checkpoint_service',
+    'EmbeddingService',
+    'embedding_service',
+    'NERService',
+    'ner_service',
+    'DocumentProcessor',
+    'document_processor',
+]

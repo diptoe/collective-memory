@@ -10,8 +10,8 @@ interface AgentStatusProps {
 }
 
 export function AgentStatus({ agent, onClick }: AgentStatusProps) {
-  const isOnline = agent.is_active &&
-    new Date(agent.last_heartbeat).getTime() > Date.now() - 60000; // 1 minute
+  // Trust the API's is_active flag (15 minute heartbeat timeout)
+  const isOnline = agent.is_active;
 
   const progressColors: Record<string, string> = {
     not_started: 'bg-cm-sand',

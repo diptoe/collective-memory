@@ -2,11 +2,12 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
 import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Response type wrappers
 interface EntitiesResponse { entities: Entity[] }
 interface EntityResponse { entity: Entity }
+interface EntityTypesResponse { types: { type: string; count: number }[] }
 interface RelationshipsResponse { relationships: Relationship[] }
 interface PersonasResponse { personas: Persona[] }
 interface PersonaResponse { persona: Persona }
@@ -17,7 +18,7 @@ interface MessageResponse { message: ChatMessage }
 interface AgentsResponse { agents: Agent[] }
 interface AgentResponse { agent: Agent }
 interface InterAgentMessagesResponse { messages: Message[] }
-interface ContextQueryResponse extends ContextResult {}
+interface ContextQueryResponse extends ContextResult { }
 
 /**
  * API Response type from the backend
@@ -164,6 +165,8 @@ export const api = {
       apiClient.put<EntityResponse>(`/entities/${key}`, data),
     delete: (key: string) =>
       apiClient.delete(`/entities/${key}`),
+    types: () =>
+      apiClient.get<EntityTypesResponse>('/entities/types'),
   },
 
   // Relationships
@@ -218,8 +221,10 @@ export const api = {
 
   // Messages (inter-agent)
   messages: {
-    list: (channel: string, params?: { limit?: number; unread_only?: boolean }) =>
-      apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params }),
+    list: (channel?: string, params?: { limit?: number; unread_only?: boolean }) =>
+      channel
+        ? apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params })
+        : apiClient.get<InterAgentMessagesResponse>('/messages', { params }),
     post: (data: { channel: string; from_agent: string; to_agent?: string; message_type: string; content: unknown; priority?: string }) =>
       apiClient.post('/messages', data),
     getChannel: (channel: string, params?: { limit?: number; unread_only?: boolean }) =>

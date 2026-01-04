@@ -43,13 +43,14 @@ def register_conversation_routes(api: Api):
         'persona_key': fields.String(description='Persona key (null for user messages)'),
         'role': fields.String(description='Role: user, assistant, system'),
         'content': fields.String(description='Message content'),
-        'metadata': fields.Raw(description='Additional metadata'),
+        'extra_data': fields.Raw(description='Additional metadata / extra fields'),
         'created_at': fields.DateTime(readonly=True),
     })
 
     message_create = ns.model('MessageCreate', {
         'content': fields.String(required=True, description='Message content'),
         'role': fields.String(description='Role (defaults to user)', default='user'),
+        'extra_data': fields.Raw(description='Optional extra fields / metadata'),
     })
 
     response_model = ns.model('Response', {
@@ -231,11 +232,14 @@ def register_conversation_routes(api: Api):
             if not data.get('content'):
                 return {'success': False, 'msg': 'content is required'}, 400
 
+            # Backwards compatible: accept either `extra_data` (preferred) or `metadata` (legacy)
+            extra_data = data.get('extra_data') or data.get('metadata', {})
+
             message = ChatMessage(
                 conversation_key=conversation_key,
                 role=data.get('role', 'user'),
                 content=data['content'],
-                metadata=data.get('metadata', {})
+                extra_data=extra_data
             )
 
             try:
@@ -252,18 +256,23 @@ def register_conversation_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
-    @ns.route('/<string:conversation_key>/messages/stream')
+    @ns.route('/<string:conversation_key>/chat')
     @ns.param('conversation_key', 'Conversation identifier')
-    class ConversationStream(Resource):
-        @ns.doc('stream_response')
+    class ConversationChat(Resource):
+        @ns.doc('chat_with_persona')
         @ns.expect(message_create)
+        @ns.marshal_with(response_model, code=201)
         def post(self, conversation_key):
             """
-            Send a message and stream the AI response.
+            Send a message and get AI response (non-streaming).
 
-            Note: For Phase 1, this is a placeholder that returns a simple response.
-            Full streaming will be implemented when AI model integration is added.
+            This endpoint saves the user message, generates an AI response,
+            and returns both messages. Use this for MCP/API integrations.
+            For real-time streaming, use the /stream endpoint instead.
             """
+            import asyncio
+            from api.services.chat import chat_service
+
             conversation = Conversation.get_by_key(conversation_key)
             if not conversation:
                 return {'success': False, 'msg': 'Conversation not found'}, 404
@@ -281,43 +290,136 @@ def register_conversation_routes(api: Api):
             )
             user_message.save()
 
-            # For Phase 1, return a placeholder response
-            # In Phase 2, this will call the AI model and stream the response
             persona = conversation.persona
+            if not persona:
+                return {'success': False, 'msg': 'Conversation has no associated persona'}, 400
+
+            # Get conversation history for context
+            messages = conversation.get_messages(limit=20)
+            history = [
+                {'role': m.role, 'content': m.content}
+                for m in messages[:-1]  # Exclude the just-added user message
+            ]
+
+            # Generate AI response (non-streaming)
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(
+                        chat_service.get_response(
+                            conversation_key=conversation_key,
+                            user_message=data['content'],
+                            persona_key=persona.persona_key,
+                            model=persona.model or 'claude-3-sonnet-20240229',
+                            system_prompt=persona.system_prompt or f"You are {persona.name}. {persona.description or ''}",
+                            history=history,
+                            inject_context=True,
+                            max_tokens=data.get('max_tokens', 4096),
+                            temperature=data.get('temperature', 0.7),
+                        )
+                    )
+                finally:
+                    loop.close()
+
+                # Get the saved assistant message
+                assistant_message = ChatMessage.get_by_key(result.get('message_key')) if result.get('message_key') else None
+
+                return {
+                    'success': True,
+                    'msg': 'Chat response generated',
+                    'data': {
+                        'user_message': user_message.to_dict(),
+                        'assistant_message': assistant_message.to_dict() if assistant_message else {
+                            'content': result.get('content', ''),
+                            'role': 'assistant'
+                        },
+                        'context': result.get('context'),
+                        'usage': result.get('usage'),
+                    }
+                }, 201
+
+            except Exception as e:
+                return {'success': False, 'msg': f'AI response failed: {str(e)}'}, 500
+
+    @ns.route('/<string:conversation_key>/messages/stream')
+    @ns.param('conversation_key', 'Conversation identifier')
+    class ConversationStream(Resource):
+        @ns.doc('stream_response')
+        @ns.expect(message_create)
+        def post(self, conversation_key):
+            """
+            Send a message and stream the AI response.
+
+            Returns Server-Sent Events (SSE) with streaming content.
+            """
+            import asyncio
+            from api.services.chat import chat_service
+            from api.utils.streaming import sse_format, sse_error, create_streaming_response
+
+            conversation = Conversation.get_by_key(conversation_key)
+            if not conversation:
+                return {'success': False, 'msg': 'Conversation not found'}, 404
+
+            data = request.json
+
+            if not data.get('content'):
+                return {'success': False, 'msg': 'content is required'}, 400
+
+            # Save user message
+            user_message = ChatMessage(
+                conversation_key=conversation_key,
+                role='user',
+                content=data['content']
+            )
+            user_message.save()
+
+            persona = conversation.persona
+
+            # Get conversation history for context
+            messages = conversation.get_messages(limit=20)
+            history = [
+                {'role': m.role, 'content': m.content}
+                for m in messages[:-1]  # Exclude the just-added user message
+            ]
 
             def generate_response():
                 """Generator for streaming response."""
-                # Placeholder response
-                response_text = f"[{persona.name}] This is a placeholder response. AI model integration will be added in Phase 2."
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
 
-                # Simulate streaming by yielding chunks
-                words = response_text.split()
-                for i, word in enumerate(words):
-                    chunk = {
-                        'type': 'content',
-                        'content': word + (' ' if i < len(words) - 1 else ''),
-                        'done': False
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
+                try:
+                    async def stream_chunks():
+                        async for chunk in chat_service.stream_response(
+                            conversation_key=conversation_key,
+                            user_message=data['content'],
+                            persona_key=persona.persona_key,
+                            model=persona.model or 'claude-3-sonnet-20240229',
+                            system_prompt=persona.system_prompt or f"You are {persona.name}. {persona.description or ''}",
+                            history=history,
+                            inject_context=True,
+                            max_tokens=data.get('max_tokens', 4096),
+                            temperature=data.get('temperature', 0.7),
+                        ):
+                            yield sse_format(chunk.to_dict())
 
-                # Save assistant message
-                assistant_message = ChatMessage(
-                    conversation_key=conversation_key,
-                    persona_key=persona.persona_key,
-                    role='assistant',
-                    content=response_text,
-                    metadata={'model': persona.model, 'streaming': True}
-                )
-                assistant_message.save()
+                    # Run async generator in sync context
+                    async_gen = stream_chunks()
+                    while True:
+                        try:
+                            chunk = loop.run_until_complete(async_gen.__anext__())
+                            yield chunk
+                        except StopAsyncIteration:
+                            break
 
-                # Send completion message
-                yield f"data: {json.dumps({'type': 'done', 'message_key': assistant_message.message_key})}\n\n"
+                except Exception as e:
+                    yield sse_error(str(e))
+                finally:
+                    loop.close()
 
+            headers = create_streaming_response()
             return Response(
                 generate_response(),
                 mimetype='text/event-stream',
-                headers={
-                    'Cache-Control': 'no-cache',
-                    'Connection': 'keep-alive',
-                }
+                headers=headers
             )

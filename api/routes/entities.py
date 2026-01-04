@@ -121,6 +121,32 @@ def register_entity_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
+    @ns.route('/types')
+    class EntityTypes(Resource):
+        @ns.doc('list_entity_types')
+        @ns.marshal_with(response_model)
+        def get(self):
+            """Get all distinct entity types with counts."""
+            from sqlalchemy import func
+
+            results = db.session.query(
+                Entity.entity_type,
+                func.count(Entity.entity_key).label('count')
+            ).group_by(Entity.entity_type).order_by(Entity.entity_type).all()
+
+            types = [
+                {'type': row.entity_type, 'count': row.count}
+                for row in results
+            ]
+
+            return {
+                'success': True,
+                'msg': f'Found {len(types)} entity types',
+                'data': {
+                    'types': types
+                }
+            }
+
     @ns.route('/<string:entity_key>')
     @ns.param('entity_key', 'Entity identifier')
     class EntityDetail(Resource):
@@ -180,3 +206,30 @@ def register_entity_routes(api: Api):
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/<string:entity_key>/embed')
+    @ns.param('entity_key', 'Entity identifier')
+    class EntityEmbed(Resource):
+        @ns.doc('embed_entity')
+        @ns.marshal_with(response_model)
+        def post(self, entity_key):
+            """Generate embedding for an entity."""
+            from api.services import embedding_service
+
+            entity = Entity.get_by_key(entity_key)
+            if not entity:
+                return {'success': False, 'msg': 'Entity not found'}, 404
+
+            try:
+                entity.generate_embedding(embedding_service)
+                entity.save()
+                return {
+                    'success': True,
+                    'msg': 'Embedding generated',
+                    'data': {
+                        'entity_key': entity.entity_key,
+                        'has_embedding': True
+                    }
+                }
+            except Exception as e:
+                return {'success': False, 'msg': f'Embedding error: {str(e)}'}, 500
