@@ -39,6 +39,10 @@ from .tools import (
     send_message,
     get_messages,
     mark_message_read,
+    # Model and client tools
+    list_models,
+    list_clients,
+    update_focus,
 )
 
 
@@ -49,7 +53,7 @@ Collective Memory MCP Server - Knowledge Graph Integration
 This MCP server provides access to the Collective Memory knowledge graph platform,
 enabling you to search, create, and connect entities in a shared knowledge graph.
 
-## Available Tools (18 total)
+## Available Tools (21 total)
 
 ### ENTITY OPERATIONS (6 tools)
 - search_entities: Keyword search by name or type
@@ -73,8 +77,13 @@ enabling you to search, create, and connect entities in a shared knowledge graph
 
 ### AGENT COLLABORATION (3 tools)
 - list_agents: See who else is collaborating
-- get_my_identity: Check your current identity
-- update_my_identity: Change your agent ID or persona
+- get_my_identity: Check your current identity (client, model, persona, focus)
+- update_my_identity: Change your agent ID, persona, model, or focus
+
+### MODEL & CLIENT OPERATIONS (3 tools)
+- list_models: See available AI models (Claude, GPT, Gemini)
+- list_clients: See client types and persona affinities
+- update_focus: Update your current work focus
 
 ### MESSAGE QUEUE (3 tools) - Use for inter-agent communication
 - send_message: Send messages to other agents/humans (appears in Messages UI)
@@ -83,10 +92,11 @@ enabling you to search, create, and connect entities in a shared knowledge graph
 
 ## Recommended Workflow
 1. Check your identity: get_my_identity
-2. Search before creating: search_entities or search_entities_semantic
-3. Get context: get_context for background knowledge
-4. Create and connect: create_entity, create_relationship
-5. Switch roles as needed: update_my_identity
+2. Update focus: update_focus to let others know what you're working on
+3. Search before creating: search_entities or search_entities_semantic
+4. Get context: get_context for background knowledge
+5. Create and connect: create_entity, create_relationship
+6. Switch roles as needed: update_my_identity
 
 All operations are attributed to your agent identity.
 """
@@ -105,9 +115,14 @@ server = Server(name=config.name)
 _session_state = {
     "agent_id": None,
     "agent_key": None,
+    "client": None,         # Client type: claude-code, claude-desktop, etc.
+    "model_key": None,      # Model key from DB
+    "model_name": None,     # Model display name
     "persona": None,        # Persona role: backend-code, frontend-code, architect
     "persona_key": None,    # Resolved persona key from API
     "persona_name": None,   # Display name
+    "focus": None,          # Current work focus
+    "affinity_warning": None,  # Warning if persona doesn't match client
     "registered": False,
 }
 
@@ -527,6 +542,61 @@ RETURNS: Confirmation.""",
                 "required": ["message_key"]
             }
         ),
+
+        # ============================================================
+        # MODEL & CLIENT TOOLS - Manage AI models and client types
+        # ============================================================
+        types.Tool(
+            name="list_models",
+            description="""List available AI models in the Collective Memory.
+
+USE THIS WHEN: You want to see what AI models are available (Claude, GPT, Gemini, etc.).
+
+EXAMPLES:
+- {} → All active models
+- {"provider": "anthropic"} → Only Anthropic models
+- {"active_only": false} → Include deprecated models
+
+RETURNS: Models grouped by provider with capabilities and context windows.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "provider": {"type": "string", "description": "Filter by provider: anthropic, openai, google"},
+                    "active_only": {"type": "boolean", "description": "Only show active models (default true)", "default": True}
+                }
+            }
+        ),
+        types.Tool(
+            name="list_clients",
+            description="""List available client types and their persona affinities.
+
+USE THIS WHEN: You want to understand the different platforms that connect to Collective Memory
+and which personas work best with each.
+
+Client types: claude-code, claude-desktop, codex, gemini, custom
+
+RETURNS: Client types with descriptions and suggested personas.""",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
+            name="update_focus",
+            description="""Update your current work focus.
+
+USE THIS WHEN: You want to let other collaborators know what you're working on.
+
+EXAMPLES:
+- {"focus": "Implementing authentication module"}
+- {"focus": "Reviewing PR #42"}
+- {"focus": ""} → Clear focus (available for new work)
+
+The focus is visible to other agents in the collaboration.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "focus": {"type": "string", "description": "Description of current work (empty to clear)"}
+                }
+            }
+        ),
     ]
 
 
@@ -582,6 +652,14 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     elif name == "mark_message_read":
         return await mark_message_read(arguments, config, _session_state)
 
+    # Model and client tools
+    elif name == "list_models":
+        return await list_models(arguments, config, _session_state)
+    elif name == "list_clients":
+        return await list_clients(arguments, config, _session_state)
+    elif name == "update_focus":
+        return await update_focus(arguments, config, _session_state)
+
     else:
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
@@ -594,15 +672,55 @@ async def register_agent():
         return False
 
     try:
-        async with httpx.AsyncClient(timeout=config.timeout) as client:
+        async with httpx.AsyncClient(timeout=config.timeout) as http_client:
+            # Detect client type
+            detected_client = config.detected_client
+            _session_state["client"] = detected_client
+
+            # Build registration payload with new fields
+            registration_data = {
+                "agent_id": config.agent_id,
+                "capabilities": config.capabilities_list,
+            }
+
+            # Add client type
+            if detected_client:
+                registration_data["client"] = detected_client
+
+            # Add model_key if configured
+            if config.model_key:
+                registration_data["model_key"] = config.model_key
+                _session_state["model_key"] = config.model_key
+
+            # Add focus if configured
+            if config.focus:
+                registration_data["focus"] = config.focus
+                _session_state["focus"] = config.focus
+
+            # Resolve persona to persona_key if configured
+            persona_key = None
+            if config.persona:
+                try:
+                    personas_response = await http_client.get(
+                        f"{config.api_endpoint}/personas/by-role/{config.persona}"
+                    )
+                    if personas_response.status_code == 200:
+                        personas_data = personas_response.json()
+                        if personas_data.get("success"):
+                            persona = personas_data.get("data", {})
+                            persona_key = persona.get("persona_key")
+                            _session_state["persona_key"] = persona_key
+                            _session_state["persona_name"] = persona.get("name")
+                except Exception:
+                    pass  # Will try to create persona later
+
+                if persona_key:
+                    registration_data["persona_key"] = persona_key
+
             # Register the agent
-            response = await client.post(
+            response = await http_client.post(
                 f"{config.api_endpoint}/agents/register",
-                json={
-                    "agent_id": config.agent_id,
-                    "role": config.persona,  # Use persona as role
-                    "capabilities": config.capabilities_list,
-                }
+                json=registration_data
             )
             if response.status_code in (200, 201):
                 data = response.json()
@@ -613,36 +731,25 @@ async def register_agent():
                     _session_state["persona"] = config.persona
                     _session_state["registered"] = True
 
+                    # Store affinity warning if present
+                    if agent_data.get("affinity_warning"):
+                        _session_state["affinity_warning"] = agent_data.get("affinity_warning")
+                        print(f"  Affinity notice: {agent_data.get('affinity_warning')}", file=sys.stderr)
+
             # Send initial heartbeat to mark as active
             if _session_state.get("registered"):
-                await client.post(
+                await http_client.post(
                     f"{config.api_endpoint}/agents/{config.agent_id}/heartbeat"
                 )
                 print(f"  Initial heartbeat sent", file=sys.stderr)
 
-            # Resolve persona details if configured
-            if config.persona:
-                personas_response = await client.get(
-                    f"{config.api_endpoint}/personas",
-                    params={"role": config.persona}
-                )
-                persona_found = False
-                if personas_response.status_code == 200:
-                    personas_data = personas_response.json()
-                    personas = personas_data.get("data", {}).get("personas", [])
-                    if personas:
-                        persona = personas[0]
-                        _session_state["persona_key"] = persona.get("persona_key")
-                        _session_state["persona_name"] = persona.get("name")
-                        persona_found = True
-
-                # Auto-create persona if not found
-                if not persona_found:
-                    print(f"Persona '{config.persona}' not found, creating...", file=sys.stderr)
-                    persona_data = await _create_persona(client)
-                    if persona_data:
-                        _session_state["persona_key"] = persona_data.get("persona_key")
-                        _session_state["persona_name"] = persona_data.get("name")
+            # If persona wasn't found earlier, try to create it
+            if config.persona and not _session_state.get("persona_key"):
+                print(f"Persona '{config.persona}' not found, creating...", file=sys.stderr)
+                persona_data = await _create_persona(http_client)
+                if persona_data:
+                    _session_state["persona_key"] = persona_data.get("persona_key")
+                    _session_state["persona_name"] = persona_data.get("name")
 
             return _session_state["registered"]
     except Exception as e:
@@ -650,15 +757,19 @@ async def register_agent():
         return False
 
 
-async def _create_persona(client) -> dict | None:
+async def _create_persona(http_client) -> dict | None:
     """Auto-create a persona from config environment variables"""
     # Build persona name from config or role
     name = config.persona_name or f"Auto-{config.persona.replace('-', ' ').title()}"
-    model = config.persona_model or "claude-3-5-sonnet"
+
+    # Determine suggested clients based on detected client
+    suggested_clients = []
+    detected = config.detected_client
+    if detected and detected != "custom":
+        suggested_clients = [detected]
 
     persona_payload = {
         "name": name,
-        "model": model,
         "role": config.persona,
         "color": config.persona_color,
         "system_prompt": f"You are an AI assistant acting as {name}.",
@@ -667,10 +778,11 @@ async def _create_persona(client) -> dict | None:
             "communication_style": "professional"
         },
         "capabilities": config.capabilities_list,
+        "suggested_clients": suggested_clients,
     }
 
     try:
-        response = await client.post(
+        response = await http_client.post(
             f"{config.api_endpoint}/personas",
             json=persona_payload
         )
@@ -703,7 +815,12 @@ async def startup_checks():
     print("\nAgent Identity:", file=sys.stderr)
     if config.has_identity:
         print(f"  Agent ID: {config.agent_id}", file=sys.stderr)
+        print(f"  Client: {config.detected_client}", file=sys.stderr)
         print(f"  Persona: {config.persona or '(not set)'}", file=sys.stderr)
+        if config.model_key:
+            print(f"  Model: {config.model_key}", file=sys.stderr)
+        if config.focus:
+            print(f"  Focus: {config.focus}", file=sys.stderr)
         print(f"  Capabilities: {config.capabilities_list}", file=sys.stderr)
     else:
         print("  WARNING: No agent identity configured!", file=sys.stderr)
@@ -721,8 +838,11 @@ async def startup_checks():
         registered = await register_agent()
         if registered:
             print(f"  Agent Key: {_session_state['agent_key']}", file=sys.stderr)
+            print(f"  Client: {_session_state.get('client', 'unknown')}", file=sys.stderr)
             if _session_state.get("persona_name"):
                 print(f"  Acting as: {_session_state['persona_name']}", file=sys.stderr)
+            if _session_state.get("focus"):
+                print(f"  Focus: {_session_state['focus']}", file=sys.stderr)
         else:
             print("  Registration failed - will retry on first API call", file=sys.stderr)
 

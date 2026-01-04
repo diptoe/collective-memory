@@ -53,11 +53,38 @@ export interface EntitySummary {
   entity_type: EntityType;
 }
 
+// Model types
+export type ModelProvider = 'anthropic' | 'openai' | 'google';
+export type ModelStatus = 'active' | 'deprecated' | 'disabled';
+
+export interface Model {
+  model_key: string;
+  name: string;
+  provider: ModelProvider;
+  model_id: string;
+  capabilities: string[];
+  context_window?: number;
+  max_output_tokens?: number;
+  description?: string;
+  status: ModelStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+// Client types
+export type ClientType = 'claude-code' | 'claude-desktop' | 'codex' | 'gemini' | 'custom';
+
+export interface Client {
+  client: ClientType;
+  name: string;
+  description: string;
+  suggested_personas: string[];
+}
+
 // Persona types
 export interface Persona {
   persona_key: string;
   name: string;
-  model: string;
   role: string;
   system_prompt?: string;
   personality: {
@@ -65,6 +92,7 @@ export interface Persona {
     communication_style?: string;
   };
   capabilities: string[];
+  suggested_clients: ClientType[];
   avatar_url?: string;
   color: string;
   status: 'active' | 'inactive' | 'archived';
@@ -107,7 +135,12 @@ export interface ChatMessage {
 export interface Agent {
   agent_key: string;
   agent_id: string;
-  role: string;
+  client?: ClientType;
+  model_key?: string;
+  persona_key?: string;
+  role?: string;  // Legacy, prefer persona_key
+  focus?: string;
+  focus_updated_at?: string;
   capabilities: string[];
   status: {
     current_task?: string;
@@ -119,6 +152,9 @@ export interface Agent {
   last_heartbeat: string;
   created_at: string;
   updated_at: string;
+  // Resolved references (optional, populated by API)
+  model?: Model;
+  persona?: Persona;
 }
 
 // Message types (inter-agent)

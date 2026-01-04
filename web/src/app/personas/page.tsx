@@ -101,9 +101,25 @@ export default function PersonasPage() {
             <div className="p-4 overflow-y-auto max-h-[60vh]">
               <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Model</h4>
-                  <p className="font-mono text-cm-charcoal">{selectedPersona.model}</p>
+                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Persona Key</h4>
+                  <p className="font-mono text-sm text-cm-charcoal">{selectedPersona.persona_key}</p>
                 </div>
+
+                {selectedPersona.suggested_clients && selectedPersona.suggested_clients.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-cm-coffee mb-2">Suggested Clients</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedPersona.suggested_clients.map((client) => (
+                        <span
+                          key={client}
+                          className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded-full"
+                        >
+                          {client}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {selectedPersona.system_prompt && (
                   <div>
@@ -114,7 +130,7 @@ export default function PersonasPage() {
                   </div>
                 )}
 
-                {selectedPersona.personality?.traits && (
+                {selectedPersona.personality?.traits && selectedPersona.personality.traits.length > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-cm-coffee mb-2">Personality Traits</h4>
                     <div className="flex flex-wrap gap-2">
@@ -130,7 +146,7 @@ export default function PersonasPage() {
                   </div>
                 )}
 
-                {selectedPersona.capabilities && (
+                {selectedPersona.capabilities && selectedPersona.capabilities.length > 0 && (
                   <div>
                     <h4 className="text-sm font-medium text-cm-coffee mb-2">Capabilities</h4>
                     <div className="flex flex-wrap gap-2">
@@ -145,6 +161,12 @@ export default function PersonasPage() {
                     </div>
                   </div>
                 )}
+
+                <div className="pt-4 border-t border-cm-sand">
+                  <p className="text-xs text-cm-coffee">
+                    Status: {selectedPersona.status} | Created: {new Date(selectedPersona.created_at).toLocaleDateString()}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

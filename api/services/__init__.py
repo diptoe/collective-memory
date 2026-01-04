@@ -1,7 +1,7 @@
 """
 Collective Memory Platform - Services
 
-Business logic services for AI chat, context retrieval, embeddings, NER, and checkpointing.
+Business logic services for AI chat, context retrieval, embeddings, NER, checkpointing, and seeding.
 """
 
 from .context import ContextService, context_service
@@ -10,6 +10,7 @@ from .checkpoint import CheckpointService, checkpoint_service
 from .embedding import EmbeddingService, embedding_service
 from .ner import NERService, ner_service
 from .document_processor import DocumentProcessor, document_processor
+from .seeding import SeedingService, seeding_service, seed_all
 
 __all__ = [
     'ContextService',
@@ -24,4 +25,7 @@ __all__ = [
     'ner_service',
     'DocumentProcessor',
     'document_processor',
+    'SeedingService',
+    'seeding_service',
+    'seed_all',
 ]

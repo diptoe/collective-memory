@@ -27,9 +27,19 @@ class MCPConfig:
     persona: str = os.getenv("CM_PERSONA", "")  # Persona role: backend-code, frontend-code, architect, consultant
     agent_capabilities: str = os.getenv("CM_AGENT_CAPABILITIES", "search,create,update")
 
+    # Client identification - the connecting platform
+    # Detected from environment or explicitly set
+    client: str = os.getenv("CM_CLIENT", "")  # claude-code, claude-desktop, codex, gemini, custom
+
+    # Model identification - the LLM being used
+    model_key: str = os.getenv("CM_MODEL_KEY", "")  # Model key from DB, e.g., "mod-xxx"
+    model_id: str = os.getenv("CM_MODEL_ID", "")  # Model API ID, e.g., "claude-opus-4-5-20251101"
+
+    # Current work focus
+    focus: str = os.getenv("CM_FOCUS", "")  # What the agent is working on
+
     # Persona details (optional - used to auto-create persona if it doesn't exist)
     persona_name: str = os.getenv("CM_PERSONA_NAME", "")  # Display name, e.g., "Claude Consultant"
-    persona_model: str = os.getenv("CM_PERSONA_MODEL", "")  # Model ID, e.g., "claude-opus-4-5"
     persona_color: str = os.getenv("CM_PERSONA_COLOR", "#6b7280")  # UI color
 
     # API configuration
@@ -68,6 +78,44 @@ class MCPConfig:
     def has_identity(self) -> bool:
         """Check if agent identity is configured"""
         return bool(self.agent_id)
+
+    @property
+    def detected_client(self) -> str:
+        """
+        Auto-detect client from environment clues if not explicitly set.
+
+        Detection order:
+        1. Explicit CM_CLIENT environment variable
+        2. CLAUDE_CODE environment variable → "claude-code"
+        3. CLAUDE_DESKTOP indicator → "claude-desktop"
+        4. MCP_CLIENT environment variable
+        5. Default to "custom"
+        """
+        if self.client:
+            return self.client
+
+        # Claude Code detection
+        if os.getenv("CLAUDE_CODE"):
+            return "claude-code"
+
+        # Claude Desktop typically runs in a specific way
+        if os.getenv("CLAUDE_DESKTOP") or os.getenv("__CLAUDE_MCP_ROOT__"):
+            return "claude-desktop"
+
+        # Generic MCP client environment variable
+        mcp_client = os.getenv("MCP_CLIENT")
+        if mcp_client:
+            return mcp_client
+
+        # Check for Codex-specific env vars
+        if os.getenv("CODEX_CLI") or os.getenv("OPENAI_CODEX"):
+            return "codex"
+
+        # Check for Gemini
+        if os.getenv("GEMINI_API") or os.getenv("GOOGLE_GEMINI"):
+            return "gemini"
+
+        return "custom"
 
     def validate(self) -> tuple[bool, Optional[str]]:
         """

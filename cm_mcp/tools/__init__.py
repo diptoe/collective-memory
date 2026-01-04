@@ -40,6 +40,12 @@ from .message import (
     mark_message_read,
 )
 
+from .model import (
+    list_models,
+    list_clients,
+    update_focus,
+)
+
 __all__ = [
     # Entity tools
     'search_entities',
@@ -65,4 +71,8 @@ __all__ = [
     'send_message',
     'get_messages',
     'mark_message_read',
+    # Model and client tools
+    'list_models',
+    'list_clients',
+    'update_focus',
 ]

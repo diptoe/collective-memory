@@ -8,6 +8,8 @@ from api.models.entity import Entity
 from api.models.relationship import Relationship
 from api.models.document import Document
 from api.models.message import Message
+from api.models.model import Model
+from api.models.client import ClientType, CLIENT_PERSONA_AFFINITIES, get_client_types, get_client_affinities, is_valid_client
 from api.models.agent import Agent
 from api.models.agent_checkpoint import AgentCheckpoint
 from api.models.persona import Persona
@@ -25,6 +27,12 @@ __all__ = [
     'Relationship',
     'Document',
     'Message',
+    'Model',
+    'ClientType',
+    'CLIENT_PERSONA_AFFINITIES',
+    'get_client_types',
+    'get_client_affinities',
+    'is_valid_client',
     'Agent',
     'AgentCheckpoint',
     'Persona',

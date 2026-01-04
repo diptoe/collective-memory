@@ -8,6 +8,8 @@ from flask_restx import Api
 from api.routes.entities import register_entity_routes
 from api.routes.relationships import register_relationship_routes
 from api.routes.messages import register_message_routes
+from api.routes.models import register_model_routes
+from api.routes.clients import register_client_routes
 from api.routes.agents import register_agent_routes
 from api.routes.personas import register_persona_routes
 from api.routes.conversations import register_conversation_routes
@@ -22,6 +24,8 @@ def register_routes(api: Api):
     register_entity_routes(api)
     register_relationship_routes(api)
     register_message_routes(api)
+    register_model_routes(api)
+    register_client_routes(api)
     register_agent_routes(api)
     register_persona_routes(api)
     register_conversation_routes(api)

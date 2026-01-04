@@ -1,6 +1,6 @@
 'use client';
 
-import { Agent } from '@/types';
+import { Agent, ClientType } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
 
@@ -8,6 +8,22 @@ interface AgentStatusProps {
   agent: Agent;
   onClick?: () => void;
 }
+
+const CLIENT_LABELS: Record<ClientType, string> = {
+  'claude-code': 'Claude Code',
+  'claude-desktop': 'Claude Desktop',
+  'codex': 'Codex',
+  'gemini': 'Gemini',
+  'custom': 'Custom',
+};
+
+const CLIENT_COLORS: Record<ClientType, string> = {
+  'claude-code': 'bg-orange-100 text-orange-800',
+  'claude-desktop': 'bg-purple-100 text-purple-800',
+  'codex': 'bg-green-100 text-green-800',
+  'gemini': 'bg-blue-100 text-blue-800',
+  'custom': 'bg-gray-100 text-gray-800',
+};
 
 export function AgentStatus({ agent, onClick }: AgentStatusProps) {
   // Trust the API's is_active flag (15 minute heartbeat timeout)
@@ -20,6 +36,13 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
     completed: 'bg-cm-success',
   };
 
+  // Get display values
+  const clientLabel = agent.client ? CLIENT_LABELS[agent.client] || agent.client : null;
+  const clientColor = agent.client ? CLIENT_COLORS[agent.client] || 'bg-gray-100 text-gray-800' : null;
+  const personaName = agent.persona?.name || agent.role;
+  const personaColor = agent.persona?.color;
+  const modelName = agent.model?.name;
+
   return (
     <div
       onClick={onClick}
@@ -31,7 +54,10 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-10 h-10 rounded-lg bg-cm-charcoal flex items-center justify-center text-cm-ivory text-sm font-medium">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-cm-ivory text-sm font-medium"
+              style={{ backgroundColor: personaColor || '#2d2d2d' }}
+            >
               {agent.agent_id.slice(0, 2).toUpperCase()}
             </div>
             <div
@@ -43,7 +69,7 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
           </div>
           <div>
             <h3 className="font-medium text-cm-charcoal">{agent.agent_id}</h3>
-            <p className="text-xs text-cm-coffee">{agent.role}</p>
+            <p className="text-xs text-cm-coffee">{personaName}</p>
           </div>
         </div>
 
@@ -58,6 +84,28 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
           </span>
         )}
       </div>
+
+      {/* Client and Model badges */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        {clientLabel && (
+          <span className={cn('px-2 py-0.5 text-xs rounded-full', clientColor)}>
+            {clientLabel}
+          </span>
+        )}
+        {modelName && (
+          <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
+            {modelName}
+          </span>
+        )}
+      </div>
+
+      {/* Focus */}
+      {agent.focus && (
+        <div className="mb-3">
+          <p className="text-xs text-cm-coffee/70 mb-1">Focus</p>
+          <p className="text-sm text-cm-charcoal">{agent.focus}</p>
+        </div>
+      )}
 
       {agent.status?.current_task && (
         <div className="mb-3">
@@ -78,13 +126,13 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
           {agent.capabilities.slice(0, 4).map((cap) => (
             <span
               key={cap}
-              className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee"
+              className="px-2 py-0.5 text-xs bg-cm-terracotta/10 rounded-full text-cm-terracotta"
             >
               {cap}
             </span>
           ))}
           {agent.capabilities.length > 4 && (
-            <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
+            <span className="px-2 py-0.5 text-xs bg-cm-terracotta/10 rounded-full text-cm-terracotta">
               +{agent.capabilities.length - 4}
             </span>
           )}

@@ -45,6 +45,7 @@ export default function RootLayout({
               <NavLink href="/" icon="home">Dashboard</NavLink>
               <NavLink href="/chat" icon="message-circle">Chat</NavLink>
               <NavLink href="/personas" icon="users">Personas</NavLink>
+              <NavLink href="/models" icon="brain">Models</NavLink>
               <NavLink href="/entities" icon="database">Entities</NavLink>
               <NavLink href="/types" icon="layers">Types</NavLink>
               <NavLink href="/graph" icon="git-branch">Graph</NavLink>
@@ -101,6 +102,7 @@ function NavIcon({ name }: { name: string }) {
     'home': '🏠',
     'message-circle': '💬',
     'users': '👥',
+    'brain': '🧠',
     'database': '🗄️',
     'layers': '📊',
     'git-branch': '🔀',

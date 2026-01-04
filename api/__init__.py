@@ -60,8 +60,12 @@ def create_app() -> Flask:
     with app.app_context():
         db.create_all()
 
-        # Run migrations and seed data
+        # Run migrations
         from api.migrations import run_migrations
         run_migrations()
+
+        # Seed default models and personas (creates any missing defaults)
+        from api.services.seeding import seed_all
+        seed_all()
 
     return app

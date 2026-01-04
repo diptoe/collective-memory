@@ -6,7 +6,7 @@ Agent registration, status operations, and checkpointing.
 from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Agent, AgentCheckpoint
+from api.models import Agent, AgentCheckpoint, Model, Persona, is_valid_client, get_client_affinities
 from api.services.checkpoint import checkpoint_service
 
 
@@ -22,8 +22,13 @@ def register_agent_routes(api: Api):
     # Define models for OpenAPI documentation
     agent_model = ns.model('Agent', {
         'agent_key': fields.String(readonly=True, description='Unique agent identifier'),
-        'agent_id': fields.String(required=True, description='Agent ID (e.g., backend-code)'),
-        'role': fields.String(required=True, description='Agent role'),
+        'agent_id': fields.String(required=True, description='Agent ID (e.g., claude-code-wayne-project)'),
+        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini, custom'),
+        'model_key': fields.String(description='Foreign key to model'),
+        'persona_key': fields.String(description='Foreign key to persona'),
+        'focus': fields.String(description='Current work focus'),
+        'focus_updated_at': fields.DateTime(description='When focus was last updated'),
+        'role': fields.String(description='Legacy role field (deprecated)'),
         'capabilities': fields.List(fields.String, description='Agent capabilities'),
         'status': fields.Raw(description='Current status as JSON'),
         'is_active': fields.Boolean(readonly=True, description='Whether agent is active'),
@@ -34,7 +39,11 @@ def register_agent_routes(api: Api):
 
     agent_register = ns.model('AgentRegister', {
         'agent_id': fields.String(required=True, description='Agent ID'),
-        'role': fields.String(required=True, description='Agent role'),
+        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini, custom'),
+        'model_key': fields.String(description='Model key (optional)'),
+        'persona_key': fields.String(description='Persona key (optional)'),
+        'focus': fields.String(description='Current work focus'),
+        'role': fields.String(description='Legacy role (deprecated, use persona_key)'),
         'capabilities': fields.List(fields.String, description='Agent capabilities'),
     })
 
@@ -55,11 +64,15 @@ def register_agent_routes(api: Api):
     class AgentList(Resource):
         @ns.doc('list_agents')
         @ns.param('active_only', 'Only return active agents', type=bool, default=False)
-        @ns.param('role', 'Filter by role')
+        @ns.param('client', 'Filter by client type')
+        @ns.param('persona_key', 'Filter by persona')
+        @ns.param('role', 'Filter by role (legacy)')
         @ns.marshal_with(response_model)
         def get(self):
             """List all registered agents."""
             active_only = request.args.get('active_only', 'false').lower() == 'true'
+            client = request.args.get('client')
+            persona_key = request.args.get('persona_key')
             role = request.args.get('role')
 
             if active_only:
@@ -67,6 +80,10 @@ def register_agent_routes(api: Api):
             else:
                 agents = Agent.get_all()
 
+            if client:
+                agents = [a for a in agents if a.client == client]
+            if persona_key:
+                agents = [a for a in agents if a.persona_key == persona_key]
             if role:
                 agents = [a for a in agents if a.role == role]
 
@@ -84,45 +101,106 @@ def register_agent_routes(api: Api):
         @ns.expect(agent_register)
         @ns.marshal_with(response_model, code=201)
         def post(self):
-            """Register a new agent or update existing."""
+            """Register a new agent or update existing.
+
+            New registration protocol accepts:
+            - agent_id (required): Unique agent identifier
+            - client: Client type (claude-code, claude-desktop, codex, gemini, custom)
+            - model_key: Reference to AI model being used
+            - persona_key: Reference to behavioral persona
+            - focus: Current work focus/description
+            - role: Legacy field (deprecated, use persona_key)
+            - capabilities: List of capabilities
+            """
             data = request.json
 
             if not data.get('agent_id'):
                 return {'success': False, 'msg': 'agent_id is required'}, 400
-            if not data.get('role'):
-                return {'success': False, 'msg': 'role is required'}, 400
+
+            # Validate client if provided
+            client = data.get('client')
+            if client and not is_valid_client(client):
+                return {'success': False, 'msg': f"Invalid client type: '{client}'"}, 400
+
+            # Validate model_key if provided
+            model_key = data.get('model_key')
+            if model_key:
+                model = Model.get_by_key(model_key)
+                if not model:
+                    return {'success': False, 'msg': f"Model not found: '{model_key}'"}, 404
+
+            # Validate persona_key if provided
+            persona_key = data.get('persona_key')
+            persona = None
+            if persona_key:
+                persona = Persona.get_by_key(persona_key)
+                if not persona:
+                    return {'success': False, 'msg': f"Persona not found: '{persona_key}'"}, 404
+
+            # Check affinity warning
+            affinity_warning = None
+            if client and persona:
+                suggested_clients = persona.suggested_clients or []
+                if client not in suggested_clients:
+                    affinity_roles = get_client_affinities(client)
+                    affinity_warning = f"Persona '{persona.role}' is not typically used with client '{client}'. Suggested personas for {client}: {affinity_roles}"
 
             # Check if agent already exists
             existing = Agent.get_by_agent_id(data['agent_id'])
 
             if existing:
                 # Update existing agent
-                existing.role = data['role']
-                existing.capabilities = data.get('capabilities', [])
+                if client:
+                    existing.client = client
+                if model_key:
+                    existing.model_key = model_key
+                if persona_key:
+                    existing.persona_key = persona_key
+                if data.get('focus'):
+                    existing.update_focus(data['focus'])
+                if data.get('role'):
+                    existing.role = data['role']
+                if data.get('capabilities'):
+                    existing.capabilities = data['capabilities']
                 existing.update_heartbeat()
                 existing.save()
 
-                return {
+                result = {
                     'success': True,
                     'msg': 'Agent updated',
                     'data': existing.to_dict()
                 }
+                if affinity_warning:
+                    result['data']['affinity_warning'] = affinity_warning
+                return result
 
             # Create new agent
             agent = Agent(
                 agent_id=data['agent_id'],
-                role=data['role'],
+                client=client,
+                model_key=model_key,
+                persona_key=persona_key,
+                focus=data.get('focus'),
+                role=data.get('role'),
                 capabilities=data.get('capabilities', []),
                 status={'progress': 'not_started'}
             )
 
+            # Update focus timestamp if focus provided
+            if data.get('focus'):
+                from api.models.base import get_now
+                agent.focus_updated_at = get_now()
+
             try:
                 agent.save()
-                return {
+                result = {
                     'success': True,
                     'msg': 'Agent registered',
                     'data': agent.to_dict()
-                }, 201
+                }
+                if affinity_warning:
+                    result['data']['affinity_warning'] = affinity_warning
+                return result, 201
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
@@ -180,6 +258,56 @@ def register_agent_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Heartbeat updated',
+                    'data': agent.to_dict()
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    # Focus update model
+    focus_update = ns.model('FocusUpdate', {
+        'focus': fields.String(required=True, description='Current work focus description'),
+    })
+
+    @ns.route('/<string:agent_id>/focus')
+    @ns.param('agent_id', 'Agent ID')
+    class AgentFocus(Resource):
+        @ns.doc('get_agent_focus')
+        @ns.marshal_with(response_model)
+        def get(self, agent_id):
+            """Get agent's current focus."""
+            agent = Agent.get_by_agent_id(agent_id)
+            if not agent:
+                return {'success': False, 'msg': 'Agent not found'}, 404
+
+            return {
+                'success': True,
+                'msg': 'Agent focus retrieved',
+                'data': {
+                    'agent_id': agent.agent_id,
+                    'focus': agent.focus,
+                    'focus_updated_at': agent.focus_updated_at.isoformat() if agent.focus_updated_at else None
+                }
+            }
+
+        @ns.doc('update_agent_focus')
+        @ns.expect(focus_update)
+        @ns.marshal_with(response_model)
+        def put(self, agent_id):
+            """Update agent's current work focus."""
+            agent = Agent.get_by_agent_id(agent_id)
+            if not agent:
+                return {'success': False, 'msg': 'Agent not found'}, 404
+
+            data = request.json
+
+            if not data.get('focus'):
+                return {'success': False, 'msg': 'focus is required'}, 400
+
+            try:
+                agent.update_focus(data['focus'])
+                return {
+                    'success': True,
+                    'msg': 'Focus updated',
                     'data': agent.to_dict()
                 }
             except Exception as e:

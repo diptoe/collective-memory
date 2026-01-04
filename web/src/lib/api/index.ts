@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
@@ -9,6 +9,11 @@ interface EntitiesResponse { entities: Entity[] }
 interface EntityResponse { entity: Entity }
 interface EntityTypesResponse { types: { type: string; count: number }[] }
 interface RelationshipsResponse { relationships: Relationship[] }
+interface ModelsResponse { models: Model[] }
+interface ModelResponse extends Model {}
+interface ProvidersResponse { providers: string[] }
+interface ClientsResponse { clients: Client[] }
+interface ClientResponse extends Client {}
 interface PersonasResponse { personas: Persona[] }
 interface PersonaResponse { persona: Persona }
 interface ConversationsResponse { conversations: Conversation[] }
@@ -17,6 +22,7 @@ interface MessagesResponse { messages: ChatMessage[] }
 interface MessageResponse { message: ChatMessage }
 interface AgentsResponse { agents: Agent[] }
 interface AgentResponse { agent: Agent }
+interface FocusResponse { focus: string; focus_updated_at?: string }
 interface InterAgentMessagesResponse { messages: Message[] }
 interface ContextQueryResponse extends ContextResult { }
 
@@ -179,18 +185,52 @@ export const api = {
       apiClient.delete(`/relationships/${key}`),
   },
 
+  // Models
+  models: {
+    list: (params?: { provider?: string; include_deprecated?: boolean }) =>
+      apiClient.get<ModelsResponse>('/models', { params }),
+    get: (key: string) =>
+      apiClient.get<ModelResponse>(`/models/${key}`),
+    create: (data: { name: string; provider: string; model_id: string; capabilities?: string[]; context_window?: number; max_output_tokens?: number; description?: string }) =>
+      apiClient.post<ModelResponse>('/models', data),
+    update: (key: string, data: Record<string, unknown>) =>
+      apiClient.put<ModelResponse>(`/models/${key}`, data),
+    delete: (key: string) =>
+      apiClient.delete(`/models/${key}`),
+    deprecate: (key: string) =>
+      apiClient.post(`/models/${key}/deprecate`),
+    providers: () =>
+      apiClient.get<ProvidersResponse>('/models/providers'),
+    byProvider: (provider: string) =>
+      apiClient.get<ModelsResponse>(`/models/by-provider/${provider}`),
+  },
+
+  // Clients
+  clients: {
+    list: () =>
+      apiClient.get<ClientsResponse>('/clients'),
+    get: (client: ClientType) =>
+      apiClient.get<ClientResponse>(`/clients/${client}`),
+    getPersonas: (client: ClientType) =>
+      apiClient.get<PersonasResponse>(`/clients/${client}/personas`),
+  },
+
   // Personas
   personas: {
-    list: (params?: { role?: string; model?: string }) =>
+    list: (params?: { role?: string; client?: string; include_archived?: boolean }) =>
       apiClient.get<PersonasResponse>('/personas', { params }),
     get: (key: string, includeSystemPrompt = false) =>
       apiClient.get<PersonaResponse>(`/personas/${key}`, { params: { include_system_prompt: includeSystemPrompt } }),
-    create: (data: { name: string; model: string; role: string; system_prompt?: string; color?: string }) =>
+    getByRole: (role: string, includeSystemPrompt = false) =>
+      apiClient.get<PersonaResponse>(`/personas/by-role/${role}`, { params: { include_system_prompt: includeSystemPrompt } }),
+    create: (data: { name: string; role: string; system_prompt?: string; suggested_clients?: ClientType[]; color?: string; capabilities?: string[] }) =>
       apiClient.post<PersonaResponse>('/personas', data),
     update: (key: string, data: Record<string, unknown>) =>
       apiClient.put<PersonaResponse>(`/personas/${key}`, data),
     delete: (key: string) =>
       apiClient.delete(`/personas/${key}`),
+    activate: (key: string) =>
+      apiClient.post(`/personas/${key}/activate`),
   },
 
   // Conversations
@@ -209,12 +249,25 @@ export const api = {
 
   // Agents
   agents: {
-    list: (params?: { active_only?: boolean; role?: string }) =>
+    list: (params?: { active_only?: boolean; client?: string; persona_key?: string }) =>
       apiClient.get<AgentsResponse>('/agents', { params }),
-    register: (data: { agent_id: string; role: string; capabilities?: string[] }) =>
+    get: (agentId: string) =>
+      apiClient.get<AgentResponse>(`/agents/${agentId}`),
+    register: (data: {
+      agent_id: string;
+      client?: ClientType;
+      model_key?: string;
+      persona_key?: string;
+      focus?: string;
+      capabilities?: string[]
+    }) =>
       apiClient.post<AgentResponse>('/agents/register', data),
     updateStatus: (agentId: string, status: Record<string, unknown>) =>
       apiClient.put<AgentResponse>(`/agents/${agentId}/status`, status),
+    getFocus: (agentId: string) =>
+      apiClient.get<FocusResponse>(`/agents/${agentId}/focus`),
+    updateFocus: (agentId: string, focus: string) =>
+      apiClient.put<FocusResponse>(`/agents/${agentId}/focus`, { focus }),
     heartbeat: (agentId: string) =>
       apiClient.post(`/agents/${agentId}/heartbeat`),
   },

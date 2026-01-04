@@ -1,12 +1,12 @@
 """
 Collective Memory Platform - Persona Routes
 
-CRUD operations for AI personas.
+CRUD operations for AI personas (behavioral roles, decoupled from models).
 """
 from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Persona
+from api.models import Persona, is_valid_client
 
 
 def register_persona_routes(api: Api):
@@ -22,11 +22,11 @@ def register_persona_routes(api: Api):
     persona_model = ns.model('Persona', {
         'persona_key': fields.String(readonly=True, description='Unique persona identifier'),
         'name': fields.String(required=True, description='Persona display name'),
-        'model': fields.String(required=True, description='AI model identifier'),
-        'role': fields.String(required=True, description='Persona role'),
+        'role': fields.String(required=True, description='Persona role (unique identifier)'),
         'system_prompt': fields.String(description='System prompt for the persona'),
         'personality': fields.Raw(description='Personality traits as JSON'),
         'capabilities': fields.List(fields.String, description='Persona capabilities'),
+        'suggested_clients': fields.List(fields.String, description='Suggested client types'),
         'avatar_url': fields.String(description='Avatar image URL'),
         'color': fields.String(description='Theme color (hex)'),
         'status': fields.String(description='Status: active, inactive, archived'),
@@ -36,11 +36,11 @@ def register_persona_routes(api: Api):
 
     persona_create = ns.model('PersonaCreate', {
         'name': fields.String(required=True, description='Persona display name'),
-        'model': fields.String(required=True, description='AI model identifier'),
-        'role': fields.String(required=True, description='Persona role'),
+        'role': fields.String(required=True, description='Persona role (unique identifier)'),
         'system_prompt': fields.String(description='System prompt'),
         'personality': fields.Raw(description='Personality traits'),
         'capabilities': fields.List(fields.String, description='Capabilities'),
+        'suggested_clients': fields.List(fields.String, description='Suggested client types'),
         'avatar_url': fields.String(description='Avatar URL'),
         'color': fields.String(description='Theme color', default='#d97757'),
     })
@@ -55,13 +55,13 @@ def register_persona_routes(api: Api):
     class PersonaList(Resource):
         @ns.doc('list_personas')
         @ns.param('role', 'Filter by role')
-        @ns.param('model', 'Filter by model')
+        @ns.param('client', 'Filter by suggested client type')
         @ns.param('include_archived', 'Include archived personas', type=bool, default=False)
         @ns.marshal_with(response_model)
         def get(self):
             """List all personas."""
             role = request.args.get('role')
-            model = request.args.get('model')
+            client = request.args.get('client')
             include_archived = request.args.get('include_archived', 'false').lower() == 'true'
 
             if include_archived:
@@ -71,8 +71,8 @@ def register_persona_routes(api: Api):
 
             if role:
                 personas = [p for p in personas if p.role == role]
-            if model:
-                personas = [p for p in personas if p.model == model]
+            if client:
+                personas = [p for p in personas if client in (p.suggested_clients or [])]
 
             return {
                 'success': True,
@@ -91,18 +91,27 @@ def register_persona_routes(api: Api):
 
             if not data.get('name'):
                 return {'success': False, 'msg': 'name is required'}, 400
-            if not data.get('model'):
-                return {'success': False, 'msg': 'model is required'}, 400
             if not data.get('role'):
                 return {'success': False, 'msg': 'role is required'}, 400
 
+            # Validate suggested_clients if provided
+            suggested_clients = data.get('suggested_clients', [])
+            for client in suggested_clients:
+                if not is_valid_client(client):
+                    return {'success': False, 'msg': f"Invalid client type: '{client}'"}, 400
+
+            # Check for duplicate role
+            existing = Persona.get_by_role(data['role'])
+            if existing:
+                return {'success': False, 'msg': f"Persona with role '{data['role']}' already exists"}, 400
+
             persona = Persona(
                 name=data['name'],
-                model=data['model'],
                 role=data['role'],
                 system_prompt=data.get('system_prompt'),
                 personality=data.get('personality', {}),
                 capabilities=data.get('capabilities', []),
+                suggested_clients=suggested_clients,
                 avatar_url=data.get('avatar_url'),
                 color=data.get('color', '#d97757'),
                 status='active'
@@ -198,3 +207,26 @@ def register_persona_routes(api: Api):
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/by-role/<string:role>')
+    @ns.param('role', 'Persona role')
+    class PersonaByRole(Resource):
+        @ns.doc('get_persona_by_role')
+        @ns.param('include_system_prompt', 'Include system prompt', type=bool, default=False)
+        @ns.marshal_with(response_model)
+        def get(self, role):
+            """Get a persona by its role (unique identifier)."""
+            include_prompt = request.args.get('include_system_prompt', 'false').lower() == 'true'
+
+            personas = Persona.get_by_role(role)
+            if not personas:
+                return {'success': False, 'msg': f"Persona with role '{role}' not found"}, 404
+
+            # get_by_role returns a list, but role is unique so we take first
+            persona = personas[0]
+
+            return {
+                'success': True,
+                'msg': 'Persona retrieved',
+                'data': persona.to_dict(include_system_prompt=include_prompt)
+            }
