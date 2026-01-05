@@ -87,7 +87,9 @@ class ActivityService:
         self,
         actor: str,
         agent_key: str,
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        unread_messages: int = 0,
+        autonomous_tasks: int = 0
     ) -> Activity:
         """Record an agent_heartbeat activity."""
         return self.record(
@@ -96,7 +98,9 @@ class ActivityService:
             target_key=agent_key,
             target_type='agent',
             extra_data={
-                'status': status
+                'status': status,
+                'unread_messages': unread_messages,
+                'autonomous_tasks': autonomous_tasks
             }
         )
 

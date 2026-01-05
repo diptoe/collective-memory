@@ -368,16 +368,19 @@ def register_agent_routes(api: Api):
 
             try:
                 agent.update_heartbeat()
-                # Record activity
-                activity_service.record_agent_heartbeat(
-                    actor=agent.agent_id,
-                    agent_key=agent.agent_key,
-                    status=agent.status.get('progress') if agent.status else None
-                )
 
                 # Get unread message counts for this agent
                 unread_count = Message.get_unread_count(agent_id=agent_id)
                 autonomous_count = Message.get_unread_autonomous_count(agent_id=agent_id)
+
+                # Record activity with message counts
+                activity_service.record_agent_heartbeat(
+                    actor=agent.agent_id,
+                    agent_key=agent.agent_key,
+                    status=agent.status.get('progress') if agent.status else None,
+                    unread_messages=unread_count,
+                    autonomous_tasks=autonomous_count
+                )
 
                 # Build response with message notification
                 agent_data = agent.to_dict()
