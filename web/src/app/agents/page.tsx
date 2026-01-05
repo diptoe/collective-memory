@@ -173,8 +173,14 @@ export default function AgentsPage() {
 
       {/* Detail modal */}
       {selectedAgent && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40">
-          <div className="bg-cm-ivory rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-40"
+          onClick={() => setSelectedAgent(null)}
+        >
+          <div
+            className="bg-cm-ivory rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-4 border-b border-cm-sand flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div
