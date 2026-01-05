@@ -923,6 +923,27 @@ RETURNS: Table of activity types with counts and percentages.""",
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     """Handle tool calls by dispatching to appropriate tool functions"""
 
+    # Tools that don't require registration (identity-related tools)
+    identity_tools = ("identify", "get_my_identity")
+
+    # Enforce registration for all other tools
+    if name not in identity_tools and not _session_state.get("registered"):
+        return [types.TextContent(
+            type="text",
+            text="## Registration Required\n\n"
+                 "You must identify yourself before using CM tools.\n\n"
+                 "**Call `identify` first** with your identity:\n\n"
+                 "```\n"
+                 "identify(\n"
+                 '    agent_id="claude-code-{project}",  # Based on your project/task\n'
+                 '    client="claude-code",              # Your client type\n'
+                 '    model_id="your-model-id",          # Your model identifier\n'
+                 '    persona="backend-code"             # Or frontend-code, architect, etc.\n'
+                 ")\n"
+                 "```\n\n"
+                 "Or call `get_my_identity` to see available options and guidance."
+        )]
+
     # Send heartbeat on every tool call (if registered) to keep agent active
     # Skip for identify/get_my_identity since they handle registration themselves
     # Skip for get_messages/mark_* since those are message-related
