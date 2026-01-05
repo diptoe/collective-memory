@@ -278,7 +278,7 @@ async def identify(
             config,
             "POST",
             "/agents/register",
-            json_data=registration_data
+            json=registration_data
         )
 
         if result.get("success"):
@@ -605,7 +605,7 @@ async def update_my_identity(
             config,
             "POST",
             "/agents/register",
-            json_data=registration_data
+            json=registration_data
         )
 
         if result.get("success"):

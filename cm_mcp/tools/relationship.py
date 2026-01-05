@@ -91,7 +91,7 @@ async def create_relationship(
             config,
             "POST",
             "/relationships",
-            json_data={
+            json={
                 "from_entity_key": from_entity_key,
                 "to_entity_key": to_entity_key,
                 "relationship_type": relationship_type,

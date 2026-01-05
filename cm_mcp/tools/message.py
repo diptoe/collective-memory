@@ -51,7 +51,7 @@ async def send_message(
             config,
             "POST",
             "/messages",
-            json_data={
+            json={
                 "channel": channel,
                 "from_agent": from_agent,
                 "to_agent": to_agent,

@@ -75,7 +75,7 @@ async def chat_with_persona(
                 config,
                 "POST",
                 "/conversations",
-                json_data={
+                json={
                     "persona_key": persona_key,
                     "title": f"MCP Chat - {message[:30]}...",
                 }
@@ -95,7 +95,7 @@ async def chat_with_persona(
             config,
             "POST",
             f"/conversations/{conversation_key}/chat",
-            json_data={"content": message}
+            json={"content": message}
         )
 
         if msg_result.get("success"):

@@ -152,7 +152,7 @@ async def update_focus(
             config,
             "PUT",
             f"/agents/{agent_id}/focus",
-            json_data={"focus": focus}
+            json={"focus": focus}
         )
 
         if result.get("success"):

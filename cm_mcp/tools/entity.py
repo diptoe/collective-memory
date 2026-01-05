@@ -125,7 +125,7 @@ async def create_entity(
             config,
             "POST",
             "/entities",
-            json_data={
+            json={
                 "name": name,
                 "entity_type": entity_type,
                 "properties": properties,
@@ -182,7 +182,7 @@ async def update_entity(
             config,
             "PUT",
             f"/entities/{entity_key}",
-            json_data=update_data
+            json=update_data
         )
 
         if result.get("success"):
@@ -282,7 +282,7 @@ async def extract_entities_from_text(
             config,
             "POST",
             "/ner/extract",
-            json_data={
+            json={
                 "text": text,
                 "auto_create": auto_create,
             }
