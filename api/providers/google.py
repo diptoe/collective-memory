@@ -84,11 +84,10 @@ class GoogleProvider(BaseModelProvider):
                 parts=[text_part]
             ))
 
-        # Build config with stream=True
+        # Build config (no stream parameter - streaming is method-based)
         config = genai_types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=max_tokens,
-            stream=True
         )
 
         # Add system instruction if provided (as list of Parts)
@@ -98,8 +97,8 @@ class GoogleProvider(BaseModelProvider):
         try:
             resolved_model = self._resolve_model(model)
 
-            # Use synchronous streaming API
-            response_stream = self.client.models.generate_content(
+            # Use streaming API method
+            response_stream = self.client.models.generate_content_stream(
                 model=resolved_model,
                 contents=contents,
                 config=config,

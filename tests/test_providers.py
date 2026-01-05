@@ -231,7 +231,7 @@ class TestGoogleProviderStreaming:
         mock_response_stream = [mock_chunk]
 
         mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = mock_response_stream
+        mock_client.models.generate_content_stream.return_value = mock_response_stream
         mock_genai.Client.return_value = mock_client
 
         with patch.dict('sys.modules', {'google.genai': mock_genai, 'google.genai.types': mock_genai_types}):
@@ -259,10 +259,10 @@ class TestGoogleProviderStreaming:
                         # Verify Content was built with user role
                         mock_genai_types.Content.assert_called()
 
-                        # Verify config was built with stream=True
+                        # Verify config was built (no stream param - streaming is method-based)
                         mock_genai_types.GenerateContentConfig.assert_called_once()
                         config_call = mock_genai_types.GenerateContentConfig.call_args
-                        assert config_call.kwargs.get('stream') == True
+                        assert 'stream' not in config_call.kwargs
 
                         # Verify we got content chunks
                         assert len(chunks) >= 1
@@ -282,7 +282,7 @@ class TestGoogleProviderStreaming:
         mock_config = MagicMock()
         mock_genai_types.GenerateContentConfig.return_value = mock_config
         mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = []
+        mock_client.models.generate_content_stream.return_value = []
         mock_genai.Client.return_value = mock_client
 
         with patch('api.providers.google.genai', mock_genai):
@@ -317,7 +317,7 @@ class TestGoogleProviderStreaming:
 
         # Empty response stream
         mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = []
+        mock_client.models.generate_content_stream.return_value = []
         mock_genai.Client.return_value = mock_client
 
         with patch('api.providers.google.genai', mock_genai):
