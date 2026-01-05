@@ -18,9 +18,7 @@ function EntitiesContent() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entityTypes, setEntityTypes] = useState<EntityTypeInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleting, setDeleting] = useState(false);
 
   // Read filter from URL query param, default to 'all'
   const filterType = searchParams.get('type') || 'all';
@@ -34,32 +32,9 @@ function EntitiesContent() {
     }
   };
 
-  // Known entity types get dedicated routes, others show modal
-  const KNOWN_ENTITY_TYPES = ['Repository', 'Document', 'Project'];
-
+  // Navigate to entity detail page
   const handleEntityClick = (entity: Entity) => {
-    if (KNOWN_ENTITY_TYPES.includes(entity.entity_type)) {
-      router.push(`/entities/${entity.entity_type.toLowerCase()}/${entity.entity_key}`);
-    } else {
-      setSelectedEntity(entity);
-    }
-  };
-
-  const handleDelete = async (entity: Entity) => {
-    if (!confirm(`Delete "${entity.name}"? This will also delete all relationships. This cannot be undone.`)) {
-      return;
-    }
-    setDeleting(true);
-    try {
-      await api.entities.delete(entity.entity_key);
-      setEntities((prev) => prev.filter((e) => e.entity_key !== entity.entity_key));
-      setSelectedEntity(null);
-    } catch (err) {
-      console.error('Failed to delete entity:', err);
-      alert('Failed to delete entity');
-    } finally {
-      setDeleting(false);
-    }
+    router.push(`/entities/${encodeURIComponent(entity.entity_type)}/${entity.entity_key}`);
   };
 
   // Load entity types on mount
@@ -177,155 +152,9 @@ function EntitiesContent() {
             <EntityCard
               key={entity.entity_key}
               entity={entity}
-              selected={selectedEntity?.entity_key === entity.entity_key}
               onClick={() => handleEntityClick(entity)}
             />
           ))}
-        </div>
-      )}
-
-      {/* Detail panel */}
-      {selectedEntity && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-40"
-          onClick={() => setSelectedEntity(null)}
-        >
-          <div
-            className="bg-cm-ivory rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-cm-sand flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-cm-charcoal">
-                  {selectedEntity.name}
-                </h3>
-                <p className="text-sm text-cm-coffee">{selectedEntity.entity_type}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleDelete(selectedEntity)}
-                  disabled={deleting}
-                  className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
-                >
-                  {deleting ? 'Deleting...' : 'Delete'}
-                </button>
-                <button
-                  onClick={() => setSelectedEntity(null)}
-                  className="text-cm-coffee hover:text-cm-charcoal transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Key</h4>
-                  <p className="font-mono text-sm text-cm-charcoal">
-                    {selectedEntity.entity_key}
-                  </p>
-                </div>
-
-                {selectedEntity.context_domain && (
-                  <div>
-                    <h4 className="text-sm font-medium text-cm-coffee mb-1">Context Domain</h4>
-                    <p className="font-mono text-sm text-cm-charcoal">
-                      {selectedEntity.context_domain}
-                    </p>
-                  </div>
-                )}
-
-                <div>
-                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Confidence</h4>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-32 rounded-full bg-cm-sand overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-cm-terracotta"
-                        style={{ width: `${selectedEntity.confidence * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-sm text-cm-charcoal">
-                      {Math.round(selectedEntity.confidence * 100)}%
-                    </span>
-                  </div>
-                </div>
-
-                {selectedEntity.properties && Object.keys(selectedEntity.properties).length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-cm-coffee mb-2">Properties</h4>
-                    <pre className="text-sm text-cm-charcoal bg-cm-sand/30 p-3 rounded-lg overflow-auto">
-                      {JSON.stringify(selectedEntity.properties, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
-                {selectedEntity.relationships && (
-                  <>
-                    {selectedEntity.relationships.outgoing.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium text-cm-coffee mb-2">
-                          Outgoing Relationships ({selectedEntity.relationships.outgoing.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {selectedEntity.relationships.outgoing.map((rel) => (
-                            <div
-                              key={rel.relationship_key}
-                              className="flex items-center gap-2 text-sm p-2 bg-cm-sand/30 rounded-lg flex-wrap"
-                            >
-                              <span className="text-cm-charcoal font-medium">{selectedEntity.name}</span>
-                              <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                                {rel.relationship_type}
-                              </span>
-                              <span className="text-cm-charcoal font-medium">
-                                {rel.to_entity?.name || rel.to_entity_key}
-                              </span>
-                              {rel.to_entity?.entity_type && (
-                                <span className="text-xs text-cm-coffee">
-                                  ({rel.to_entity.entity_type})
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedEntity.relationships.incoming.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium text-cm-coffee mb-2">
-                          Incoming Relationships ({selectedEntity.relationships.incoming.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {selectedEntity.relationships.incoming.map((rel) => (
-                            <div
-                              key={rel.relationship_key}
-                              className="flex items-center gap-2 text-sm p-2 bg-cm-sand/30 rounded-lg flex-wrap"
-                            >
-                              <span className="text-cm-charcoal font-medium">
-                                {rel.from_entity?.name || rel.from_entity_key}
-                              </span>
-                              {rel.from_entity?.entity_type && (
-                                <span className="text-xs text-cm-coffee">
-                                  ({rel.from_entity.entity_type})
-                                </span>
-                              )}
-                              <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                                {rel.relationship_type}
-                              </span>
-                              <span className="text-cm-charcoal font-medium">{selectedEntity.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>
