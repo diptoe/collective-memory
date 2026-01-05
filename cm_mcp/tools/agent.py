@@ -259,7 +259,10 @@ async def identify(
         # Resolve model_id to model_key if provided
         resolved_model_key = model_key
         model_name = None
+        model_resolved = False  # Track if we successfully found the model
+
         if model_id and not model_key:
+            # First try looking up by model_id
             try:
                 model_result = await _make_request(
                     config,
@@ -270,10 +273,39 @@ async def identify(
                     model_data = model_result.get("data", {})
                     resolved_model_key = model_data.get("model_key")
                     model_name = model_data.get("name")
-            except Exception as e:
-                # Log the error for debugging
-                import sys
-                print(f"Model lookup failed for {model_id}: {e}", file=sys.stderr)
+                    model_resolved = True
+            except Exception:
+                pass
+
+            # If model_id lookup failed and it looks like a UUID, try as model_key
+            if not model_resolved and len(model_id) == 36 and model_id.count('-') == 4:
+                try:
+                    model_result = await _make_request(
+                        config,
+                        "GET",
+                        f"/models/{model_id}"
+                    )
+                    if model_result.get("success"):
+                        model_data = model_result.get("data", {})
+                        resolved_model_key = model_data.get("model_key") or model_id
+                        model_name = model_data.get("name")
+                        model_resolved = True
+                except Exception:
+                    pass
+        elif model_key:
+            # If model_key was provided directly, look it up
+            try:
+                model_result = await _make_request(
+                    config,
+                    "GET",
+                    f"/models/{model_key}"
+                )
+                if model_result.get("success"):
+                    model_data = model_result.get("data", {})
+                    model_name = model_data.get("name")
+                    model_resolved = True
+            except Exception:
+                pass
 
         # Build registration payload
         registration_data = {
@@ -321,9 +353,10 @@ async def identify(
             session_state["agent_key"] = agent_data.get("agent_key")
             session_state["persona"] = persona
             session_state["persona_key"] = persona_key
-            session_state["model_key"] = resolved_model_key
+            session_state["model_key"] = resolved_model_key if model_resolved else None
             session_state["model_id"] = model_id
             session_state["model_name"] = model_name
+            session_state["model_resolved"] = model_resolved
             session_state["focus"] = focus
             session_state["client"] = client_type
             session_state["registered"] = True
@@ -360,15 +393,11 @@ async def identify(
                     output += f" ({session_state['persona_name']})"
                 output += "\n"
 
-            if model_id or resolved_model_key:
-                output += f"**Model:** "
-                if model_name:
-                    output += f"{model_name}"
-                elif model_id:
-                    output += f"{model_id}"
-                elif resolved_model_key:
-                    output += f"{resolved_model_key}"
-                output += "\n"
+            if model_resolved and model_name:
+                output += f"**Model:** {model_name}\n"
+            elif model_id and not model_resolved:
+                # Model wasn't found - show warning
+                output += f"**Model:** ⚠️ Unknown ({model_id[:20]}{'...' if len(model_id) > 20 else ''})\n"
 
             if focus:
                 output += f"**Focus:** {focus}\n"
@@ -522,15 +551,15 @@ async def get_my_identity(
     if client:
         output += f"**Client:** {client}\n"
 
-    # Model info
-    if session_state.get("model_key") or session_state.get("model_id"):
+    # Model info - only show if resolved
+    if session_state.get("model_resolved") and session_state.get("model_name"):
         output += f"\n### Model\n"
-        if session_state.get("model_name"):
-            output += f"**Name:** {session_state.get('model_name')}\n"
-        if session_state.get("model_id"):
-            output += f"**Model ID:** {session_state.get('model_id')}\n"
+        output += f"**Name:** {session_state.get('model_name')}\n"
         if session_state.get("model_key"):
             output += f"**Model Key:** {session_state.get('model_key')}\n"
+    elif session_state.get("model_id") and not session_state.get("model_resolved"):
+        output += f"\n### Model\n"
+        output += f"**Status:** ⚠️ Unknown model\n"
 
     # Persona info
     if session_state.get("persona_name"):
