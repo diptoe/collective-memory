@@ -462,17 +462,25 @@ async def list_agents(
                     if a.get("client"):
                         output += f"   Client: {a.get('client')}\n"
 
-                    # Show persona or legacy role
-                    if a.get("persona_key"):
+                    # Show persona name (from expanded object) or legacy role
+                    persona = a.get("persona")
+                    if persona and isinstance(persona, dict) and persona.get("name"):
+                        output += f"   Persona: {persona.get('name')} ({persona.get('role', '')})\n"
+                    elif a.get("persona_key"):
+                        # Fallback to key if persona not expanded
                         output += f"   Persona: {a.get('persona_key')}\n"
                     elif a.get("role"):
                         output += f"   Role: {a.get('role')}\n"
+
+                    # Show model name if available
+                    model = a.get("model")
+                    if model and isinstance(model, dict) and model.get("name"):
+                        output += f"   Model: {model.get('name')}\n"
 
                     # Show focus if set
                     if a.get("focus"):
                         output += f"   Focus: {a.get('focus')}\n"
 
-                    output += f"   Capabilities: {', '.join(a.get('capabilities', []))}\n"
                     output += f"   Key: {a.get('agent_key')}\n\n"
                 return [types.TextContent(type="text", text=output)]
             else:
