@@ -137,7 +137,7 @@ export default function DocumentDetailPage() {
       <div className="flex flex-col items-center justify-center h-full">
         <p className="text-cm-coffee mb-4">Document not found</p>
         <button
-          onClick={() => router.push('/documents')}
+          onClick={() => router.push('/entities?type=Document')}
           className="text-cm-terracotta hover:underline"
         >
           Back to Documents
@@ -152,13 +152,13 @@ export default function DocumentDetailPage() {
       <div className="border-b border-cm-sand bg-cm-ivory p-4">
         <div className="flex items-center justify-between mb-2">
           <button
-            onClick={() => router.push('/documents')}
+            onClick={() => router.push('/entities?type=Document')}
             className="text-cm-coffee hover:text-cm-charcoal transition-colors flex items-center gap-1"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Documents
+            Entities
           </button>
 
           <div className="flex items-center gap-2">
@@ -190,37 +190,44 @@ export default function DocumentDetailPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {editMode ? (
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="font-serif text-2xl font-semibold text-cm-charcoal bg-transparent border-b-2 border-cm-terracotta focus:outline-none"
-            />
-          ) : (
-            <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">{document.name}</h1>
-          )}
+          <div className="w-12 h-12 rounded-lg bg-[#6b8fa8] flex items-center justify-center text-cm-ivory text-lg font-medium">
+            D
+          </div>
+          <div>
+            {editMode ? (
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="font-serif text-2xl font-semibold text-cm-charcoal bg-transparent border-b-2 border-cm-terracotta focus:outline-none"
+              />
+            ) : (
+              <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">{document.name}</h1>
+            )}
 
-          {editMode ? (
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="px-2 py-0.5 text-xs rounded-full border border-cm-sand bg-cm-cream focus:outline-none focus:ring-1 focus:ring-cm-terracotta"
-            >
-              <option value="Draft">Draft</option>
-              <option value="Review">Review</option>
-              <option value="Approved">Approved</option>
-              <option value="Published">Published</option>
-              <option value="Archived">Archived</option>
-            </select>
-          ) : (
-            <span className={cn('px-2 py-0.5 text-xs rounded-full', getStatusColor(document.properties.status || 'Draft'))}>
-              {document.properties.status || 'Draft'}
-            </span>
-          )}
+            <div className="flex items-center gap-2 mt-1">
+              {editMode ? (
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="px-2 py-0.5 text-xs rounded-full border border-cm-sand bg-cm-cream focus:outline-none focus:ring-1 focus:ring-cm-terracotta"
+                >
+                  <option value="Draft">Draft</option>
+                  <option value="Review">Review</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Published">Published</option>
+                  <option value="Archived">Archived</option>
+                </select>
+              ) : (
+                <span className={cn('px-2 py-0.5 text-xs rounded-full', getStatusColor(document.properties.status || 'Draft'))}>
+                  {document.properties.status || 'Draft'}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
-        <p className="text-sm text-cm-coffee mt-1">
+        <p className="text-sm text-cm-coffee mt-2">
           Last updated: {new Date(document.updated_at).toLocaleString()}
         </p>
       </div>

@@ -3,7 +3,7 @@
  */
 
 // Entity types
-export type EntityType = 'Person' | 'Project' | 'Technology' | 'Document' | 'Organization' | 'Concept';
+export type EntityType = 'Person' | 'Project' | 'Technology' | 'Document' | 'Organization' | 'Concept' | 'Repository';
 
 export interface Entity {
   entity_key: string;

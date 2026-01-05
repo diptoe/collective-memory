@@ -17,6 +17,7 @@ const entityTypeColors: Record<string, string> = {
   Document: '#6b8fa8',
   Organization: '#a85a3b',
   Concept: '#5c4d3c',
+  Repository: '#7c5cbf',
 };
 
 export function EntityCard({ entity, onClick, selected }: EntityCardProps) {

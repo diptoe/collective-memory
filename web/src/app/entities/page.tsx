@@ -33,6 +33,17 @@ function EntitiesContent() {
     }
   };
 
+  // Known entity types get dedicated routes, others show modal
+  const KNOWN_ENTITY_TYPES = ['Repository', 'Document', 'Project'];
+
+  const handleEntityClick = (entity: Entity) => {
+    if (KNOWN_ENTITY_TYPES.includes(entity.entity_type)) {
+      router.push(`/entities/${entity.entity_type.toLowerCase()}/${entity.entity_key}`);
+    } else {
+      setSelectedEntity(entity);
+    }
+  };
+
   // Load entity types on mount
   useEffect(() => {
     async function loadTypes() {
@@ -83,7 +94,7 @@ function EntitiesContent() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
-            Knowledge Graph
+            Entities
           </h1>
           <p className="text-cm-coffee mt-1">
             Browse and manage entities in the knowledge graph
@@ -149,7 +160,7 @@ function EntitiesContent() {
               key={entity.entity_key}
               entity={entity}
               selected={selectedEntity?.entity_key === entity.entity_key}
-              onClick={() => setSelectedEntity(entity)}
+              onClick={() => handleEntityClick(entity)}
             />
           ))}
         </div>
