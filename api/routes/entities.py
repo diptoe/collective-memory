@@ -192,19 +192,29 @@ def register_entity_routes(api: Api):
         @ns.doc('delete_entity')
         @ns.marshal_with(response_model)
         def delete(self, entity_key):
-            """Delete an entity."""
+            """Delete an entity and all its relationships."""
+            from api.models.relationship import Relationship
+
             entity = Entity.get_by_key(entity_key)
             if not entity:
                 return {'success': False, 'msg': 'Entity not found'}, 404
 
             try:
+                # Delete all relationships involving this entity first
+                relationships = Relationship.get_by_entity(entity_key)
+                rel_count = len(relationships)
+                for rel in relationships:
+                    db.session.delete(rel)
+
+                # Now delete the entity
                 entity.delete()
                 return {
                     'success': True,
-                    'msg': 'Entity deleted',
-                    'data': None
+                    'msg': f'Entity deleted along with {rel_count} relationships',
+                    'data': {'relationships_deleted': rel_count}
                 }
             except Exception as e:
+                db.session.rollback()
                 return {'success': False, 'msg': str(e)}, 500
 
     @ns.route('/<string:entity_key>/embed')

@@ -30,6 +30,7 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState<ProjectEntity | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const loadProject = useCallback(async () => {
@@ -49,6 +50,22 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     loadProject();
   }, [loadProject]);
+
+  const handleDelete = async () => {
+    if (!project) return;
+    if (!confirm(`Delete "${project.name}"? This will also delete all relationships. This cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.entities.delete(project.entity_key);
+      router.push('/entities?type=Project');
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+      alert('Failed to delete project');
+      setDeleting(false);
+    }
+  };
 
   const getStatusColor = (status?: string) => {
     switch (status?.toLowerCase()) {
@@ -127,11 +144,20 @@ export default function ProjectDetailPage() {
             Entities
           </button>
 
-          <button
-            className="px-4 py-1.5 text-sm bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
-          >
-            Edit
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="px-4 py-1.5 text-sm bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

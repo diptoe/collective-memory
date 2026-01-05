@@ -64,6 +64,7 @@ export default function RepositoryDetailPage() {
   const [loadingStats, setLoadingStats] = useState(false);
   const [syncingStats, setSyncingStats] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const loadRepository = useCallback(async () => {
@@ -190,6 +191,22 @@ export default function RepositoryDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!repository) return;
+    if (!confirm(`Delete "${repository.name}"? This will also delete all relationships. This cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.entities.delete(repository.entity_key);
+      router.push('/entities?type=Repository');
+    } catch (err) {
+      console.error('Failed to delete repository:', err);
+      alert('Failed to delete repository');
+      setDeleting(false);
+    }
+  };
+
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString();
@@ -290,6 +307,13 @@ export default function RepositoryDetailPage() {
                   Sync
                 </>
               )}
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
             </button>
           </div>
         </div>

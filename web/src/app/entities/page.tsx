@@ -20,6 +20,7 @@ function EntitiesContent() {
   const [loading, setLoading] = useState(true);
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // Read filter from URL query param, default to 'all'
   const filterType = searchParams.get('type') || 'all';
@@ -41,6 +42,23 @@ function EntitiesContent() {
       router.push(`/entities/${entity.entity_type.toLowerCase()}/${entity.entity_key}`);
     } else {
       setSelectedEntity(entity);
+    }
+  };
+
+  const handleDelete = async (entity: Entity) => {
+    if (!confirm(`Delete "${entity.name}"? This will also delete all relationships. This cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.entities.delete(entity.entity_key);
+      setEntities((prev) => prev.filter((e) => e.entity_key !== entity.entity_key));
+      setSelectedEntity(null);
+    } catch (err) {
+      console.error('Failed to delete entity:', err);
+      alert('Failed to delete entity');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -183,14 +201,23 @@ function EntitiesContent() {
                 </h3>
                 <p className="text-sm text-cm-coffee">{selectedEntity.entity_type}</p>
               </div>
-              <button
-                onClick={() => setSelectedEntity(null)}
-                className="text-cm-coffee hover:text-cm-charcoal transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleDelete(selectedEntity)}
+                  disabled={deleting}
+                  className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+                <button
+                  onClick={() => setSelectedEntity(null)}
+                  className="text-cm-coffee hover:text-cm-charcoal transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <div className="p-4 overflow-y-auto max-h-[60vh]">

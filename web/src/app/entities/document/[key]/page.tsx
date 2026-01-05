@@ -26,6 +26,7 @@ export default function DocumentDetailPage() {
   const [document, setDocument] = useState<DocumentEntity | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'content' | 'properties' | 'relationships'>('content');
 
@@ -107,6 +108,22 @@ export default function DocumentDetailPage() {
     setJsonError(null);
   };
 
+  const handleDelete = async () => {
+    if (!document) return;
+    if (!confirm(`Delete "${document.name}"? This will also delete all relationships. This cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.entities.delete(document.entity_key);
+      router.push('/entities?type=Document');
+    } catch (err) {
+      console.error('Failed to delete document:', err);
+      alert('Failed to delete document');
+      setDeleting(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'published':
@@ -179,12 +196,21 @@ export default function DocumentDetailPage() {
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => setEditMode(true)}
-                className="px-4 py-1.5 text-sm bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
-              >
-                Edit
-              </button>
+              <>
+                <button
+                  onClick={() => setEditMode(true)}
+                  className="px-4 py-1.5 text-sm bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </>
             )}
           </div>
         </div>
