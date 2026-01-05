@@ -96,11 +96,12 @@ class GoogleProvider(BaseModelProvider):
 
         try:
             resolved_model = self._resolve_model(model)
-            async for response in self.client.aio.models.generate_content_stream(
+            stream = await self.client.aio.models.generate_content_stream(
                 model=resolved_model,
                 contents=contents,
                 config=config,
-            ):
+            )
+            async for response in stream:
                 if response.text:
                     yield StreamChunk(
                         content=response.text,
