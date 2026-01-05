@@ -22,10 +22,21 @@ export function NodeDetailsPanel({
 }: NodeDetailsPanelProps) {
   const color = TYPE_COLORS[entity.entity_type] || TYPE_COLORS.Default;
 
+  // Get entity by key
+  const getEntity = (key: string) => {
+    return allEntities.find((ent) => ent.entity_key === key);
+  };
+
   // Get entity name by key
   const getEntityName = (key: string) => {
-    const e = allEntities.find((ent) => ent.entity_key === key);
+    const e = getEntity(key);
     return e?.name || key;
+  };
+
+  // Get entity type by key
+  const getEntityType = (key: string) => {
+    const e = getEntity(key);
+    return e?.entity_type;
   };
 
   // Separate incoming and outgoing relationships
@@ -89,7 +100,7 @@ export function NodeDetailsPanel({
               {outgoing.map((rel) => (
                 <div
                   key={rel.relationship_key}
-                  className="flex items-center gap-2 text-sm bg-cm-sand/30 rounded px-2 py-1.5"
+                  className="flex items-center gap-2 text-sm bg-cm-sand/30 rounded px-2 py-1.5 flex-wrap"
                 >
                   <span className="text-cm-terracotta font-medium">
                     {rel.relationship_type.replace(/_/g, ' ')}
@@ -98,6 +109,11 @@ export function NodeDetailsPanel({
                   <span className="text-cm-charcoal truncate">
                     {getEntityName(rel.to_entity_key)}
                   </span>
+                  {getEntityType(rel.to_entity_key) && (
+                    <span className="text-xs text-cm-coffee">
+                      ({getEntityType(rel.to_entity_key)})
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -114,11 +130,16 @@ export function NodeDetailsPanel({
               {incoming.map((rel) => (
                 <div
                   key={rel.relationship_key}
-                  className="flex items-center gap-2 text-sm bg-cm-sand/30 rounded px-2 py-1.5"
+                  className="flex items-center gap-2 text-sm bg-cm-sand/30 rounded px-2 py-1.5 flex-wrap"
                 >
                   <span className="text-cm-charcoal truncate">
                     {getEntityName(rel.from_entity_key)}
                   </span>
+                  {getEntityType(rel.from_entity_key) && (
+                    <span className="text-xs text-cm-coffee">
+                      ({getEntityType(rel.from_entity_key)})
+                    </span>
+                  )}
                   <ArrowRight className="w-3 h-3 text-cm-coffee" />
                   <span className="text-cm-terracotta font-medium">
                     {rel.relationship_type.replace(/_/g, ' ')}

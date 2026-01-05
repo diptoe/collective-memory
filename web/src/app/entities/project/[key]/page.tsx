@@ -385,15 +385,20 @@ export default function ProjectDetailPage() {
                       {project.relationships.outgoing.map((rel) => (
                         <div
                           key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg"
+                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
                         >
                           <span className="text-cm-charcoal font-medium">{project.name}</span>
                           <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
                             {rel.relationship_type}
                           </span>
-                          <span className="text-cm-charcoal">
+                          <span className="text-cm-charcoal font-medium">
                             {rel.to_entity?.name || rel.to_entity_key}
                           </span>
+                          {rel.to_entity?.entity_type && (
+                            <span className="text-xs text-cm-coffee">
+                              ({rel.to_entity.entity_type})
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -409,11 +414,16 @@ export default function ProjectDetailPage() {
                       {project.relationships.incoming.map((rel) => (
                         <div
                           key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg"
+                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
                         >
-                          <span className="text-cm-charcoal">
+                          <span className="text-cm-charcoal font-medium">
                             {rel.from_entity?.name || rel.from_entity_key}
                           </span>
+                          {rel.from_entity?.entity_type && (
+                            <span className="text-xs text-cm-coffee">
+                              ({rel.from_entity.entity_type})
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
                             {rel.relationship_type}
                           </span>
