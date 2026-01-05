@@ -29,10 +29,13 @@ async def get_context(
     if not query:
         return [types.TextContent(type="text", text="Error: query is required")]
 
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
     try:
         # Search for relevant entities
         params = {"search": query, "limit": max_entities}
-        result = await _make_request(config, "GET", "/entities", params=params)
+        result = await _make_request(config, "GET", "/entities", params=params, agent_id=agent_id)
 
         if result.get("success"):
             entities = result.get("data", {}).get("entities", [])
@@ -63,7 +66,8 @@ async def get_context(
                 try:
                     rel_result = await _make_request(
                         config, "GET", "/relationships",
-                        params={"entity": entity_key, "limit": 5}  # API expects "entity"
+                        params={"entity": entity_key, "limit": 5},  # API expects "entity"
+                        agent_id=agent_id,
                     )
                     rels = rel_result.get("data", {}).get("relationships", [])
                     for r in rels:
@@ -101,9 +105,12 @@ async def get_entity_context(
     if not entity_key:
         return [types.TextContent(type="text", text="Error: entity_key is required")]
 
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
     try:
         # Get the entity
-        entity_result = await _make_request(config, "GET", f"/entities/{entity_key}")
+        entity_result = await _make_request(config, "GET", f"/entities/{entity_key}", agent_id=agent_id)
 
         if not entity_result.get("success"):
             return [types.TextContent(type="text", text=f"Error: Entity not found: {entity_key}")]
@@ -122,7 +129,8 @@ async def get_entity_context(
         # Use the neighbors endpoint for proper depth traversal
         neighbors_result = await _make_request(
             config, "POST", "/context/neighbors",
-            json={"entity_key": entity_key, "max_hops": depth}
+            json={"entity_key": entity_key, "max_hops": depth},
+            agent_id=agent_id,
         )
 
         if neighbors_result.get("success"):
@@ -177,7 +185,8 @@ async def get_entity_context(
             # Fallback to simple relationship lookup if neighbors endpoint fails
             rel_result = await _make_request(
                 config, "GET", "/relationships",
-                params={"entity": entity_key, "limit": 20}  # API expects "entity"
+                params={"entity": entity_key, "limit": 20},  # API expects "entity"
+                agent_id=agent_id,
             )
 
             if rel_result.get("success"):

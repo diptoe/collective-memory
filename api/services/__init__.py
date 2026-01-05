@@ -12,6 +12,7 @@ from .ner import NERService, ner_service
 from .document_processor import DocumentProcessor, document_processor
 from .seeding import SeedingService, seeding_service, seed_all
 from .github import GitHubService, get_github_service, github_service
+from .activity import ActivityService, activity_service
 
 __all__ = [
     'ContextService',
@@ -32,4 +33,6 @@ __all__ = [
     'GitHubService',
     'get_github_service',
     'github_service',
+    'ActivityService',
+    'activity_service',
 ]

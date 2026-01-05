@@ -26,12 +26,15 @@ async def list_relationships(
     entity_key = arguments.get("entity_key")
     limit = arguments.get("limit", 20)
 
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
     try:
         params = {"limit": limit}
         if entity_key:
             params["entity"] = entity_key  # API expects "entity" not "entity_key"
 
-        result = await _make_request(config, "GET", "/relationships", params=params)
+        result = await _make_request(config, "GET", "/relationships", params=params, agent_id=agent_id)
 
         if result.get("success"):
             relationships = result.get("data", {}).get("relationships", [])
@@ -79,12 +82,12 @@ async def create_relationship(
     if not relationship_type:
         return [types.TextContent(type="text", text="Error: relationship_type is required")]
 
-    # Track which agent created this relationship
-    source = session_state.get("agent_id") or "unknown"
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None) or "unknown"
 
     # Add source to properties for tracking
     if "created_by" not in properties:
-        properties["created_by"] = f"agent:{source}"
+        properties["created_by"] = f"agent:{agent_id}"
 
     try:
         result = await _make_request(
@@ -96,7 +99,8 @@ async def create_relationship(
                 "to_entity_key": to_entity_key,
                 "relationship_type": relationship_type,
                 "properties": properties,
-            }
+            },
+            agent_id=agent_id,
         )
 
         if result.get("success"):
@@ -112,3 +116,39 @@ async def create_relationship(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error creating relationship: {str(e)}")]
+
+
+async def delete_relationship(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Delete a relationship from the knowledge graph.
+
+    Args:
+        relationship_key: The unique key of the relationship to delete
+    """
+    relationship_key = arguments.get("relationship_key")
+
+    if not relationship_key:
+        return [types.TextContent(type="text", text="Error: relationship_key is required")]
+
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
+    try:
+        result = await _make_request(
+            config,
+            "DELETE",
+            f"/relationships/{relationship_key}",
+            agent_id=agent_id,
+        )
+
+        if result.get("success"):
+            return [types.TextContent(type="text", text=f"Relationship '{relationship_key}' deleted successfully.")]
+        else:
+            return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to delete relationship')}")]
+
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error deleting relationship: {str(e)}")]

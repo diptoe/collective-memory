@@ -28,6 +28,9 @@ async def search_entities(
     entity_type = arguments.get("entity_type")
     limit = arguments.get("limit", 10)
 
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
     try:
         params = {"limit": limit}
         if query:
@@ -35,7 +38,7 @@ async def search_entities(
         if entity_type:
             params["entity_type"] = entity_type
 
-        result = await _make_request(config, "GET", "/entities", params=params)
+        result = await _make_request(config, "GET", "/entities", params=params, agent_id=agent_id)
 
         if result.get("success"):
             entities = result.get("data", {}).get("entities", [])
@@ -72,8 +75,11 @@ async def get_entity(
     if not entity_key:
         return [types.TextContent(type="text", text="Error: entity_key is required")]
 
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
     try:
-        result = await _make_request(config, "GET", f"/entities/{entity_key}")
+        result = await _make_request(config, "GET", f"/entities/{entity_key}", agent_id=agent_id)
 
         if result.get("success"):
             entity = result.get("data", {}).get("entity", {})
@@ -118,7 +124,7 @@ async def create_entity(
         return [types.TextContent(type="text", text="Error: entity_type is required")]
 
     # Track which agent created this entity
-    source = session_state.get("agent_id") or "unknown"
+    agent_id = session_state.get("agent_id") or "unknown"
 
     try:
         result = await _make_request(
@@ -129,8 +135,9 @@ async def create_entity(
                 "name": name,
                 "entity_type": entity_type,
                 "properties": properties,
-                "source": f"agent:{source}",
-            }
+                "source": f"agent:{agent_id}",
+            },
+            agent_id=agent_id,
         )
 
         if result.get("success"):
@@ -177,12 +184,15 @@ async def update_entity(
     if not update_data:
         return [types.TextContent(type="text", text="Error: No update fields provided")]
 
+    agent_id = session_state.get("agent_id")
+
     try:
         result = await _make_request(
             config,
             "PUT",
             f"/entities/{entity_key}",
-            json=update_data
+            json=update_data,
+            agent_id=agent_id,
         )
 
         if result.get("success"):
@@ -221,12 +231,15 @@ async def search_entities_semantic(
     if not query:
         return [types.TextContent(type="text", text="Error: query is required")]
 
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
     try:
         params = {"query": query, "limit": limit}
         if entity_type:
             params["type"] = entity_type
 
-        result = await _make_request(config, "GET", "/search/semantic", params=params)
+        result = await _make_request(config, "GET", "/search/semantic", params=params, agent_id=agent_id)
 
         if result.get("success"):
             data = result.get("data", {})
@@ -277,6 +290,9 @@ async def extract_entities_from_text(
     if not text:
         return [types.TextContent(type="text", text="Error: text is required")]
 
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
     try:
         result = await _make_request(
             config,
@@ -285,7 +301,8 @@ async def extract_entities_from_text(
             json={
                 "text": text,
                 "auto_create": auto_create,
-            }
+            },
+            agent_id=agent_id,
         )
 
         if result.get("success"):

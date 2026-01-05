@@ -211,3 +211,36 @@ export interface PaginatedResponse<T> {
   limit: number;
   offset: number;
 }
+
+// Activity types
+export type ActivityType =
+  | 'message_sent'
+  | 'agent_heartbeat'
+  | 'agent_registered'
+  | 'entity_created'
+  | 'entity_updated'
+  | 'entity_deleted'
+  | 'entity_read'
+  | 'relationship_created'
+  | 'relationship_deleted';
+
+export interface Activity {
+  activity_key: string;
+  activity_type: ActivityType;
+  actor: string;
+  target_key?: string;
+  target_type?: string;  // 'entity', 'message', 'agent', 'relationship'
+  extra_data: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ActivitySummary {
+  summary: Record<string, number>;
+  total: number;
+}
+
+export interface ActivityTimelinePoint {
+  timestamp: string;
+  total: number;
+  [key: string]: number | string;  // Dynamic type counts
+}

@@ -1,8 +1,9 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
 
 // Response type wrappers
 interface EntitiesResponse { entities: Entity[] }
@@ -25,6 +26,10 @@ interface AgentResponse { agent: Agent }
 interface FocusResponse { focus: string; focus_updated_at?: string }
 interface InterAgentMessagesResponse { messages: Message[] }
 interface ContextQueryResponse extends ContextResult { }
+interface ActivitiesResponse { activities: Activity[]; count: number }
+interface ActivitySummaryResponse extends ActivitySummary { }
+interface ActivityTimelineResponse { timeline: ActivityTimelinePoint[]; hours: number; bucket_minutes: number }
+interface ActivityTypesResponse { types: string[] }
 
 /**
  * API Response type from the backend
@@ -61,6 +66,7 @@ class BaseApiClient {
       baseURL: API_BASE_URL,
       headers: {
         'Content-Type': 'application/json',
+        'X-Agent-Id': `human:${PERSON_ID}`,
       },
     });
 
@@ -292,6 +298,8 @@ export const api = {
       apiClient.get<Message>(`/messages/detail/${messageKey}`, { params: { include_thread: true, include_readers: true, ...params } }),
     markRead: (messageKey: string) =>
       apiClient.post(`/messages/mark-read/${messageKey}`),
+    deleteThread: (messageKey: string) =>
+      apiClient.delete<{ deleted_count: number; deleted_keys: string[] }>(`/messages/detail/${messageKey}`),
     clearAll: () =>
       apiClient.delete<{ deleted_count: number }>('/messages/clear-all'),
   },
@@ -304,5 +312,19 @@ export const api = {
       apiClient.post('/context/subgraph', { entity_keys: entityKeys, include_relationships: includeRelationships }),
     neighbors: (entityKey: string, maxHops = 1) =>
       apiClient.post('/context/neighbors', { entity_key: entityKey, max_hops: maxHops }),
+  },
+
+  // Activities
+  activities: {
+    list: (params?: { limit?: number; type?: string; hours?: number; since?: string; until?: string; actor?: string }) =>
+      apiClient.get<ActivitiesResponse>('/activities', { params }),
+    summary: (params?: { hours?: number; since?: string; until?: string }) =>
+      apiClient.get<ActivitySummaryResponse>('/activities/summary', { params }),
+    timeline: (params?: { hours?: number; bucket_minutes?: number; since?: string }) =>
+      apiClient.get<ActivityTimelineResponse>('/activities/timeline', { params }),
+    types: () =>
+      apiClient.get<ActivityTypesResponse>('/activities/types'),
+    purge: () =>
+      apiClient.post<{ deleted: number; retention_days: number }>('/activities/purge'),
   },
 };

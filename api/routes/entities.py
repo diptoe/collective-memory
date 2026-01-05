@@ -7,6 +7,12 @@ from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Entity, db
+from api.services.activity import activity_service
+
+
+def get_actor() -> str:
+    """Get actor from X-Agent-Id header or return 'system'."""
+    return request.headers.get('X-Agent-Id', 'system')
 
 
 def register_entity_routes(api: Api):
@@ -124,6 +130,13 @@ def register_entity_routes(api: Api):
 
             try:
                 entity.save()
+                # Record activity
+                activity_service.record_entity_created(
+                    actor=get_actor(),
+                    entity_key=entity.entity_key,
+                    entity_type=entity.entity_type,
+                    entity_name=entity.name
+                )
                 return {
                     'success': True,
                     'msg': 'Entity created',
@@ -172,6 +185,14 @@ def register_entity_routes(api: Api):
             if not entity:
                 return {'success': False, 'msg': 'Entity not found'}, 404
 
+            # Record activity
+            activity_service.record_entity_read(
+                actor=get_actor(),
+                entity_key=entity.entity_key,
+                entity_type=entity.entity_type,
+                entity_name=entity.name
+            )
+
             return {
                 'success': True,
                 'msg': 'Entity retrieved',
@@ -192,6 +213,13 @@ def register_entity_routes(api: Api):
 
             try:
                 entity.save()
+                # Record activity
+                activity_service.record_entity_updated(
+                    actor=get_actor(),
+                    entity_key=entity.entity_key,
+                    entity_type=entity.entity_type,
+                    entity_name=entity.name
+                )
                 return {
                     'success': True,
                     'msg': 'Entity updated',
@@ -211,6 +239,10 @@ def register_entity_routes(api: Api):
                 return {'success': False, 'msg': 'Entity not found'}, 404
 
             try:
+                # Capture entity info before deletion for activity recording
+                entity_name = entity.name
+                entity_type = entity.entity_type
+
                 # Delete all relationships involving this entity first
                 relationships = Relationship.get_by_entity(entity_key)
                 rel_count = len(relationships)
@@ -219,6 +251,15 @@ def register_entity_routes(api: Api):
 
                 # Now delete the entity
                 entity.delete()
+
+                # Record activity
+                activity_service.record_entity_deleted(
+                    actor=get_actor(),
+                    entity_key=entity_key,
+                    entity_type=entity_type,
+                    entity_name=entity_name
+                )
+
                 return {
                     'success': True,
                     'msg': f'Entity deleted along with {rel_count} relationships',

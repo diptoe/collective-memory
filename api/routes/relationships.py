@@ -7,6 +7,12 @@ from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Relationship, Entity
+from api.services.activity import activity_service
+
+
+def get_actor() -> str:
+    """Get actor from X-Agent-Id header or return 'system'."""
+    return request.headers.get('X-Agent-Id', 'system')
 
 
 def register_relationship_routes(api: Api):
@@ -123,6 +129,16 @@ def register_relationship_routes(api: Api):
 
             try:
                 relationship.save()
+                # Record activity
+                activity_service.record_relationship_created(
+                    actor=get_actor(),
+                    relationship_key=relationship.relationship_key,
+                    from_entity_key=from_entity.entity_key,
+                    from_entity_name=from_entity.name,
+                    to_entity_key=to_entity.entity_key,
+                    to_entity_name=to_entity.name,
+                    relationship_type=relationship.relationship_type
+                )
                 return {
                     'success': True,
                     'msg': 'Relationship created',
@@ -179,7 +195,22 @@ def register_relationship_routes(api: Api):
                 return {'success': False, 'msg': 'Relationship not found'}, 404
 
             try:
+                # Capture info before deletion
+                rel_type = relationship.relationship_type
+                from_key = relationship.from_entity_key
+                to_key = relationship.to_entity_key
+
                 relationship.delete()
+
+                # Record activity
+                activity_service.record_relationship_deleted(
+                    actor=get_actor(),
+                    relationship_key=relationship_key,
+                    from_entity_key=from_key,
+                    to_entity_key=to_key,
+                    relationship_type=rel_type
+                )
+
                 return {
                     'success': True,
                     'msg': 'Relationship deleted',

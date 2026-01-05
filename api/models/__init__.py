@@ -22,6 +22,7 @@ from api.models.table_status import TableStatus
 from api.models.repository_stats import RepositoryStats
 from api.models.commit import Commit
 from api.models.metric import Metric, MetricTypes
+from api.models.activity import Activity, ActivityType
 
 __all__ = [
     'db',
@@ -52,4 +53,6 @@ __all__ = [
     'Commit',
     'Metric',
     'MetricTypes',
+    'Activity',
+    'ActivityType',
 ]

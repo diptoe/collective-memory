@@ -11,6 +11,7 @@ from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Message, MessageRead
+from api.services.activity import activity_service
 
 
 def register_message_routes(api: Api):
@@ -174,6 +175,13 @@ def register_message_routes(api: Api):
 
             try:
                 message.save()
+                # Record activity
+                activity_service.record_message_sent(
+                    actor=from_agent,
+                    message_key=message.message_key,
+                    channel=message.channel,
+                    recipient=message.to_agent
+                )
                 return {
                     'success': True,
                     'msg': 'Message posted' + (' as reply' if reply_to_key else ''),
@@ -399,3 +407,50 @@ def register_message_routes(api: Api):
                 'msg': 'Message retrieved',
                 'data': result
             }
+
+        @ns.doc('delete_message_thread')
+        @ns.marshal_with(response_model)
+        def delete(self, message_key):
+            """
+            Delete a message and all its replies (entire thread).
+
+            This recursively deletes all replies to the message, their read
+            tracking records, and the message itself.
+            """
+            from api.models import db
+
+            message = Message.get_by_key(message_key)
+            if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            def collect_thread_keys(msg_key: str, keys: set):
+                """Recursively collect all message keys in a thread."""
+                keys.add(msg_key)
+                replies = Message.query.filter_by(reply_to_key=msg_key).all()
+                for reply in replies:
+                    collect_thread_keys(reply.message_key, keys)
+
+            try:
+                # Collect all message keys in the thread
+                thread_keys = set()
+                collect_thread_keys(message_key, thread_keys)
+
+                # Delete read tracking records for all messages in thread
+                MessageRead.query.filter(MessageRead.message_key.in_(thread_keys)).delete(synchronize_session=False)
+
+                # Delete all messages in thread
+                Message.query.filter(Message.message_key.in_(thread_keys)).delete(synchronize_session=False)
+
+                db.session.commit()
+
+                return {
+                    'success': True,
+                    'msg': f'Deleted thread with {len(thread_keys)} message(s)',
+                    'data': {
+                        'deleted_count': len(thread_keys),
+                        'deleted_keys': list(thread_keys)
+                    }
+                }
+            except Exception as e:
+                db.session.rollback()
+                return {'success': False, 'msg': str(e)}, 500

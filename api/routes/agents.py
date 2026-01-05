@@ -8,6 +8,7 @@ from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Agent, AgentCheckpoint, Model, Persona, is_valid_client, get_client_affinities
 from api.services.checkpoint import checkpoint_service
+from api.services.activity import activity_service
 
 
 def register_agent_routes(api: Api):
@@ -201,6 +202,14 @@ def register_agent_routes(api: Api):
 
             try:
                 agent.save()
+                # Record registration activity
+                activity_service.record_agent_registered(
+                    actor=agent.agent_id,
+                    agent_key=agent.agent_key,
+                    client=agent.client,
+                    persona=agent.persona_key,
+                    model=agent.model_key
+                )
                 result = {
                     'success': True,
                     'msg': 'Agent registered',
@@ -213,13 +222,16 @@ def register_agent_routes(api: Api):
                 return {'success': False, 'msg': str(e)}, 500
 
     @ns.route('/<string:agent_key>')
-    @ns.param('agent_key', 'Agent Key')
+    @ns.param('agent_key', 'Agent Key or Agent ID')
     class AgentDetail(Resource):
         @ns.doc('get_agent')
         @ns.marshal_with(response_model)
         def get(self, agent_key):
-            """Get agent by key."""
+            """Get agent by key or agent_id."""
+            # Try by key first, then by agent_id
             agent = Agent.get_by_key(agent_key)
+            if not agent:
+                agent = Agent.get_by_agent_id(agent_key)
             if not agent:
                 return {'success': False, 'msg': 'Agent not found'}, 404
 
@@ -233,7 +245,10 @@ def register_agent_routes(api: Api):
         @ns.marshal_with(response_model)
         def delete(self, agent_key):
             """Delete an agent. Only inactive agents can be deleted."""
+            # Try by key first, then by agent_id
             agent = Agent.get_by_key(agent_key)
+            if not agent:
+                agent = Agent.get_by_agent_id(agent_key)
             if not agent:
                 return {'success': False, 'msg': 'Agent not found'}, 404
 
@@ -341,6 +356,12 @@ def register_agent_routes(api: Api):
 
             try:
                 agent.update_heartbeat()
+                # Record activity
+                activity_service.record_agent_heartbeat(
+                    actor=agent.agent_id,
+                    agent_key=agent.agent_key,
+                    status=agent.status.get('progress') if agent.status else None
+                )
                 return {
                     'success': True,
                     'msg': 'Heartbeat updated',
