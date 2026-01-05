@@ -6,20 +6,21 @@ import { Message, Agent } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
 
-const MESSAGE_TYPES = ['status', 'announcement', 'question', 'handoff'] as const;
-const PRIORITIES = ['normal', 'high', 'low'] as const;
+const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message'] as const;
+const PRIORITIES = ['normal', 'high', 'urgent'] as const;
 
 const priorityColors: Record<string, string> = {
+  urgent: 'bg-red-200 text-red-800',
   high: 'bg-red-100 text-red-700',
   normal: 'bg-cm-sand text-cm-coffee',
-  low: 'bg-blue-100 text-blue-700',
 };
 
 const typeIcons: Record<string, string> = {
-  question: '?',
-  handoff: '->',
-  announcement: '!',
   status: '#',
+  announcement: '!',
+  request: '?',
+  task: '→',
+  message: '✉',
 };
 
 export default function MessagesPage() {
