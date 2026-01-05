@@ -105,6 +105,7 @@ class ChatService:
         inject_context: bool = True,
         max_tokens: int = 4096,
         temperature: float = 0.7,
+        app=None,  # Flask app for database context
     ) -> AsyncGenerator[ChatStreamChunk, None]:
         """
         Stream a response from the AI persona.
@@ -128,11 +129,16 @@ class ChatService:
 
         history = history or []
 
-        # Get context from knowledge graph
+        # Get context from knowledge graph (within app context if provided)
         context = None
         if inject_context:
             try:
-                context = self.context_service.get_context(user_message)
+                if app:
+                    with app.app_context():
+                        context = self.context_service.get_context(user_message)
+                else:
+                    context = self.context_service.get_context(user_message)
+
                 yield ChatStreamChunk(
                     type='context',
                     context={
@@ -208,28 +214,46 @@ class ChatService:
             )
             return
 
-        # Save assistant message to database
+        # Save assistant message to database (within app context)
+        message_key = None
         try:
-            assistant_message = ChatMessage(
-                conversation_key=conversation_key,
-                role='assistant',
-                content=full_content,
-                created_at=datetime.utcnow()
-            )
-            db.session.add(assistant_message)
-            db.session.commit()
+            if app:
+                with app.app_context():
+                    assistant_message = ChatMessage(
+                        conversation_key=conversation_key,
+                        role='assistant',
+                        content=full_content,
+                        created_at=datetime.utcnow()
+                    )
+                    db.session.add(assistant_message)
+                    db.session.commit()
+                    message_key = assistant_message.message_key
+            else:
+                # Fallback if no app provided (shouldn't happen in normal use)
+                assistant_message = ChatMessage(
+                    conversation_key=conversation_key,
+                    role='assistant',
+                    content=full_content,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(assistant_message)
+                db.session.commit()
+                message_key = assistant_message.message_key
 
             yield ChatStreamChunk(
                 type='done',
                 content='',
                 done=True,
-                message_key=assistant_message.message_key,
+                message_key=message_key,
                 usage=usage
             )
 
         except Exception as e:
             logger.error(f"Message save error: {e}")
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             yield ChatStreamChunk(
                 type='error',
                 content=f"Failed to save message: {str(e)}",

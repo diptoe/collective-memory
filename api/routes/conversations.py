@@ -383,6 +383,10 @@ def register_conversation_routes(api: Api):
                 for m in messages[:-1]  # Exclude the just-added user message
             ]
 
+            # Capture app for use in async context
+            from flask import current_app
+            app = current_app._get_current_object()
+
             def generate_response():
                 """Generator for streaming response."""
                 loop = asyncio.new_event_loop()
@@ -400,6 +404,7 @@ def register_conversation_routes(api: Api):
                             inject_context=True,
                             max_tokens=data.get('max_tokens', 4096),
                             temperature=data.get('temperature', 0.7),
+                            app=app,
                         ):
                             yield sse_format(chunk.to_dict())
 
