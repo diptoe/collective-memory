@@ -48,6 +48,23 @@ async def send_message(
                  "Set CM_AGENT_ID environment variable to establish identity."
         )]
 
+    # Smart reply: if replying to a message sent directly to us, reply directly to sender
+    auto_reply_to = None
+    if reply_to and not to_agent:
+        try:
+            # Fetch the original message to check if it was a direct message to us
+            orig_result = await _make_request(config, "GET", f"/messages/detail/{reply_to}")
+            if orig_result.get("success"):
+                orig_msg = orig_result.get("data", {}).get("message", {})
+                orig_to = orig_msg.get("to_agent")
+                orig_from = orig_msg.get("from_agent")
+                # If original was sent directly to me, reply directly to sender
+                if orig_to == from_agent and orig_from:
+                    to_agent = orig_from
+                    auto_reply_to = orig_from
+        except Exception:
+            pass  # Fall back to broadcast if we can't fetch original
+
     try:
         payload = {
             "channel": channel,
@@ -65,7 +82,8 @@ async def send_message(
             config,
             "POST",
             "/messages",
-            json=payload
+            json=payload,
+            agent_id=from_agent,
         )
 
         if result.get("success"):
@@ -76,7 +94,10 @@ async def send_message(
             if reply_to:
                 output += f"**Reply to:** {reply_to}\n"
             if to_agent:
-                output += f"**To:** {to_agent}\n"
+                output += f"**To:** {to_agent}"
+                if auto_reply_to:
+                    output += " (auto-routed reply to sender)"
+                output += "\n"
             else:
                 output += f"**To:** (broadcast)\n"
             output += f"**Priority:** {priority}\n"
