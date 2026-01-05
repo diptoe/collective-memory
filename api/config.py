@@ -105,6 +105,16 @@ DEFAULT_MODELS = [
         'max_output_tokens': 16384,
         'description': "OpenAI's latest flagship model.",
         'status': 'active'
+    },
+    {
+        'name': 'GPT-5.1 Codex Max',
+        'provider': 'openai',
+        'model_id': 'gpt-5.1-codex-max',
+        'capabilities': ['code', 'reasoning', 'function_calling', 'long_context'],
+        'context_window': 192000,
+        'max_output_tokens': 32768,
+        'description': "OpenAI's Codex-optimized model for code generation and understanding.",
+        'status': 'active'
     }
 ]
 
