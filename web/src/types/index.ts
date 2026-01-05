@@ -175,6 +175,7 @@ export interface Message {
   message_type: MessageType;
   content: Record<string, unknown>;
   priority: Priority;
+  autonomous?: boolean;  // Task requiring receiver to work independently and reply
   is_read: boolean;
   read_at?: string;
   created_at: string;

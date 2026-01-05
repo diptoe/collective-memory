@@ -620,12 +620,14 @@ Use this for:
 - Handoffs: "Frontend is ready, backend team please review"
 - Announcements: "New feature deployed to staging"
 - Replies: Reply to a specific message to create a threaded conversation
+- Autonomous tasks: Request another agent to work on something and reply when done
 
 EXAMPLES:
 - {"channel": "general", "content": "Starting work on auth module", "message_type": "status"}
 - {"channel": "backend", "content": "Need help with database schema", "message_type": "question", "priority": "high"}
 - {"channel": "frontend", "to_agent": "claude-frontend", "content": "API endpoints are ready", "message_type": "handoff"}
 - {"content": "I can help with that!", "reply_to": "msg-abc123"} → Reply to a message
+- {"to_agent": "claude-backend", "content": "Please implement the auth API and reply when done", "autonomous": true} → Autonomous task
 
 RETURNS: Confirmation with message key.""",
             inputSchema={
@@ -636,7 +638,8 @@ RETURNS: Confirmation with message key.""",
                     "message_type": {"type": "string", "description": "Type: announcement, question, handoff, status, update", "default": "announcement"},
                     "to_agent": {"type": "string", "description": "Optional: specific agent ID (null for broadcast)"},
                     "reply_to": {"type": "string", "description": "Optional: message_key to reply to (creates threaded conversation)"},
-                    "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"}
+                    "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"},
+                    "autonomous": {"type": "boolean", "description": "Mark as autonomous task - receiver should work independently and reply when complete", "default": False}
                 },
                 "required": ["content"]
             }
@@ -924,16 +927,22 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     # Skip for identify/get_my_identity since they handle registration themselves
     # Skip for get_messages/mark_* since those are message-related
     unread_count = 0
+    autonomous_count = 0
     message_tools = ("get_messages", "mark_message_read", "mark_all_messages_read", "send_message")
     if _session_state.get("registered") and name not in ("identify", "get_my_identity", *message_tools):
         try:
-            unread_count = await send_heartbeat()
+            unread_count, autonomous_count = await send_heartbeat()
         except Exception:
             pass  # Don't fail tool call if heartbeat fails
 
-    # Helper to append unread notice to results
+    # Helper to append unread/autonomous notice to results
     def maybe_append_unread_notice(result: list[types.TextContent]) -> list[types.TextContent]:
-        if unread_count > 0 and name not in message_tools:
+        if name in message_tools:
+            return result
+        if autonomous_count > 0:
+            notice = f"\n\n---\n🤖 **AUTONOMOUS TASK(S):** You have {autonomous_count} autonomous task(s) waiting. These require your immediate attention - work on them and reply when complete. Use `get_messages` to see details."
+            result.append(types.TextContent(type="text", text=notice))
+        elif unread_count > 0:
             notice = f"\n\n---\n⚠️ **ACTION REQUIRED:** You have {unread_count} unread message(s). Use `get_messages` to check them."
             result.append(types.TextContent(type="text", text=notice))
         return result
@@ -1254,16 +1263,16 @@ HEARTBEAT_INTERVAL = 300
 _heartbeat_running = False
 
 
-async def send_heartbeat() -> int:
+async def send_heartbeat() -> tuple[int, int]:
     """Send a heartbeat to keep the agent active.
 
-    Returns the number of unread messages (0 if heartbeat fails).
+    Returns tuple of (unread_messages, autonomous_tasks) counts.
     """
     import httpx
 
     agent_id = _session_state.get("agent_id")
     if not agent_id:
-        return 0
+        return 0, 0
 
     try:
         async with httpx.AsyncClient(timeout=config.timeout) as client:
@@ -1273,22 +1282,26 @@ async def send_heartbeat() -> int:
             if response.status_code == 200:
                 data = response.json()
                 unread = data.get("data", {}).get("unread_messages", 0)
+                autonomous = data.get("data", {}).get("autonomous_tasks", 0)
                 _session_state["unread_messages"] = unread
+                _session_state["autonomous_tasks"] = autonomous
 
                 if config.debug:
                     print(f"  Heartbeat sent for {agent_id}", file=sys.stderr)
-                if unread > 0:
+                if autonomous > 0:
+                    print(f"  🤖 AUTONOMOUS TASK(S): {autonomous} task(s) require your attention - work on them and reply!", file=sys.stderr)
+                elif unread > 0:
                     print(f"  ⚠️  You have {unread} unread message(s) - use get_messages to check them", file=sys.stderr)
 
-                return unread
+                return unread, autonomous
             else:
                 if config.debug:
                     print(f"  Heartbeat failed: {response.status_code}", file=sys.stderr)
-                return 0
+                return 0, 0
     except Exception as e:
         if config.debug:
             print(f"  Heartbeat error: {e}", file=sys.stderr)
-        return 0
+        return 0, 0
 
 
 async def heartbeat_loop():

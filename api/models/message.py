@@ -12,7 +12,7 @@ Threading:
 
 Read tracking is handled per-agent via the MessageRead table.
 """
-from sqlalchemy import Column, String, DateTime, Index, ForeignKey
+from sqlalchemy import Column, String, DateTime, Boolean, Index, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 
 from api.models.base import BaseModel, db, get_key, get_now
@@ -44,6 +44,7 @@ class Message(BaseModel):
     message_type = Column(String(50), nullable=False, index=True)
     content = Column(JSONB, nullable=False)
     priority = Column(String(20), default='normal')
+    autonomous = Column(Boolean, default=False, index=True)  # Task requiring autonomous action
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
@@ -54,12 +55,12 @@ class Message(BaseModel):
         Index('ix_messages_reply_to', 'reply_to_key'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority']
+    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous']
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 3  # Bumped for reply_to_key threading
+        return 4  # Bumped for autonomous flag
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:
@@ -143,6 +144,29 @@ class Message(BaseModel):
         query = query.filter(~cls.message_key.in_(read_subquery))
 
         return query.order_by(cls.created_at.desc()).limit(limit).all()
+
+    @classmethod
+    def get_unread_autonomous_count(cls, agent_id: str) -> int:
+        """
+        Get count of unread autonomous messages for an agent.
+
+        These are high-priority tasks that require the agent to act autonomously
+        and reply when complete.
+        """
+        from api.models.message_read import MessageRead
+
+        query = cls.query.filter(
+            cls.autonomous == True,
+            (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
+        )
+
+        # Exclude messages they've read
+        read_subquery = db.session.query(MessageRead.message_key).filter(
+            MessageRead.agent_id == agent_id
+        ).scalar_subquery()
+        query = query.filter(~cls.message_key.in_(read_subquery))
+
+        return query.count()
 
     def mark_read(self, agent_id: str = None) -> bool:
         """

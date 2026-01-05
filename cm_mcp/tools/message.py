@@ -28,6 +28,7 @@ async def send_message(
         to_agent: Optional specific agent ID to send to (null for broadcast to channel)
         reply_to: Optional message_key to reply to (creates a threaded conversation)
         priority: Priority level: 'normal', 'high', 'urgent' (default: 'normal')
+        autonomous: Mark as autonomous task - receiver should work on it independently and reply when complete
     """
     channel = arguments.get("channel", "general")
     content = arguments.get("content")
@@ -35,6 +36,7 @@ async def send_message(
     to_agent = arguments.get("to_agent")
     reply_to = arguments.get("reply_to")
     priority = arguments.get("priority", "normal")
+    autonomous = arguments.get("autonomous", False)
 
     if not content:
         return [types.TextContent(type="text", text="Error: content is required")]
@@ -73,6 +75,7 @@ async def send_message(
             "message_type": message_type,
             "content": {"text": content} if isinstance(content, str) else content,
             "priority": priority,
+            "autonomous": autonomous,
         }
 
         if reply_to:
@@ -88,7 +91,10 @@ async def send_message(
 
         if result.get("success"):
             msg_data = result.get("data", {})
-            output = f"## Message Sent\n\n"
+            output = f"## Message Sent"
+            if autonomous:
+                output += " 🤖 (AUTONOMOUS TASK)"
+            output += "\n\n"
             output += f"**Channel:** {channel}\n"
             output += f"**Type:** {message_type}\n"
             if reply_to:
@@ -101,6 +107,8 @@ async def send_message(
             else:
                 output += f"**To:** (broadcast)\n"
             output += f"**Priority:** {priority}\n"
+            if autonomous:
+                output += f"**Autonomous:** Yes - receiver should work on this and reply when complete\n"
             output += f"**Message Key:** {msg_data.get('message_key')}\n"
             return [types.TextContent(type="text", text=output)]
         else:
@@ -185,13 +193,17 @@ async def get_messages(
             for msg in messages:
                 is_mine = msg.get("from_agent") == my_agent_id
                 is_to_me = msg.get("to_agent") == my_agent_id
+                is_autonomous = msg.get("autonomous", False)
 
-                # Status indicators (all now read since we just marked them)
-                status = "📭"  # Read
-                if msg.get("priority") == "high":
-                    status = "🚨"
+                # Status indicators
+                if is_autonomous:
+                    status = "🤖"  # Autonomous task
                 elif msg.get("priority") == "urgent":
                     status = "⚠️"
+                elif msg.get("priority") == "high":
+                    status = "🚨"
+                else:
+                    status = "📭"
 
                 output += f"{status} **{msg.get('from_agent')}**"
                 if is_mine:
@@ -201,6 +213,10 @@ async def get_messages(
                     if is_to_me:
                         output += " (you)"
                 output += f"\n"
+
+                # Autonomous task banner
+                if is_autonomous and not is_mine:
+                    output += f"   🤖 **AUTONOMOUS TASK** - Work on this and reply when complete\n"
 
                 output += f"   *{msg.get('message_type')}* in #{msg.get('channel')}\n"
 

@@ -33,6 +33,7 @@ def register_message_routes(api: Api):
         'message_type': fields.String(required=True, description='Type: status, announcement, request, task, message'),
         'content': fields.Raw(required=True, description='Message content as JSON'),
         'priority': fields.String(description='Priority: normal, high, urgent'),
+        'autonomous': fields.Boolean(description='Whether this is an autonomous task requiring action'),
         'read_at': fields.DateTime(readonly=True),
         'is_read': fields.Boolean(readonly=True),
         'reply_count': fields.Integer(readonly=True, description='Number of replies'),
@@ -49,6 +50,7 @@ def register_message_routes(api: Api):
         'message_type': fields.String(required=True, description='Message type'),
         'content': fields.Raw(required=True, description='Message content as JSON'),
         'priority': fields.String(description='Priority level', default='normal'),
+        'autonomous': fields.Boolean(description='Mark as autonomous task - receiver should work on it and reply', default=False),
     })
 
     response_model = ns.model('Response', {
@@ -170,7 +172,8 @@ def register_message_routes(api: Api):
                 reply_to_key=reply_to_key,
                 message_type=data['message_type'],
                 content=data['content'],
-                priority=data.get('priority', 'normal')
+                priority=data.get('priority', 'normal'),
+                autonomous=data.get('autonomous', False)
             )
 
             try:

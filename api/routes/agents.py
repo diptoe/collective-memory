@@ -359,7 +359,7 @@ def register_agent_routes(api: Api):
         @ns.doc('agent_heartbeat')
         @ns.marshal_with(response_model)
         def post(self, agent_id):
-            """Update agent heartbeat. Returns unread message count."""
+            """Update agent heartbeat. Returns unread message count including autonomous tasks."""
             from api.models import Message
 
             agent = Agent.get_by_agent_id(agent_id)
@@ -375,14 +375,19 @@ def register_agent_routes(api: Api):
                     status=agent.status.get('progress') if agent.status else None
                 )
 
-                # Get unread message count for this agent
+                # Get unread message counts for this agent
                 unread_count = Message.get_unread_count(agent_id=agent_id)
+                autonomous_count = Message.get_unread_autonomous_count(agent_id=agent_id)
 
                 # Build response with message notification
                 agent_data = agent.to_dict()
                 agent_data['unread_messages'] = unread_count
+                agent_data['autonomous_tasks'] = autonomous_count
 
-                if unread_count > 0:
+                # Build notification message
+                if autonomous_count > 0:
+                    msg = f'Heartbeat updated. 🚨 AUTONOMOUS TASK(S): You have {autonomous_count} autonomous task(s) waiting. These require your immediate attention - work on them and reply when complete. Use get_messages to see details.'
+                elif unread_count > 0:
                     msg = f'Heartbeat updated. ACTION REQUIRED: You have {unread_count} unread message(s). Use get_messages to check them.'
                 else:
                     msg = 'Heartbeat updated'
