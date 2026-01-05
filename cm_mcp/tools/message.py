@@ -90,7 +90,7 @@ async def get_messages(
 
     Use this to check for messages from other agents or human coordinators.
     Messages are filtered to show those directed to you + all broadcasts.
-    Read status is tracked per-agent.
+    Retrieved messages are automatically marked as read.
 
     Args:
         channel: Channel to read from (optional, reads all if not specified)
@@ -128,23 +128,40 @@ async def get_messages(
             if not messages:
                 return [types.TextContent(type="text", text="No messages found.")]
 
+            # Auto-mark retrieved messages as read (if we have an agent ID)
+            marked_count = 0
+            if my_agent_id:
+                for msg in messages:
+                    if not msg.get("is_read", False):
+                        try:
+                            await _make_request(
+                                config,
+                                "POST",
+                                f"/messages/mark-read/{msg.get('message_key')}",
+                                params={"agent_id": my_agent_id}
+                            )
+                            marked_count += 1
+                        except Exception:
+                            pass  # Don't fail the whole operation if marking fails
+
             output = f"## Messages"
             if channel:
                 output += f" - #{channel}"
             output += f" ({len(messages)} found"
-            if unread_count:
-                output += f", {unread_count} unread"
+            if marked_count > 0:
+                output += f", marked {marked_count} as read"
             output += ")\n\n"
 
             for msg in messages:
                 is_mine = msg.get("from_agent") == my_agent_id
                 is_to_me = msg.get("to_agent") == my_agent_id
-                is_read = msg.get("is_read", False)
 
-                # Status indicators
-                status = "📬" if not is_read else "📭"
+                # Status indicators (all now read since we just marked them)
+                status = "📭"  # Read
                 if msg.get("priority") == "high":
                     status = "🚨"
+                elif msg.get("priority") == "urgent":
+                    status = "⚠️"
 
                 output += f"{status} **{msg.get('from_agent')}**"
                 if is_mine:
