@@ -219,8 +219,8 @@ class Entity(BaseModel):
             outgoing = Relationship.query.filter_by(from_entity_key=self.entity_key).all()
             incoming = Relationship.query.filter_by(to_entity_key=self.entity_key).all()
             result['relationships'] = {
-                'outgoing': [r.to_dict() for r in outgoing],
-                'incoming': [r.to_dict() for r in incoming]
+                'outgoing': [r.to_dict(include_entities=True) for r in outgoing],
+                'incoming': [r.to_dict(include_entities=True) for r in incoming]
             }
 
         return result
