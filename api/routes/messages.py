@@ -28,11 +28,14 @@ def register_message_routes(api: Api):
         'channel': fields.String(required=True, description='Channel name'),
         'from_agent': fields.String(required=True, description='Sender agent ID'),
         'to_agent': fields.String(description='Recipient agent ID (null for broadcast)'),
-        'message_type': fields.String(required=True, description='Type: question, handoff, announcement, status'),
+        'reply_to_key': fields.String(description='Parent message key (for replies)'),
+        'message_type': fields.String(required=True, description='Type: status, announcement, request, task, message'),
         'content': fields.Raw(required=True, description='Message content as JSON'),
-        'priority': fields.String(description='Priority: high, normal, low'),
+        'priority': fields.String(description='Priority: normal, high, urgent'),
         'read_at': fields.DateTime(readonly=True),
         'is_read': fields.Boolean(readonly=True),
+        'reply_count': fields.Integer(readonly=True, description='Number of replies'),
+        'has_parent': fields.Boolean(readonly=True, description='Whether this is a reply'),
         'created_at': fields.DateTime(readonly=True),
     })
 
@@ -41,6 +44,7 @@ def register_message_routes(api: Api):
         'from_agent': fields.String(description='Sender agent ID (required unless from_human is set)'),
         'from_human': fields.String(description='Human sender name (for non-agent messages)'),
         'to_agent': fields.String(description='Recipient agent ID (null for broadcast)'),
+        'reply_to_key': fields.String(description='Parent message key (for replies)'),
         'message_type': fields.String(required=True, description='Message type'),
         'content': fields.Raw(required=True, description='Message content as JSON'),
         'priority': fields.String(description='Priority level', default='normal'),
@@ -62,6 +66,7 @@ def register_message_routes(api: Api):
         @ns.param('from_agent', 'Filter by sender agent ID only', type=str)
         @ns.param('to_agent', 'Filter by recipient agent ID only', type=str)
         @ns.param('include_readers', 'Include list of agents who have read each message', type=bool, default=False)
+        @ns.param('include_thread_info', 'Include reply_count and has_parent for each message', type=bool, default=False)
         @ns.marshal_with(response_model)
         def get(self):
             """
@@ -83,6 +88,7 @@ def register_message_routes(api: Api):
             from_agent = request.args.get('from_agent')
             to_agent = request.args.get('to_agent')
             include_readers = request.args.get('include_readers', 'false').lower() == 'true'
+            include_thread_info = request.args.get('include_thread_info', 'false').lower() == 'true'
 
             # Per-agent mode: use MessageRead-aware queries
             if for_agent:
@@ -97,7 +103,7 @@ def register_message_routes(api: Api):
                     'success': True,
                     'msg': f'Retrieved {len(messages)} messages for {for_agent}',
                     'data': {
-                        'messages': [m.to_dict(for_agent=for_agent, include_readers=include_readers) for m in messages]
+                        'messages': [m.to_dict(for_agent=for_agent, include_readers=include_readers, include_thread_info=include_thread_info) for m in messages]
                     }
                 }
 
@@ -123,7 +129,7 @@ def register_message_routes(api: Api):
                 'success': True,
                 'msg': f'Retrieved {len(messages)} messages',
                 'data': {
-                    'messages': [m.to_dict(include_readers=include_readers) for m in messages]
+                    'messages': [m.to_dict(include_readers=include_readers, include_thread_info=include_thread_info) for m in messages]
                 }
             }
 
@@ -131,7 +137,7 @@ def register_message_routes(api: Api):
         @ns.expect(message_create)
         @ns.marshal_with(response_model, code=201)
         def post(self):
-            """Post a new message to a channel. Can be from an agent or a human."""
+            """Post a new message to a channel. Can be from an agent or a human. Can be a reply to another message."""
             data = request.json
 
             # Validate required fields
@@ -144,6 +150,13 @@ def register_message_routes(api: Api):
             if not data.get('content'):
                 return {'success': False, 'msg': 'content is required'}, 400
 
+            # Validate reply_to_key if provided
+            reply_to_key = data.get('reply_to_key')
+            if reply_to_key:
+                parent = Message.get_by_key(reply_to_key)
+                if not parent:
+                    return {'success': False, 'msg': f'Parent message {reply_to_key} not found'}, 404
+
             # Use from_human as from_agent if no agent specified (prefix with "human:")
             from_agent = data.get('from_agent')
             if not from_agent and data.get('from_human'):
@@ -153,6 +166,7 @@ def register_message_routes(api: Api):
                 channel=data['channel'],
                 from_agent=from_agent,
                 to_agent=data.get('to_agent'),
+                reply_to_key=reply_to_key,
                 message_type=data['message_type'],
                 content=data['content'],
                 priority=data.get('priority', 'normal')
@@ -162,8 +176,8 @@ def register_message_routes(api: Api):
                 message.save()
                 return {
                     'success': True,
-                    'msg': 'Message posted',
-                    'data': message.to_dict()
+                    'msg': 'Message posted' + (' as reply' if reply_to_key else ''),
+                    'data': message.to_dict(include_thread_info=True)
                 }, 201
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -330,3 +344,58 @@ def register_message_routes(api: Api):
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/detail/<string:message_key>')
+    @ns.param('message_key', 'Message identifier')
+    class MessageDetail(Resource):
+        @ns.doc('get_message_detail')
+        @ns.param('include_thread', 'Include parent and replies', type=bool, default=True)
+        @ns.param('include_readers', 'Include list of agents who have read', type=bool, default=True)
+        @ns.param('for_agent', 'Get per-agent read status', type=str)
+        @ns.marshal_with(response_model)
+        def get(self, message_key):
+            """
+            Get a single message with full thread context.
+
+            Returns the message along with its parent (if reply) and direct replies.
+            """
+            include_thread = request.args.get('include_thread', 'true').lower() == 'true'
+            include_readers = request.args.get('include_readers', 'true').lower() == 'true'
+            for_agent = request.args.get('for_agent')
+
+            message = Message.get_by_key(message_key)
+            if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            result = message.to_dict(
+                for_agent=for_agent,
+                include_readers=include_readers,
+                include_thread_info=True
+            )
+
+            if include_thread:
+                # Include parent message if this is a reply
+                if message.reply_to_key:
+                    parent = message.get_parent()
+                    if parent:
+                        result['parent'] = parent.to_dict(
+                            for_agent=for_agent,
+                            include_readers=False,
+                            include_thread_info=True
+                        )
+
+                # Include direct replies
+                replies = message.get_replies(limit=100)
+                result['replies'] = [
+                    r.to_dict(
+                        for_agent=for_agent,
+                        include_readers=False,
+                        include_thread_info=True
+                    ) for r in replies
+                ]
+
+            return {
+                'success': True,
+                'msg': 'Message retrieved',
+                'data': result
+            }

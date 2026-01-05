@@ -24,14 +24,16 @@ async def send_message(
     Args:
         channel: Channel name (e.g., 'general', 'backend', 'frontend', 'urgent')
         content: Message content (text or structured data)
-        message_type: Type of message: 'announcement', 'question', 'handoff', 'status', 'update'
+        message_type: Type of message: 'status', 'announcement', 'request', 'task', 'message'
         to_agent: Optional specific agent ID to send to (null for broadcast to channel)
-        priority: Priority level: 'high', 'normal', 'low' (default: 'normal')
+        reply_to: Optional message_key to reply to (creates a threaded conversation)
+        priority: Priority level: 'normal', 'high', 'urgent' (default: 'normal')
     """
     channel = arguments.get("channel", "general")
     content = arguments.get("content")
-    message_type = arguments.get("message_type", "announcement")
+    message_type = arguments.get("message_type", "message")
     to_agent = arguments.get("to_agent")
+    reply_to = arguments.get("reply_to")
     priority = arguments.get("priority", "normal")
 
     if not content:
@@ -47,18 +49,23 @@ async def send_message(
         )]
 
     try:
+        payload = {
+            "channel": channel,
+            "from_agent": from_agent,
+            "to_agent": to_agent,
+            "message_type": message_type,
+            "content": {"text": content} if isinstance(content, str) else content,
+            "priority": priority,
+        }
+
+        if reply_to:
+            payload["reply_to_key"] = reply_to
+
         result = await _make_request(
             config,
             "POST",
             "/messages",
-            json={
-                "channel": channel,
-                "from_agent": from_agent,
-                "to_agent": to_agent,
-                "message_type": message_type,
-                "content": {"text": content} if isinstance(content, str) else content,
-                "priority": priority,
-            }
+            json=payload
         )
 
         if result.get("success"):
@@ -66,6 +73,8 @@ async def send_message(
             output = f"## Message Sent\n\n"
             output += f"**Channel:** {channel}\n"
             output += f"**Type:** {message_type}\n"
+            if reply_to:
+                output += f"**Reply to:** {reply_to}\n"
             if to_agent:
                 output += f"**To:** {to_agent}\n"
             else:

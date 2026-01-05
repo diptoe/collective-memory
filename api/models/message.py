@@ -7,9 +7,12 @@ Message delivery modes:
 - Direct: to_agent is set to a specific agent_id
 - Broadcast: to_agent is null (visible to all agents in channel)
 
+Threading:
+- reply_to_key links to the parent message (null for top-level messages)
+
 Read tracking is handled per-agent via the MessageRead table.
 """
-from sqlalchemy import Column, String, DateTime, Index
+from sqlalchemy import Column, String, DateTime, Index, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 
 from api.models.base import BaseModel, db, get_key, get_now
@@ -19,8 +22,12 @@ class Message(BaseModel):
     """
     Inter-agent message for coordination.
 
-    Message types: question, handoff, announcement, status
-    Priority levels: high, normal, low
+    Message types: status, announcement, request, task, message
+    Priority levels: normal, high, urgent
+
+    Threading:
+    - reply_to_key links to parent message for threaded conversations
+    - Top-level messages have reply_to_key = null
 
     Read tracking:
     - For broadcasts: each agent has their own read status via MessageRead
@@ -33,6 +40,7 @@ class Message(BaseModel):
     channel = Column(String(100), nullable=False, index=True)
     from_agent = Column(String(100), nullable=False)
     to_agent = Column(String(100), nullable=True)  # null = broadcast to channel
+    reply_to_key = Column(String(36), ForeignKey('messages.message_key'), nullable=True, index=True)
     message_type = Column(String(50), nullable=False, index=True)
     content = Column(JSONB, nullable=False)
     priority = Column(String(20), default='normal')
@@ -43,14 +51,15 @@ class Message(BaseModel):
     __table_args__ = (
         Index('ix_messages_channel_created', 'channel', 'created_at'),
         Index('ix_messages_to_agent', 'to_agent'),
+        Index('ix_messages_reply_to', 'reply_to_key'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'message_type', 'content', 'priority']
+    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority']
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 2  # Bumped for MessageRead integration
+        return 3  # Bumped for reply_to_key threading
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:
@@ -163,7 +172,65 @@ class Message(BaseModel):
         reads = MessageRead.get_readers(self.message_key)
         return [r.agent_id for r in reads]
 
-    def to_dict(self, include_read_status: bool = True, for_agent: str = None, include_readers: bool = False) -> dict:
+    def get_parent(self) -> 'Message':
+        """Get the parent message this is replying to."""
+        if not self.reply_to_key:
+            return None
+        return Message.get_by_key(self.reply_to_key)
+
+    def get_replies(self, limit: int = 50) -> list['Message']:
+        """Get direct replies to this message."""
+        return Message.query.filter_by(reply_to_key=self.message_key)\
+            .order_by(Message.created_at.asc()).limit(limit).all()
+
+    def get_reply_count(self) -> int:
+        """Get count of replies to this message."""
+        return Message.query.filter_by(reply_to_key=self.message_key).count()
+
+    @classmethod
+    def get_thread(cls, message_key: str) -> dict:
+        """
+        Get a full thread starting from a message.
+        Returns the root message and all descendants.
+        """
+        # Find root of thread
+        msg = cls.get_by_key(message_key)
+        if not msg:
+            return None
+
+        # Walk up to find root
+        root = msg
+        while root.reply_to_key:
+            parent = root.get_parent()
+            if parent:
+                root = parent
+            else:
+                break
+
+        # Build thread from root
+        return {
+            'root': root,
+            'replies': cls._get_nested_replies(root.message_key)
+        }
+
+    @classmethod
+    def _get_nested_replies(cls, message_key: str, depth: int = 0, max_depth: int = 10) -> list:
+        """Recursively get nested replies."""
+        if depth >= max_depth:
+            return []
+
+        replies = cls.query.filter_by(reply_to_key=message_key)\
+            .order_by(cls.created_at.asc()).all()
+
+        result = []
+        for reply in replies:
+            result.append({
+                'message': reply,
+                'replies': cls._get_nested_replies(reply.message_key, depth + 1, max_depth)
+            })
+        return result
+
+    def to_dict(self, include_read_status: bool = True, for_agent: str = None, include_readers: bool = False, include_thread_info: bool = False) -> dict:
         """
         Convert to dictionary.
 
@@ -171,6 +238,7 @@ class Message(BaseModel):
             include_read_status: Include is_read field
             for_agent: Check read status for this specific agent
             include_readers: Include list of agents who have read this message
+            include_thread_info: Include reply_count and has_parent indicators
         """
         result = super().to_dict()
         if include_read_status:
@@ -185,5 +253,9 @@ class Message(BaseModel):
             reads = MessageRead.get_readers(self.message_key)
             result['readers'] = [{'agent_id': r.agent_id, 'read_at': r.read_at.isoformat() if r.read_at else None} for r in reads]
             result['read_count'] = len(reads)
+
+        if include_thread_info:
+            result['reply_count'] = self.get_reply_count()
+            result['has_parent'] = self.reply_to_key is not None
 
         return result

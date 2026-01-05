@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Message, Agent } from '@/types';
 import { cn } from '@/lib/utils';
@@ -51,8 +52,6 @@ export default function MessagesPage() {
   const [activeAgents, setActiveAgents] = useState<Agent[]>([]);
   const [sending, setSending] = useState(false);
 
-  // Message detail modal state
-  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
 
   // Track if we've ensured the person entity exists
   const personEnsured = useRef(false);
@@ -254,11 +253,11 @@ export default function MessagesPage() {
         ) : (
           <div className="divide-y divide-cm-sand">
             {messages.map((message) => (
-              <div
+              <Link
                 key={message.message_key}
-                onClick={() => setSelectedMessage(message)}
+                href={`/messages/${message.message_key}`}
                 className={cn(
-                  'p-4 transition-colors cursor-pointer hover:bg-cm-sand/30',
+                  'block p-4 transition-colors cursor-pointer hover:bg-cm-sand/30',
                   !message.is_read && 'bg-cm-terracotta/5'
                 )}
               >
@@ -270,6 +269,14 @@ export default function MessagesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
+                        {/* Reply indicator */}
+                        {message.has_parent && (
+                          <span className="text-cm-coffee/50" title="This is a reply">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                          </span>
+                        )}
                         <span className="font-medium text-cm-charcoal">
                           {message.from_agent}
                         </span>
@@ -279,6 +286,15 @@ export default function MessagesPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        {/* Reply count badge */}
+                        {message.reply_count !== undefined && message.reply_count > 0 && (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-cm-terracotta/10 text-cm-terracotta flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                            {message.reply_count}
+                          </span>
+                        )}
                         <span
                           className={cn(
                             'px-2 py-0.5 text-xs rounded-full',
@@ -318,7 +334,7 @@ export default function MessagesPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
@@ -444,109 +460,6 @@ export default function MessagesPage() {
         </div>
       )}
 
-      {/* Message Detail Modal */}
-      {selectedMessage && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setSelectedMessage(null)}
-        >
-          <div
-            className="bg-cm-ivory rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-cm-sand flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-cm-charcoal text-cm-ivory flex items-center justify-center text-lg font-mono">
-                  {typeIcons[selectedMessage.message_type] || '?'}
-                </div>
-                <div>
-                  <h2 className="font-semibold text-cm-charcoal">
-                    {selectedMessage.from_agent}
-                  </h2>
-                  <p className="text-sm text-cm-coffee">
-                    → {selectedMessage.to_agent || 'Broadcast'} in #{selectedMessage.channel}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedMessage(null)}
-                className="text-cm-coffee hover:text-cm-charcoal transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
-              {/* Message Content */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-cm-coffee mb-2">Content</h3>
-                <div className="bg-cm-sand/30 rounded-lg p-4 whitespace-pre-wrap">
-                  {typeof selectedMessage.content === 'object' && selectedMessage.content !== null ? (
-                    (selectedMessage.content as { text?: string }).text || (
-                      <pre className="text-xs font-mono">
-                        {JSON.stringify(selectedMessage.content, null, 2)}
-                      </pre>
-                    )
-                  ) : (
-                    String(selectedMessage.content)
-                  )}
-                </div>
-              </div>
-
-              {/* Metadata */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div>
-                  <h3 className="text-sm font-medium text-cm-coffee mb-1">Type</h3>
-                  <p className="text-cm-charcoal capitalize">{selectedMessage.message_type}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-cm-coffee mb-1">Priority</h3>
-                  <span className={cn('px-2 py-1 text-xs rounded-full', priorityColors[selectedMessage.priority])}>
-                    {selectedMessage.priority}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-cm-coffee mb-1">Created</h3>
-                  <p className="text-cm-charcoal text-sm">{formatDateTime(selectedMessage.created_at)}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-cm-coffee mb-1">Message Key</h3>
-                  <p className="text-cm-charcoal text-sm font-mono">{selectedMessage.message_key}</p>
-                </div>
-              </div>
-
-              {/* Read Status */}
-              <div>
-                <h3 className="text-sm font-medium text-cm-coffee mb-2">
-                  Read by {selectedMessage.read_count || 0} agent{(selectedMessage.read_count || 0) !== 1 ? 's' : ''}
-                </h3>
-                <div className="bg-cm-sand/30 rounded-lg p-4">
-                  {selectedMessage.readers && selectedMessage.readers.length > 0 ? (
-                    <div className="space-y-2">
-                      {selectedMessage.readers.map((reader) => (
-                        <div key={reader.agent_id} className="flex items-center justify-between text-sm">
-                          <span className="text-cm-charcoal font-medium">{reader.agent_id}</span>
-                          {reader.read_at && (
-                            <span className="text-cm-coffee/70 text-xs">
-                              {formatDateTime(reader.read_at)}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-cm-coffee/70">
-                      <span>No agents have read this message yet</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

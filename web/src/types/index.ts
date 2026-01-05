@@ -171,6 +171,7 @@ export interface Message {
   channel: string;
   from_agent: string;
   to_agent?: string;
+  reply_to_key?: string;
   message_type: MessageType;
   content: Record<string, unknown>;
   priority: Priority;
@@ -180,6 +181,12 @@ export interface Message {
   // Per-agent read tracking
   readers?: MessageReader[];
   read_count?: number;
+  // Threading info (when include_thread_info=true)
+  reply_count?: number;
+  has_parent?: boolean;
+  // Full thread context (from /detail endpoint)
+  parent?: Message;
+  replies?: Message[];
 }
 
 // Context types

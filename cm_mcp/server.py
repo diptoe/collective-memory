@@ -591,11 +591,13 @@ Use this for:
 - Questions: "Which database should I use for caching?"
 - Handoffs: "Frontend is ready, backend team please review"
 - Announcements: "New feature deployed to staging"
+- Replies: Reply to a specific message to create a threaded conversation
 
 EXAMPLES:
 - {"channel": "general", "content": "Starting work on auth module", "message_type": "status"}
 - {"channel": "backend", "content": "Need help with database schema", "message_type": "question", "priority": "high"}
 - {"channel": "frontend", "to_agent": "claude-frontend", "content": "API endpoints are ready", "message_type": "handoff"}
+- {"content": "I can help with that!", "reply_to": "msg-abc123"} → Reply to a message
 
 RETURNS: Confirmation with message key.""",
             inputSchema={
@@ -605,6 +607,7 @@ RETURNS: Confirmation with message key.""",
                     "content": {"type": "string", "description": "Message content"},
                     "message_type": {"type": "string", "description": "Type: announcement, question, handoff, status, update", "default": "announcement"},
                     "to_agent": {"type": "string", "description": "Optional: specific agent ID (null for broadcast)"},
+                    "reply_to": {"type": "string", "description": "Optional: message_key to reply to (creates threaded conversation)"},
                     "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"}
                 },
                 "required": ["content"]
