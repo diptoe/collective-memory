@@ -11,6 +11,7 @@ from .embedding import EmbeddingService, embedding_service
 from .ner import NERService, ner_service
 from .document_processor import DocumentProcessor, document_processor
 from .seeding import SeedingService, seeding_service, seed_all
+from .github import GitHubService, get_github_service, github_service
 
 __all__ = [
     'ContextService',
@@ -28,4 +29,7 @@ __all__ = [
     'SeedingService',
     'seeding_service',
     'seed_all',
+    'GitHubService',
+    'get_github_service',
+    'github_service',
 ]

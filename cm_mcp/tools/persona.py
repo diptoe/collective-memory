@@ -5,29 +5,10 @@ MCP tools for AI persona operations.
 """
 
 import json
-import httpx
 import mcp.types as types
 from typing import Any
 
-
-async def _make_request(
-    config: Any,
-    method: str,
-    endpoint: str,
-    json_data: dict = None,
-    params: dict = None,
-) -> dict:
-    """Make HTTP request to the Collective Memory API"""
-    async with httpx.AsyncClient(timeout=config.timeout) as client:
-        url = f"{config.api_endpoint}{endpoint}"
-        response = await client.request(
-            method=method,
-            url=url,
-            json=json_data,
-            params=params,
-        )
-        response.raise_for_status()
-        return response.json()
+from .utils import _make_request
 
 
 async def list_personas(

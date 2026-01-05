@@ -48,6 +48,13 @@ from .model import (
     update_focus,
 )
 
+from .github import (
+    sync_repository,
+    get_repo_issues,
+    get_repo_commits,
+    get_repo_contributors,
+)
+
 __all__ = [
     # Entity tools
     'search_entities',
@@ -79,4 +86,9 @@ __all__ = [
     'list_models',
     'list_clients',
     'update_focus',
+    # GitHub integration tools
+    'sync_repository',
+    'get_repo_issues',
+    'get_repo_commits',
+    'get_repo_contributors',
 ]

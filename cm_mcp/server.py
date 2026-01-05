@@ -45,6 +45,11 @@ from .tools import (
     list_models,
     list_clients,
     update_focus,
+    # GitHub integration tools
+    sync_repository,
+    get_repo_issues,
+    get_repo_commits,
+    get_repo_contributors,
 )
 
 
@@ -95,7 +100,7 @@ update_focus(focus="Now working on X")
 
 Periodically ask yourself: "Am I still focused on what I registered?"
 
-## Available Tools (23 total)
+## Available Tools (27 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
 - identify: FIRST tool to call - shows options or registers you with CM
@@ -133,6 +138,12 @@ Periodically ask yourself: "Am I still focused on what I registered?"
 - get_messages: Read messages from a channel
 - mark_message_read: Mark a single message as read
 - mark_all_messages_read: Clear all unread messages (with optional filters)
+
+### GITHUB INTEGRATION (4 tools) - Repository analysis
+- sync_repository: Sync Repository entity with live GitHub data (stars, forks, issues)
+- get_repo_issues: Fetch open/closed issues from a repository
+- get_repo_commits: Get recent commits with co-author detection
+- get_repo_contributors: List contributors with commit counts
 
 ## Recommended Workflow
 1. Identify yourself: identify() to see options, then identify with your agent_id
@@ -708,6 +719,107 @@ The focus is visible to other agents in the collaboration.""",
                 }
             }
         ),
+
+        # ============================================================
+        # GITHUB INTEGRATION TOOLS - Repository analysis and sync
+        # ============================================================
+        types.Tool(
+            name="sync_repository",
+            description="""Sync a Repository entity with live data from GitHub.
+
+USE THIS WHEN: You want to update or create a Repository entity with current stats from GitHub.
+
+WHAT IT DOES:
+- Fetches current metadata: stars, forks, open issues, language, size
+- Creates a Repository entity if it doesn't exist (when create_if_missing=true)
+- Updates existing Repository entities with fresh data
+
+EXAMPLES:
+- {"repository_url": "https://github.com/owner/repo"}
+- {"repository_url": "owner/repo", "create_if_missing": false}
+
+RETURNS: Formatted sync results with current GitHub stats and entity key.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL (e.g., https://github.com/owner/repo) or owner/repo format"},
+                    "create_if_missing": {"type": "boolean", "description": "Create Repository entity if it doesn't exist (default true)", "default": True}
+                },
+                "required": ["repository_url"]
+            }
+        ),
+        types.Tool(
+            name="get_repo_issues",
+            description="""Get issues from a GitHub repository.
+
+USE THIS WHEN: You need to see open issues, track bugs, or understand project priorities.
+
+EXAMPLES:
+- {"repository_url": "https://github.com/owner/repo"} → Open issues
+- {"repository_url": "owner/repo", "state": "closed", "limit": 50}
+- {"repository_url": "owner/repo", "labels": "bug,help wanted"}
+
+RETURNS: Formatted list of issues with numbers, titles, authors, labels, and comment counts.
+Issues and PRs are shown separately.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL or owner/repo format"},
+                    "state": {"type": "string", "description": "Issue state: 'open', 'closed', or 'all' (default 'open')", "default": "open"},
+                    "limit": {"type": "integer", "description": "Maximum issues to return (default 20)", "default": 20},
+                    "labels": {"type": "string", "description": "Comma-separated labels to filter by (optional)"}
+                },
+                "required": ["repository_url"]
+            }
+        ),
+        types.Tool(
+            name="get_repo_commits",
+            description="""Get recent commits from a GitHub repository.
+
+USE THIS WHEN: You need to understand recent changes, track AI co-authored commits, or analyze development activity.
+
+FEATURES:
+- Co-author detection (finds Claude and other AI collaborators)
+- Commit stats (additions, deletions)
+- Configurable time range
+
+EXAMPLES:
+- {"repository_url": "https://github.com/owner/repo"} → Last 7 days
+- {"repository_url": "owner/repo", "days": 30, "limit": 50}
+- {"repository_url": "owner/repo", "branch": "develop"}
+
+RETURNS: Formatted commit list with SHA, message, author, stats, and co-authors.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL or owner/repo format"},
+                    "days": {"type": "integer", "description": "Number of days to look back (default 7)", "default": 7},
+                    "limit": {"type": "integer", "description": "Maximum commits to return (default 20)", "default": 20},
+                    "branch": {"type": "string", "description": "Branch to get commits from (optional, defaults to default branch)"}
+                },
+                "required": ["repository_url"]
+            }
+        ),
+        types.Tool(
+            name="get_repo_contributors",
+            description="""Get contributors for a GitHub repository.
+
+USE THIS WHEN: You need to understand who works on a project and their contribution levels.
+
+EXAMPLES:
+- {"repository_url": "https://github.com/owner/repo"}
+- {"repository_url": "owner/repo", "limit": 50}
+
+RETURNS: Contributors ranked by commit count with percentages.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL or owner/repo format"},
+                    "limit": {"type": "integer", "description": "Maximum contributors to return (default 20)", "default": 20}
+                },
+                "required": ["repository_url"]
+            }
+        ),
     ]
 
 
@@ -774,6 +886,36 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         return await list_clients(arguments, config, _session_state)
     elif name == "update_focus":
         return await update_focus(arguments, config, _session_state)
+
+    # GitHub integration tools
+    elif name == "sync_repository":
+        result = await sync_repository(
+            arguments.get("repository_url"),
+            arguments.get("create_if_missing", True)
+        )
+        return [types.TextContent(type="text", text=result)]
+    elif name == "get_repo_issues":
+        result = await get_repo_issues(
+            arguments.get("repository_url"),
+            arguments.get("state", "open"),
+            arguments.get("limit", 20),
+            arguments.get("labels")
+        )
+        return [types.TextContent(type="text", text=result)]
+    elif name == "get_repo_commits":
+        result = await get_repo_commits(
+            arguments.get("repository_url"),
+            arguments.get("days", 7),
+            arguments.get("limit", 20),
+            arguments.get("branch")
+        )
+        return [types.TextContent(type="text", text=result)]
+    elif name == "get_repo_contributors":
+        result = await get_repo_contributors(
+            arguments.get("repository_url"),
+            arguments.get("limit", 20)
+        )
+        return [types.TextContent(type="text", text=result)]
 
     else:
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
