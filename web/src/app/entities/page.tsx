@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Entity } from '@/types';
 import { EntityCard } from '@/components/entity-card';
@@ -11,13 +12,26 @@ interface EntityTypeInfo {
   count: number;
 }
 
-export default function EntitiesPage() {
+function EntitiesContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entityTypes, setEntityTypes] = useState<EntityTypeInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
-  const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Read filter from URL query param, default to 'all'
+  const filterType = searchParams.get('type') || 'all';
+
+  // Update URL when filter changes
+  const setFilterType = (type: string) => {
+    if (type === 'all') {
+      router.push('/entities');
+    } else {
+      router.push(`/entities?type=${encodeURIComponent(type)}`);
+    }
+  };
 
   // Load entity types on mount
   useEffect(() => {
@@ -261,5 +275,17 @@ export default function EntitiesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function EntitiesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full">
+        <p className="text-cm-coffee">Loading entities...</p>
+      </div>
+    }>
+      <EntitiesContent />
+    </Suspense>
   );
 }
