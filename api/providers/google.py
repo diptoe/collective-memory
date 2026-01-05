@@ -34,11 +34,9 @@ class GoogleProvider(BaseModelProvider):
         # Gemini 2.x models
         'gemini-2.0-flash': 'gemini-2.0-flash',
         'gemini-2.0-pro': 'gemini-2.0-pro',
-        # Gemini 3.x preview models
-        'gemini-3-flash-preview': 'gemini-3.0-flash-preview',
-        'gemini-3-pro-preview': 'gemini-3.0-pro-preview',
-        'gemini-3.0-flash-preview': 'gemini-3.0-flash-preview',
-        'gemini-3.0-pro-preview': 'gemini-3.0-pro-preview',
+        # Gemini 3.x preview models (pass through as-is)
+        'gemini-3-flash-preview': 'gemini-3-flash-preview',
+        'gemini-3-pro-preview': 'gemini-3-pro-preview',
     }
 
     def __init__(self, api_key: Optional[str] = None):
