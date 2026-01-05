@@ -1,7 +1,7 @@
 """
 Message Tools
 
-MCP tools for inter-agent messaging queue operations.
+MCP tools for inter-agent messaging queue operations in Collective Memory (CM).
 """
 
 import httpx
@@ -108,6 +108,8 @@ async def get_messages(
     Get messages from the message queue.
 
     Use this to check for messages from other agents or human coordinators.
+    Messages are filtered to show those directed to you + all broadcasts.
+    Read status is tracked per-agent.
 
     Args:
         channel: Channel to read from (optional, reads all if not specified)
@@ -117,6 +119,9 @@ async def get_messages(
     channel = arguments.get("channel")
     unread_only = arguments.get("unread_only", True)
     limit = arguments.get("limit", 20)
+
+    # Get agent ID for per-agent read tracking
+    my_agent_id = session_state.get("agent_id")
 
     try:
         if channel:
@@ -129,6 +134,10 @@ async def get_messages(
             "limit": str(limit),
         }
 
+        # Use per-agent tracking if we have an agent ID
+        if my_agent_id:
+            params["for_agent"] = my_agent_id
+
         result = await _make_request(config, "GET", endpoint, params=params)
 
         if result.get("success"):
@@ -137,8 +146,6 @@ async def get_messages(
 
             if not messages:
                 return [types.TextContent(type="text", text="No messages found.")]
-
-            my_agent_id = session_state.get("agent_id")
 
             output = f"## Messages"
             if channel:
@@ -195,6 +202,9 @@ async def mark_message_read(
     """
     Mark a message as read.
 
+    Uses per-agent read tracking - marks the message as read by YOU specifically.
+    Other agents will still see the message as unread until they mark it.
+
     Args:
         message_key: The message key to mark as read
     """
@@ -203,11 +213,21 @@ async def mark_message_read(
     if not message_key:
         return [types.TextContent(type="text", text="Error: message_key is required")]
 
+    # Get agent ID for per-agent read tracking
+    agent_id = session_state.get("agent_id")
+    if not agent_id:
+        return [types.TextContent(
+            type="text",
+            text="Error: Not registered as an agent. Cannot mark messages read.\n\n"
+                 "Use the identify tool to establish your identity."
+        )]
+
     try:
         result = await _make_request(
             config,
             "POST",
-            f"/messages/mark-read/{message_key}"
+            f"/messages/mark-read/{message_key}",
+            params={"agent_id": agent_id}
         )
 
         if result.get("success"):
@@ -217,3 +237,51 @@ async def mark_message_read(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error marking message read: {str(e)}")]
+
+
+async def mark_all_messages_read(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Mark all unread messages as read for you.
+
+    Uses per-agent read tracking - marks messages as read by YOU specifically.
+    Other agents will still see the messages as unread until they mark them.
+
+    Args:
+        channel: Only mark messages in this channel as read (optional)
+    """
+    channel = arguments.get("channel")
+
+    # Get agent ID for per-agent read tracking (required)
+    agent_id = session_state.get("agent_id")
+    if not agent_id:
+        return [types.TextContent(
+            type="text",
+            text="Error: Not registered as an agent. Cannot mark messages read.\n\n"
+                 "Use the identify tool to establish your identity."
+        )]
+
+    try:
+        params = {"agent_id": agent_id}
+        if channel:
+            params["channel"] = channel
+
+        result = await _make_request(
+            config,
+            "POST",
+            "/messages/mark-all-read",
+            params=params
+        )
+
+        if result.get("success"):
+            count = result.get("data", {}).get("marked_count", 0)
+            filter_str = f" in #{channel}" if channel else ""
+            return [types.TextContent(type="text", text=f"Marked {count} messages as read{filter_str}.")]
+        else:
+            return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to mark messages read')}")]
+
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error marking messages read: {str(e)}")]

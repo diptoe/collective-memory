@@ -47,7 +47,11 @@ export function PersonaCard({ persona, onClick, selected }: PersonaCardProps) {
           </div>
 
           <p className="text-sm text-cm-coffee mt-0.5">{persona.role}</p>
-          <p className="text-xs text-cm-coffee/70 mt-1 font-mono">{persona.model}</p>
+          {persona.suggested_clients && persona.suggested_clients.length > 0 && (
+            <p className="text-xs text-cm-coffee/70 mt-1">
+              For: {persona.suggested_clients.join(', ')}
+            </p>
+          )}
 
           {persona.personality?.traits && persona.personality.traits.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">

@@ -98,8 +98,8 @@ class Agent(BaseModel):
         self.last_heartbeat = get_now()
         return self.save()
 
-    def update_focus(self, focus: str) -> bool:
-        """Update the agent's current work focus."""
+    def update_focus(self, focus: str | None) -> bool:
+        """Update the agent's current work focus. Pass None to clear."""
         self.focus = focus
         self.focus_updated_at = get_now()
         self.last_heartbeat = get_now()
@@ -113,9 +113,39 @@ class Agent(BaseModel):
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
         return self.last_heartbeat > cutoff
 
-    def to_dict(self, include_active_status: bool = True) -> dict:
-        """Convert to dictionary."""
+    def to_dict(self, include_active_status: bool = True, expand_relations: bool = True) -> dict:
+        """Convert to dictionary.
+
+        Args:
+            include_active_status: Include is_active computed field
+            expand_relations: Expand model_key and persona_key to full objects
+        """
         result = super().to_dict()
         if include_active_status:
             result['is_active'] = self.is_active
+
+        # Expand model and persona to full objects for UI
+        if expand_relations:
+            if self.model_key:
+                from api.models import Model
+                model = Model.get_by_key(self.model_key)
+                if model:
+                    result['model'] = {
+                        'model_key': model.model_key,
+                        'name': model.name,
+                        'provider': model.provider,
+                        'model_id': model.model_id,
+                    }
+
+            if self.persona_key:
+                from api.models import Persona
+                persona = Persona.get_by_key(self.persona_key)
+                if persona:
+                    result['persona'] = {
+                        'persona_key': persona.persona_key,
+                        'name': persona.name,
+                        'role': persona.role,
+                        'color': persona.color,
+                    }
+
         return result

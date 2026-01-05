@@ -32,6 +32,7 @@ from .tools import (
     list_personas,
     chat_with_persona,
     # Agent collaboration tools
+    identify,
     list_agents,
     get_my_identity,
     update_my_identity,
@@ -39,6 +40,7 @@ from .tools import (
     send_message,
     get_messages,
     mark_message_read,
+    mark_all_messages_read,
     # Model and client tools
     list_models,
     list_clients,
@@ -48,12 +50,58 @@ from .tools import (
 
 # Server instructions for Claude
 SERVER_INSTRUCTIONS = """
-Collective Memory MCP Server - Knowledge Graph Integration
+Collective Memory (CM) MCP Server - Knowledge Graph Integration
 
-This MCP server provides access to the Collective Memory knowledge graph platform,
+This MCP server provides access to the Collective Memory (CM) knowledge graph platform,
 enabling you to search, create, and connect entities in a shared knowledge graph.
 
-## Available Tools (21 total)
+## MANDATORY: IDENTIFY YOURSELF AT SESSION START
+
+**You MUST establish your identity before using other CM tools.**
+
+Call `identify()` first to see options, then register with your details:
+
+```
+identify(
+    agent_id="claude-code-{project-name}",  # Based on your working directory/task
+    persona="backend-code",                  # Based on project type you're working on
+    client="claude-code",                    # You know what client you are
+    model_id="claude-opus-4-5-20251101",    # You know your model ID
+    focus="What you're currently working on"
+)
+```
+
+**You know these things about yourself - provide them:**
+- **client**: Are you claude-code, claude-desktop, codex, or gemini?
+- **model_id**: What is your model identifier? (e.g., claude-opus-4-5-20251101)
+- **focus**: What task are you currently helping with?
+
+**Choose agent_id based on context:**
+- Your working directory or project name
+- The task you're working on
+- Example: `claude-code-collective-memory-api`
+
+**Choose persona based on project files:**
+- Python/Flask/Django → `backend-code`
+- React/Vue/TypeScript → `frontend-code`
+- Mixed or architecture → `architect` or `full-stack`
+
+## ONGOING: UPDATE YOUR FOCUS
+
+When your work focus changes, update it:
+```
+update_focus(focus="Now working on X")
+```
+
+Periodically ask yourself: "Am I still focused on what I registered?"
+
+## Available Tools (23 total)
+
+### IDENTITY & COLLABORATION (4 tools)
+- identify: FIRST tool to call - shows options or registers you with CM
+- list_agents: See who else is collaborating
+- get_my_identity: Check your current identity
+- update_my_identity: Change persona or register as new agent
 
 ### ENTITY OPERATIONS (6 tools)
 - search_entities: Keyword search by name or type
@@ -75,28 +123,24 @@ enabling you to search, create, and connect entities in a shared knowledge graph
 - list_personas: See available AI personas
 - chat_with_persona: Chat with a specific persona (appears in Chat UI)
 
-### AGENT COLLABORATION (3 tools)
-- list_agents: See who else is collaborating
-- get_my_identity: Check your current identity (client, model, persona, focus)
-- update_my_identity: Change your agent ID, persona, model, or focus
-
 ### MODEL & CLIENT OPERATIONS (3 tools)
 - list_models: See available AI models (Claude, GPT, Gemini)
 - list_clients: See client types and persona affinities
 - update_focus: Update your current work focus
 
-### MESSAGE QUEUE (3 tools) - Use for inter-agent communication
+### MESSAGE QUEUE (4 tools) - Inter-agent communication
 - send_message: Send messages to other agents/humans (appears in Messages UI)
 - get_messages: Read messages from a channel
-- mark_message_read: Mark a message as read
+- mark_message_read: Mark a single message as read
+- mark_all_messages_read: Clear all unread messages (with optional filters)
 
 ## Recommended Workflow
-1. Check your identity: get_my_identity
+1. Identify yourself: identify() to see options, then identify with your agent_id
 2. Update focus: update_focus to let others know what you're working on
 3. Search before creating: search_entities or search_entities_semantic
 4. Get context: get_context for background knowledge
 5. Create and connect: create_entity, create_relationship
-6. Switch roles as needed: update_my_identity
+6. Communicate: send_message to notify others of your progress
 
 All operations are attributed to your agent identity.
 """
@@ -117,6 +161,7 @@ _session_state = {
     "agent_key": None,
     "client": None,         # Client type: claude-code, claude-desktop, etc.
     "model_key": None,      # Model key from DB
+    "model_id": None,       # Model API identifier (e.g., claude-opus-4-5-20251101)
     "model_name": None,     # Model display name
     "persona": None,        # Persona role: backend-code, frontend-code, architect
     "persona_key": None,    # Resolved persona key from API
@@ -422,8 +467,42 @@ RETURNS: The persona's response and conversation context.""",
         # AGENT COLLABORATION TOOLS - Manage your identity and see collaborators
         # ============================================================
         types.Tool(
+            name="identify",
+            description="""Identify yourself to Collective Memory (CM). This is the FIRST tool you should call.
+
+USE THIS WHEN: You're connecting to CM for the first time or want to see available options.
+
+BEHAVIOR:
+- Called WITHOUT parameters: Shows guidance for dynamic self-identification, available personas, clients, and models
+- Called WITH parameters: Registers you with CM using the provided identity
+
+DYNAMIC IDENTITY: If CM_AGENT_ID is not configured, you should:
+1. Call identify() to see options
+2. Choose an agent_id based on context (project name, task, hostname)
+3. Select persona based on project files (Python→backend-code, React→frontend-code)
+4. Register with your chosen identity
+
+EXAMPLES:
+- {} → Show dynamic identity guidance with all options
+- {"agent_id": "claude-code-myproject-api", "persona": "backend-code"} → Register
+- {"agent_id": "cc-wayne-1", "persona": "architect", "focus": "Designing API"} → Register with focus
+
+RETURNS: Either the identity guidance (options) or confirmation of registration.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Your unique agent ID (e.g., 'claude-code-collective-memory')"},
+                    "persona": {"type": "string", "description": "Persona role: backend-code, frontend-code, architect, consultant, etc."},
+                    "client": {"type": "string", "description": "Client type: claude-code, claude-desktop, codex, gemini"},
+                    "model_id": {"type": "string", "description": "Your model identifier (e.g., 'claude-opus-4-5-20251101') - you know this"},
+                    "model_key": {"type": "string", "description": "Model key from database (alternative to model_id)"},
+                    "focus": {"type": "string", "description": "What you're currently working on - describe your task"}
+                }
+            }
+        ),
+        types.Tool(
             name="list_agents",
-            description="""List all AI agents connected to the Collective Memory.
+            description="""List all AI agents connected to Collective Memory (CM).
 
 USE THIS WHEN: You want to see who else is collaborating - other Claude instances, different personas, etc.
 
@@ -441,32 +520,40 @@ RETURNS: Agents with their IDs, roles, capabilities, and active status.""",
         ),
         types.Tool(
             name="get_my_identity",
-            description="""Get your current identity in the Collective Memory.
+            description="""Get your current identity in Collective Memory (CM).
 
 USE THIS WHEN: You need to know your agent ID, persona, or confirm your registration status.
 
-RETURNS: Your agent ID, agent key, persona details, and registration status.""",
+IF NOT REGISTERED: Shows guidance for dynamic self-identification, including:
+- How to choose an agent_id based on context (project, task, hostname)
+- Available personas and which to choose based on project type
+- Instructions for registering with the identify tool
+
+RETURNS: Your agent ID, agent key, persona details, and registration status (or identity guidance if not registered).""",
             inputSchema={"type": "object", "properties": {}}
         ),
         types.Tool(
             name="update_my_identity",
-            description="""Change your agent identity - agent ID and/or persona.
+            description="""Change your identity in Collective Memory (CM).
 
-USE THIS WHEN: You need to switch roles or personas during a session.
+USE THIS WHEN: You need to switch personas, change your focus, or register under a NEW agent_id.
+
+IMPORTANT: Changing agent_id creates a NEW agent registration. The old agent remains in the system.
+For claude-code users running multiple terminals, use different agent_ids for each (e.g., cc-wayne-1, cc-wayne-2).
 
 EXAMPLES:
-- {"persona": "frontend-code"} → Switch to frontend persona
-- {"agent_id": "claude-code-wayne-2", "persona": "architect"} → Change both
-- {"persona": "consultant"} → Switch to consultant role
-
-NOTE: Changing identity re-registers with the API. Your previous agent remains in the system.
+- {"persona": "frontend-code"} → Switch to frontend persona (same agent)
+- {"agent_id": "cc-wayne-2", "persona": "architect"} → Register as NEW agent
+- {"focus": "Working on auth module"} → Update focus only
 
 RETURNS: Your new identity details after the change.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "New agent ID (optional - keeps current if not provided)"},
-                    "persona": {"type": "string", "description": "New persona role: backend-code, frontend-code, architect, consultant, or custom"}
+                    "agent_id": {"type": "string", "description": "New agent ID (creates NEW agent if different from current)"},
+                    "persona": {"type": "string", "description": "New persona role: backend-code, frontend-code, architect, consultant, or custom"},
+                    "model_key": {"type": "string", "description": "New model key (from list_models)"},
+                    "focus": {"type": "string", "description": "Current work focus"}
                 }
             }
         ),
@@ -527,7 +614,10 @@ RETURNS: List of messages with sender, content, type, and read status.""",
         ),
         types.Tool(
             name="mark_message_read",
-            description="""Mark a message as read.
+            description="""Mark a message as read by you.
+
+Uses per-agent read tracking - marks the message as read by YOU specifically.
+Other agents will still see the message as unread until they mark it.
 
 USE THIS WHEN: You've processed a message and want to mark it as handled.
 
@@ -540,6 +630,27 @@ RETURNS: Confirmation.""",
                     "message_key": {"type": "string", "description": "The message key to mark as read"}
                 },
                 "required": ["message_key"]
+            }
+        ),
+        types.Tool(
+            name="mark_all_messages_read",
+            description="""Mark all unread messages as read for you.
+
+Uses per-agent read tracking - marks messages as read by YOU specifically.
+Other agents will still see the messages as unread until they mark them.
+
+USE THIS WHEN: You want to clear your unread messages.
+
+EXAMPLES:
+- {} → Mark all your unread messages as read
+- {"channel": "backend"} → Mark only backend channel messages as read
+
+RETURNS: Number of messages marked as read.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "channel": {"type": "string", "description": "Only mark messages in this channel as read (optional)"}
+                }
             }
         ),
 
@@ -637,6 +748,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         return await chat_with_persona(arguments, config, _session_state)
 
     # Agent collaboration tools
+    elif name == "identify":
+        return await identify(arguments, config, _session_state)
     elif name == "list_agents":
         return await list_agents(arguments, config, _session_state)
     elif name == "get_my_identity":
@@ -651,6 +764,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         return await get_messages(arguments, config, _session_state)
     elif name == "mark_message_read":
         return await mark_message_read(arguments, config, _session_state)
+    elif name == "mark_all_messages_read":
+        return await mark_all_messages_read(arguments, config, _session_state)
 
     # Model and client tools
     elif name == "list_models":
@@ -823,14 +938,23 @@ async def startup_checks():
             print(f"  Focus: {config.focus}", file=sys.stderr)
         print(f"  Capabilities: {config.capabilities_list}", file=sys.stderr)
     else:
-        print("  WARNING: No agent identity configured!", file=sys.stderr)
-        print("  Set CM_AGENT_ID and CM_PERSONA for proper collaboration", file=sys.stderr)
+        print("  Mode: Dynamic Self-Identification", file=sys.stderr)
+        print(f"  Detected Client: {config.detected_client}", file=sys.stderr)
+        print("  ", file=sys.stderr)
+        print("  The AI will choose its own identity at runtime.", file=sys.stderr)
+        print("  It should call get_my_identity() or identify() to:", file=sys.stderr)
+        print("    1. See available personas and guidance", file=sys.stderr)
+        print("    2. Create an agent_id based on context (project, task)", file=sys.stderr)
+        print("    3. Register with identify(agent_id='...', persona='...')", file=sys.stderr)
 
     # Validate configuration
-    is_valid, error_msg = config.validate()
+    is_valid, msg = config.validate()
     if not is_valid:
-        print(f"\nConfiguration Error: {error_msg}", file=sys.stderr)
+        print(f"\nConfiguration Error: {msg}", file=sys.stderr)
         print("Server will start but API calls may fail.", file=sys.stderr)
+    elif msg:
+        # Validation passed but has a message (e.g., dynamic identity mode)
+        print(f"\nNote: {msg}", file=sys.stderr)
 
     # Register agent with API
     if config.has_identity:

@@ -131,6 +131,113 @@ class TestMessage:
         assert msg.message_type == 'announcement'
 
 
+class TestMessageRead:
+    """Tests for per-agent message read tracking."""
+
+    @pytest.mark.model
+    def test_message_read_creation(self, factory):
+        """Test creating a message read record."""
+        msg = factory.message
+        read = factory.create_message_read(msg, 'agent-1')
+        assert read is not None
+        assert read.message_key == msg.message_key
+        assert read.agent_id == 'agent-1'
+        assert read.read_at is not None
+
+    @pytest.mark.model
+    def test_mark_read_idempotent(self, factory):
+        """Test that marking read twice returns same record."""
+        msg = factory.message
+        read1 = factory.mark_message_read_by(msg, 'agent-2')
+        read2 = factory.mark_message_read_by(msg, 'agent-2')
+        assert read1.read_key == read2.read_key
+
+    @pytest.mark.model
+    def test_has_read(self, factory):
+        """Test checking if agent has read message."""
+        from api.models import MessageRead
+
+        msg = factory.message
+        assert not MessageRead.has_read(msg.message_key, 'agent-3')
+
+        factory.mark_message_read_by(msg, 'agent-3')
+        assert MessageRead.has_read(msg.message_key, 'agent-3')
+
+    @pytest.mark.model
+    def test_per_agent_read_tracking(self, factory):
+        """Test that each agent has independent read status."""
+        msg = factory.message
+
+        # Mark read by agent-a only
+        factory.mark_message_read_by(msg, 'agent-a')
+
+        # agent-a has read, agent-b has not
+        assert msg.is_read_by('agent-a')
+        assert not msg.is_read_by('agent-b')
+
+    @pytest.mark.model
+    def test_get_readers(self, factory):
+        """Test getting list of agents who read a message."""
+        msg = factory.message
+        factory.mark_message_read_by(msg, 'reader-1')
+        factory.mark_message_read_by(msg, 'reader-2')
+
+        readers = msg.get_readers()
+        assert 'reader-1' in readers
+        assert 'reader-2' in readers
+        assert len(readers) == 2
+
+    @pytest.mark.model
+    def test_to_dict_with_for_agent(self, factory):
+        """Test message to_dict with per-agent read status."""
+        msg = factory.message
+        factory.mark_message_read_by(msg, 'agent-x')
+
+        # For agent-x (has read)
+        dict_x = msg.to_dict(for_agent='agent-x')
+        assert dict_x['is_read'] is True
+
+        # For agent-y (has not read)
+        dict_y = msg.to_dict(for_agent='agent-y')
+        assert dict_y['is_read'] is False
+
+    @pytest.mark.model
+    def test_get_unread_for_agent(self, factory):
+        """Test getting unread messages for an agent."""
+        from api.models import Message
+
+        # Create two messages
+        msg1 = factory.get_message('unread-test-1', channel='test')
+        msg2 = factory.get_message('unread-test-2', channel='test')
+
+        # Agent reads only msg1
+        factory.mark_message_read_by(msg1, 'reader-agent')
+
+        # Get unread for agent
+        unread = Message.get_unread_for_agent('reader-agent', channel='test', limit=10)
+        unread_keys = [m.message_key for m in unread]
+
+        assert msg2.message_key in unread_keys
+        assert msg1.message_key not in unread_keys
+
+    @pytest.mark.model
+    def test_mark_all_read_for_agent(self, factory):
+        """Test marking multiple messages as read."""
+        from api.models import MessageRead
+
+        msg1 = factory.get_message('batch-1')
+        msg2 = factory.get_message('batch-2')
+        msg3 = factory.get_message('batch-3')
+
+        keys = [msg1.message_key, msg2.message_key, msg3.message_key]
+        count = MessageRead.mark_all_read_for_agent('batch-reader', keys)
+
+        assert count == 3
+        assert MessageRead.has_read(msg1.message_key, 'batch-reader')
+        assert MessageRead.has_read(msg2.message_key, 'batch-reader')
+        assert MessageRead.has_read(msg3.message_key, 'batch-reader')
+
+
 class TestScenarios:
     """Tests for scenario builders."""
 

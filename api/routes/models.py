@@ -169,6 +169,27 @@ def register_model_routes(api: Api):
                 }
             }
 
+    @ns.route('/by-model-id/<string:model_id>')
+    @ns.param('model_id', 'API model identifier (e.g., claude-opus-4-5-20251101)')
+    class ModelByModelId(Resource):
+        @ns.doc('get_model_by_model_id')
+        @ns.marshal_with(response_model)
+        def get(self, model_id):
+            """Get a model by its API model_id.
+
+            This allows AI agents to look up their model by the identifier they know
+            (e.g., claude-opus-4-5-20251101) rather than needing the database key.
+            """
+            model = Model.get_by_model_id(model_id)
+            if not model:
+                return {'success': False, 'msg': f"Model not found: '{model_id}'"}, 404
+
+            return {
+                'success': True,
+                'msg': 'Model retrieved',
+                'data': model.to_dict()
+            }
+
     @ns.route('/<string:model_key>')
     @ns.param('model_key', 'Model identifier')
     class ModelDetail(Resource):

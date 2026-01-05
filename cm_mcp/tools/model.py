@@ -1,7 +1,8 @@
 """
 Model and Client Tools
 
-MCP tools for model listing, client information, and focus management.
+MCP tools for model listing, client information, and focus management
+in Collective Memory (CM).
 """
 
 import httpx

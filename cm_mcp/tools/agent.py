@@ -1,7 +1,7 @@
 """
 Agent Tools
 
-MCP tools for agent collaboration in the knowledge graph.
+MCP tools for agent collaboration in the Collective Memory (CM) knowledge graph.
 """
 
 import httpx
@@ -16,7 +16,7 @@ async def _make_request(
     json_data: dict = None,
     params: dict = None,
 ) -> dict:
-    """Make HTTP request to the Collective Memory API"""
+    """Make HTTP request to the Collective Memory (CM) API"""
     async with httpx.AsyncClient(timeout=config.timeout) as client:
         url = f"{config.api_endpoint}{endpoint}"
         response = await client.request(
@@ -27,6 +27,359 @@ async def _make_request(
         )
         response.raise_for_status()
         return response.json()
+
+
+async def _fetch_available_options(config: Any) -> dict:
+    """Fetch available personas, clients, and models from CM API."""
+    options = {
+        "personas": [],
+        "clients": [],
+        "models": [],
+    }
+
+    try:
+        # Fetch personas
+        personas_result = await _make_request(config, "GET", "/personas")
+        if personas_result.get("success"):
+            personas = personas_result.get("data", {}).get("personas", [])
+            options["personas"] = [
+                {
+                    "role": p.get("role"),
+                    "name": p.get("name"),
+                    "persona_key": p.get("persona_key"),
+                    "suggested_clients": p.get("suggested_clients", []),
+                }
+                for p in personas
+            ]
+    except Exception:
+        pass
+
+    try:
+        # Fetch clients
+        clients_result = await _make_request(config, "GET", "/clients")
+        if clients_result.get("success"):
+            clients = clients_result.get("data", {}).get("clients", [])
+            options["clients"] = [
+                {
+                    "client": c.get("client"),
+                    "description": c.get("description"),
+                    "suggested_personas": c.get("suggested_personas", []),
+                }
+                for c in clients
+            ]
+    except Exception:
+        pass
+
+    try:
+        # Fetch models
+        models_result = await _make_request(config, "GET", "/models")
+        if models_result.get("success"):
+            models = models_result.get("data", {}).get("models", [])
+            options["models"] = [
+                {
+                    "model_key": m.get("model_key"),
+                    "name": m.get("name"),
+                    "provider": m.get("provider"),
+                    "model_id": m.get("model_id"),
+                }
+                for m in models
+                if m.get("status") == "active"
+            ]
+    except Exception:
+        pass
+
+    return options
+
+
+async def identify(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Identify yourself to Collective Memory (CM).
+
+    When called without parameters: Shows available options for personas, clients, and models.
+    When called with parameters: Registers or updates your identity.
+
+    This is the recommended first tool to call when connecting to CM.
+
+    Args:
+        agent_id: Your unique agent identifier (e.g., "claude-code-wayne-auth-task")
+        persona: Persona role to adopt (e.g., "backend-code", "architect", "consultant")
+        client: Client type - you know this! (claude-code, claude-desktop, codex, gemini)
+        model_id: Your model identifier - you know this! (e.g., "claude-opus-4-5-20251101")
+        model_key: Model key from database (alternative to model_id)
+        focus: What you're currently working on - describe your task
+    """
+    agent_id = arguments.get("agent_id")
+    persona = arguments.get("persona")
+    client_type = arguments.get("client")
+    model_id = arguments.get("model_id")
+    model_key = arguments.get("model_key")
+    focus = arguments.get("focus")
+
+    # If no identity parameters provided, show the challenge/options
+    if not agent_id and not persona:
+        options = await _fetch_available_options(config)
+
+        output = "# Welcome to Collective Memory (CM)\n\n"
+        output += "To collaborate in CM, you need to identify yourself.\n\n"
+
+        # Show current identity if registered
+        if session_state.get("registered"):
+            output += "## Current Identity\n"
+            output += f"- **Agent ID:** {session_state.get('agent_id')}\n"
+            output += f"- **Persona:** {session_state.get('persona') or '(not set)'}\n"
+            output += f"- **Client:** {session_state.get('client') or '(not set)'}\n"
+            output += f"- **Focus:** {session_state.get('focus') or '(not set)'}\n\n"
+            output += "---\n\n"
+
+        # Dynamic identity guidance
+        output += "## Dynamic Self-Identification\n\n"
+        output += "You can choose your own identity based on your current context:\n\n"
+
+        # Agent ID suggestions based on context
+        output += "### Agent ID\n"
+        output += "Create an agent_id that reflects your context:\n"
+        detected_client = config.detected_client
+        if detected_client == "claude-code":
+            output += "- Based on project: `claude-code-{project-name}`\n"
+            output += "- Based on task: `cc-{user}-{task-description}`\n"
+            output += "- With uniqueness: `claude-code-{project}-{short-uuid}`\n"
+            output += "\nExamples:\n"
+            output += "- `claude-code-collective-memory-api`\n"
+            output += "- `cc-wayne-auth-refactor`\n"
+            output += "- `claude-code-dashboard-frontend`\n"
+        elif detected_client == "claude-desktop":
+            output += "- `claude-desktop-{user}-{context}`\n"
+            output += "- `cd-{user}-research`\n"
+        else:
+            output += "- `{client}-{user}-{task}`\n"
+            output += "- `ai-agent-{project}`\n"
+        output += "\n"
+
+        # Available personas with guidance
+        output += "### Persona Selection\n"
+        output += "Choose a persona that matches your current work:\n\n"
+        if options["personas"]:
+            for p in options["personas"]:
+                clients_hint = ""
+                if p.get("suggested_clients"):
+                    clients_hint = f" (best for: {', '.join(p['suggested_clients'])})"
+                output += f"- **{p['role']}**: {p['name']}{clients_hint}\n"
+            output += "\n*Tip: Inspect project files to choose the right persona:*\n"
+            output += "*- Python/Flask/Django → backend-code*\n"
+            output += "*- React/Vue/TypeScript → frontend-code*\n"
+            output += "*- Mixed stack → full-stack or architect*\n"
+        else:
+            output += "- *No personas available - contact CM admin*\n"
+        output += "\n"
+
+        # Available clients
+        output += "## Client Types\n"
+        if detected_client:
+            output += f"*Auto-detected: **{detected_client}***\n\n"
+        if options["clients"]:
+            for c in options["clients"]:
+                output += f"- **{c['client']}**: {c['description']}\n"
+        else:
+            output += "- claude-code, claude-desktop, codex, gemini, custom\n"
+        output += "\n"
+
+        # Available models
+        output += "## Available Models (optional)\n"
+        if options["models"]:
+            by_provider = {}
+            for m in options["models"]:
+                provider = m.get("provider", "unknown")
+                if provider not in by_provider:
+                    by_provider[provider] = []
+                by_provider[provider].append(m)
+
+            for provider, models in by_provider.items():
+                output += f"**{provider.title()}:**\n"
+                for m in models:
+                    output += f"- `{m['model_key']}` - {m['name']}\n"
+        else:
+            output += "- *No models registered*\n"
+        output += "\n"
+
+        # Example usage
+        output += "---\n\n"
+        output += "## Register Your Identity\n"
+        output += "Call `identify` with your chosen parameters:\n"
+        output += "```\n"
+        output += 'identify(agent_id="claude-code-{project}", persona="backend-code")\n'
+        output += "```\n\n"
+        output += "**Why dynamic identity?**\n"
+        output += "- Each terminal/session can have a unique identity\n"
+        output += "- Avoids collisions when running multiple Claude Code instances\n"
+        output += "- Context-aware naming helps track who did what\n"
+        output += "- Use `update_my_identity` to change identity later\n"
+
+        return [types.TextContent(type="text", text=output)]
+
+    # Otherwise, register/update identity
+    if not agent_id:
+        agent_id = session_state.get("agent_id") or config.agent_id
+        if not agent_id:
+            # Provide helpful guidance instead of just failing
+            output = "## Agent ID Required\n\n"
+            output += "To register with Collective Memory, you need to provide an `agent_id`.\n\n"
+            output += "**How to choose your agent_id:**\n"
+            output += "- Based on your project: `claude-code-{project-name}`\n"
+            output += "- Based on your task: `cc-{user}-{task-description}`\n"
+            output += "- With uniqueness: `claude-code-{project}-{timestamp}`\n\n"
+            output += "**Example:**\n"
+            output += "```\n"
+            output += 'identify(agent_id="claude-code-myproject", persona="backend-code")\n'
+            output += "```\n\n"
+            output += "*Tip: Look at your current working directory or task to create a meaningful name.*\n"
+            return [types.TextContent(type="text", text=output)]
+
+    # Use detected client if not provided (but AI should provide this!)
+    if not client_type:
+        client_type = config.detected_client
+
+    try:
+        # Resolve model_id to model_key if provided
+        resolved_model_key = model_key
+        model_name = None
+        if model_id and not model_key:
+            try:
+                model_result = await _make_request(
+                    config,
+                    "GET",
+                    f"/models/by-model-id/{model_id}"
+                )
+                if model_result.get("success"):
+                    model_data = model_result.get("data", {})
+                    resolved_model_key = model_data.get("model_key")
+                    model_name = model_data.get("name")
+            except Exception as e:
+                # Log the error for debugging
+                import sys
+                print(f"Model lookup failed for {model_id}: {e}", file=sys.stderr)
+
+        # Build registration payload
+        registration_data = {
+            "agent_id": agent_id,
+            "capabilities": config.capabilities_list if hasattr(config, 'capabilities_list') else ["search", "create", "update"],
+        }
+
+        if client_type:
+            registration_data["client"] = client_type
+        if resolved_model_key:
+            registration_data["model_key"] = resolved_model_key
+        if focus:
+            registration_data["focus"] = focus
+
+        # Resolve persona to persona_key
+        persona_key = None
+        if persona:
+            try:
+                personas_result = await _make_request(
+                    config,
+                    "GET",
+                    "/personas/by-role/" + persona
+                )
+                if personas_result.get("success"):
+                    persona_data = personas_result.get("data", {})
+                    persona_key = persona_data.get("persona_key")
+                    if persona_key:
+                        registration_data["persona_key"] = persona_key
+            except Exception:
+                pass
+
+        # Register with CM
+        result = await _make_request(
+            config,
+            "POST",
+            "/agents/register",
+            json_data=registration_data
+        )
+
+        if result.get("success"):
+            agent_data = result.get("data", {})
+
+            # Update session state
+            session_state["agent_id"] = agent_id
+            session_state["agent_key"] = agent_data.get("agent_key")
+            session_state["persona"] = persona
+            session_state["persona_key"] = persona_key
+            session_state["model_key"] = resolved_model_key
+            session_state["model_id"] = model_id
+            session_state["model_name"] = model_name
+            session_state["focus"] = focus
+            session_state["client"] = client_type
+            session_state["registered"] = True
+
+            # Store affinity warning if present
+            if agent_data.get("affinity_warning"):
+                session_state["affinity_warning"] = agent_data.get("affinity_warning")
+
+            # Try to resolve persona name
+            if persona:
+                try:
+                    personas_result = await _make_request(
+                        config,
+                        "GET",
+                        "/personas",
+                        params={"role": persona}
+                    )
+                    if personas_result.get("success"):
+                        personas = personas_result.get("data", {}).get("personas", [])
+                        if personas:
+                            session_state["persona_name"] = personas[0].get("name")
+                except Exception:
+                    pass
+
+            output = "# Identity Confirmed\n\n"
+            output += f"Welcome to Collective Memory (CM)!\n\n"
+            output += f"**Agent ID:** {agent_id}\n"
+            output += f"**Agent Key:** {agent_data.get('agent_key')}\n"
+            output += f"**Client:** {client_type}\n"
+
+            if persona:
+                output += f"**Persona:** {persona}"
+                if session_state.get("persona_name"):
+                    output += f" ({session_state['persona_name']})"
+                output += "\n"
+
+            if model_id or resolved_model_key:
+                output += f"**Model:** "
+                if model_name:
+                    output += f"{model_name}"
+                    if model_id:
+                        output += f" ({model_id})"
+                elif model_id:
+                    output += f"{model_id}"
+                elif resolved_model_key:
+                    output += f"{resolved_model_key}"
+                output += "\n"
+
+            if focus:
+                output += f"**Focus:** {focus}\n"
+
+            if agent_data.get("affinity_warning"):
+                output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"
+
+            output += "\nYou are now registered and can collaborate in CM.\n"
+            output += "Use `update_focus` to let others know what you're working on."
+
+            return [types.TextContent(type="text", text=output)]
+        else:
+            return [types.TextContent(
+                type="text",
+                text=f"❌ Failed to identify: {result.get('msg', 'Unknown error')}"
+            )]
+
+    except Exception as e:
+        return [types.TextContent(
+            type="text",
+            text=f"❌ Error identifying with CM: {str(e)}"
+        )]
 
 
 async def list_agents(
@@ -96,18 +449,60 @@ async def get_my_identity(
     session_state: dict,
 ) -> list[types.TextContent]:
     """
-    Get the current agent's identity in the collective memory.
+    Get the current agent's identity in Collective Memory (CM).
 
     Returns the agent's ID, client, model, persona, focus, and registration status.
+    If not registered, shows guidance for dynamic self-identification.
     """
     if not session_state.get("registered"):
-        return [types.TextContent(
-            type="text",
-            text="Not registered with Collective Memory.\n\n"
-                 "Set CM_AGENT_ID and CM_PERSONA environment variables to establish identity."
-        )]
+        # Show guidance for dynamic self-identification
+        options = await _fetch_available_options(config)
 
-    output = "## My Identity in Collective Memory\n\n"
+        output = "# Identity Not Established\n\n"
+        output += "You are not yet registered with Collective Memory.\n\n"
+
+        output += "## Dynamic Self-Identification\n\n"
+        output += "You can create your own identity based on context:\n\n"
+
+        output += "**1. Choose an agent_id** based on:\n"
+        output += "   - Your current working directory/project name\n"
+        output += "   - The task you're working on\n"
+        output += "   - Your hostname or terminal session\n"
+        output += "   - Example: `claude-code-{project}-{task}` or `cc-{user}-{context}`\n\n"
+
+        output += "**2. Select a persona** based on the work:\n"
+        if options["personas"]:
+            output += "   Available personas:\n"
+            for p in options["personas"][:6]:
+                clients_hint = ""
+                if p.get("suggested_clients"):
+                    clients_hint = f" (for: {', '.join(p['suggested_clients'][:2])})"
+                output += f"   - `{p['role']}`: {p['name']}{clients_hint}\n"
+            if len(options["personas"]) > 6:
+                output += f"   - ... and {len(options['personas']) - 6} more\n"
+        output += "\n"
+
+        output += "**3. Provide what you KNOW about yourself:**\n"
+        output += "   - `client`: Are you claude-code, claude-desktop, codex, or gemini?\n"
+        output += "   - `model_id`: What is your model? (e.g., `claude-opus-4-5-20251101`)\n"
+        output += "   - `focus`: What task are you currently helping with?\n\n"
+
+        output += "**4. Register with `identify`:**\n"
+        output += "```\n"
+        output += 'identify(\n'
+        output += '    agent_id="claude-code-{project}",\n'
+        output += '    persona="backend-code",\n'
+        output += '    client="claude-code",\n'
+        output += '    model_id="claude-opus-4-5-20251101",\n'
+        output += '    focus="What you are working on"\n'
+        output += ')\n'
+        output += "```\n\n"
+
+        output += "**You know these things - provide them!**\n"
+
+        return [types.TextContent(type="text", text=output)]
+
+    output = "## My Identity in CM\n\n"
     output += f"**Agent ID:** {session_state.get('agent_id')}\n"
     output += f"**Agent Key:** {session_state.get('agent_key')}\n"
 
@@ -117,11 +512,14 @@ async def get_my_identity(
         output += f"**Client:** {client}\n"
 
     # Model info
-    if session_state.get("model_key"):
+    if session_state.get("model_key") or session_state.get("model_id"):
         output += f"\n### Model\n"
-        output += f"**Model Key:** {session_state.get('model_key')}\n"
         if session_state.get("model_name"):
-            output += f"**Model Name:** {session_state.get('model_name')}\n"
+            output += f"**Name:** {session_state.get('model_name')}\n"
+        if session_state.get("model_id"):
+            output += f"**Model ID:** {session_state.get('model_id')}\n"
+        if session_state.get("model_key"):
+            output += f"**Model Key:** {session_state.get('model_key')}\n"
 
     # Persona info
     if session_state.get("persona_name"):

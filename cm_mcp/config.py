@@ -122,12 +122,16 @@ class MCPConfig:
         Validate configuration
 
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple of (is_valid, error_message_or_warning)
+
+        Note: Missing agent_id is now valid - dynamic self-identification is supported.
+        The AI can choose its own identity at runtime based on context.
         """
         if not self.api_url:
             return False, "CM_API_URL is required"
         if not self.agent_id:
-            return False, "CM_AGENT_ID is required - each AI needs a unique identity for collaboration"
+            # This is now a valid configuration - return warning, not error
+            return True, "CM_AGENT_ID not set - dynamic self-identification enabled (AI will choose its own identity)"
         return True, None
 
 

@@ -42,6 +42,7 @@ class CMDataFactory:
         self._chat_messages: Dict[str, Any] = {}
         self._agents: Dict[str, Any] = {}
         self._messages: Dict[str, Any] = {}
+        self._message_reads: Dict[str, Any] = {}
 
         # Track created objects for cleanup
         self._created_objects: List[Any] = []
@@ -253,32 +254,32 @@ class CMDataFactory:
         templates = {
             'default': {
                 'name': 'Test Persona',
-                'model': 'test-model',
                 'role': 'tester',
                 'color': '#888888',
                 'system_prompt': 'You are a test persona.',
                 'personality': {'traits': ['helpful']},
                 'capabilities': ['testing'],
+                'suggested_clients': ['claude-code'],
                 'status': 'active'
             },
             'backend': {
                 'name': 'Test Backend',
-                'model': 'claude-3-opus',
                 'role': 'backend-code',
                 'color': '#d97757',
                 'system_prompt': 'You are a backend developer.',
                 'personality': {'traits': ['technical', 'precise']},
                 'capabilities': ['python', 'api', 'database'],
+                'suggested_clients': ['claude-code', 'codex'],
                 'status': 'active'
             },
             'frontend': {
                 'name': 'Test Frontend',
-                'model': 'claude-3-opus',
                 'role': 'frontend-code',
                 'color': '#e8a756',
                 'system_prompt': 'You are a frontend developer.',
                 'personality': {'traits': ['creative', 'user-focused']},
                 'capabilities': ['react', 'css', 'typescript'],
+                'suggested_clients': ['claude-code', 'codex'],
                 'status': 'active'
             }
         }
@@ -425,6 +426,31 @@ class CMDataFactory:
         self._created_objects.append(message)
         return message
 
+    # ========== Message Read Fixtures ==========
+
+    def create_message_read(self, message: 'Message', agent_id: str) -> 'MessageRead':
+        """Create a MessageRead record for an agent reading a message."""
+        from api.models import MessageRead
+
+        message_read = MessageRead(
+            message_key=message.message_key,
+            agent_id=agent_id
+        )
+        message_read.save()
+
+        self._created_objects.append(message_read)
+        return message_read
+
+    def mark_message_read_by(self, message: 'Message', agent_id: str) -> 'MessageRead':
+        """Mark a message as read by an agent (uses model method)."""
+        from api.models import MessageRead
+
+        message_read = MessageRead.mark_read(message.message_key, agent_id)
+        # Only track if we created it (not already existing)
+        if message_read not in self._created_objects:
+            self._created_objects.append(message_read)
+        return message_read
+
     # ========== Scenario Builders ==========
 
     def create_project_scenario(self) -> dict:
@@ -539,6 +565,7 @@ class CMDataFactory:
         self._chat_messages.clear()
         self._agents.clear()
         self._messages.clear()
+        self._message_reads.clear()
         self._created_objects.clear()
 
     def reset(self):

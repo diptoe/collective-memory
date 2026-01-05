@@ -293,21 +293,23 @@ def register_agent_routes(api: Api):
         @ns.expect(focus_update)
         @ns.marshal_with(response_model)
         def put(self, agent_id):
-            """Update agent's current work focus."""
+            """Update agent's current work focus. Send empty string to clear focus."""
             agent = Agent.get_by_agent_id(agent_id)
             if not agent:
                 return {'success': False, 'msg': 'Agent not found'}, 404
 
             data = request.json
 
-            if not data.get('focus'):
-                return {'success': False, 'msg': 'focus is required'}, 400
+            # Allow empty string to clear focus, but require the key to be present
+            if 'focus' not in data:
+                return {'success': False, 'msg': 'focus field is required (can be empty string to clear)'}, 400
 
             try:
-                agent.update_focus(data['focus'])
+                focus_value = data['focus'] or None  # Convert empty string to None for storage
+                agent.update_focus(focus_value)
                 return {
                     'success': True,
-                    'msg': 'Focus updated',
+                    'msg': 'Focus cleared' if not focus_value else 'Focus updated',
                     'data': agent.to_dict()
                 }
             except Exception as e:

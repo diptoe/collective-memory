@@ -29,6 +29,7 @@ from .persona import (
 )
 
 from .agent import (
+    identify,
     list_agents,
     get_my_identity,
     update_my_identity,
@@ -38,6 +39,7 @@ from .message import (
     send_message,
     get_messages,
     mark_message_read,
+    mark_all_messages_read,
 )
 
 from .model import (
@@ -64,6 +66,7 @@ __all__ = [
     'list_personas',
     'chat_with_persona',
     # Agent collaboration tools
+    'identify',
     'list_agents',
     'get_my_identity',
     'update_my_identity',
@@ -71,6 +74,7 @@ __all__ = [
     'send_message',
     'get_messages',
     'mark_message_read',
+    'mark_all_messages_read',
     # Model and client tools
     'list_models',
     'list_clients',
