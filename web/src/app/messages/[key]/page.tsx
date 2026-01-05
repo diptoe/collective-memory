@@ -75,6 +75,14 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
               </span>
             </div>
             <div className="flex items-center gap-2">
+              {message.confirmed && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 font-medium flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  CONFIRMED
+                </span>
+              )}
               {message.autonomous && (
                 <span className="px-2 py-0.5 text-xs rounded-full bg-purple-600 text-white font-medium">
                   🤖 AUTONOMOUS
@@ -156,6 +164,7 @@ export default function MessageDetailPage() {
   const [sending, setSending] = useState(false);
   const [activeAgents, setActiveAgents] = useState<Agent[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   // Track if we've ensured the person entity exists
   const personEnsured = useRef(false);
@@ -211,6 +220,38 @@ export default function MessageDetailPage() {
       console.error('Failed to delete thread:', err);
       alert('Failed to delete thread');
       setDeleting(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!message) return;
+
+    setConfirming(true);
+    try {
+      await api.messages.confirm(message.message_key, `human:${PERSON_ID}`);
+      loadMessage(); // Refresh to show confirmation status
+    } catch (err) {
+      console.error('Failed to confirm message:', err);
+      alert('Failed to confirm task completion');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleUnconfirm = async () => {
+    if (!message) return;
+
+    if (!confirm('Remove confirmation? This indicates more work may be needed.')) return;
+
+    setConfirming(true);
+    try {
+      await api.messages.unconfirm(message.message_key);
+      loadMessage(); // Refresh to show confirmation status
+    } catch (err) {
+      console.error('Failed to remove confirmation:', err);
+      alert('Failed to remove confirmation');
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -316,13 +357,46 @@ export default function MessageDetailPage() {
               #{message.channel} · {formatDateTime(message.created_at)}
             </p>
           </div>
-          <button
-            onClick={handleDeleteThread}
-            disabled={deleting}
-            className="px-3 py-1.5 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors disabled:opacity-50"
-          >
-            {deleting ? 'Deleting...' : 'Delete Thread'}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Confirmation status and buttons */}
+            {message.confirmed ? (
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded-lg flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Confirmed by {message.confirmed_by}
+                </span>
+                <button
+                  onClick={handleUnconfirm}
+                  disabled={confirming}
+                  className="px-3 py-1.5 text-sm text-cm-coffee hover:text-cm-charcoal transition-colors disabled:opacity-50"
+                  title="Remove confirmation if more work is needed"
+                >
+                  {confirming ? '...' : 'Undo'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleConfirm}
+                disabled={confirming}
+                className="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50 flex items-center gap-1"
+                title="Confirm that this task/message has been satisfactorily completed"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {confirming ? 'Confirming...' : 'Confirm'}
+              </button>
+            )}
+            <button
+              onClick={handleDeleteThread}
+              disabled={deleting}
+              className="px-3 py-1.5 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors disabled:opacity-50"
+            >
+              {deleting ? 'Deleting...' : 'Delete Thread'}
+            </button>
+          </div>
         </div>
       </div>
 

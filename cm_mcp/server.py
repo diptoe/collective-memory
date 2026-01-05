@@ -630,20 +630,33 @@ The `autonomous` flag enables structured agent-to-agent collaboration:
    - "Please implement X and reply when done"
    - The receiver will see this prominently highlighted as requiring their attention
 
-2. **Complete work**: Reply with `autonomous=false` (default) when you believe the task is done
+2. **Acknowledge task**: When you RECEIVE an autonomous task, IMMEDIATELY reply with:
+   - Acknowledgment that you've seen and understood the task
+   - Brief plan of what you'll do
+   - Expected completion time (e.g., "~10 minutes", "~1 hour")
+   - Example: "Acknowledged! I'll implement the auth API with JWT. Starting now, ETA ~15 minutes."
+   - This keeps the requester informed and sets expectations
+
+3. **Complete work**: Reply with `autonomous=false` (default) when you believe the task is done
    - "I've implemented X, here's what I did..."
    - This signals you believe the task is complete and are handing back control
 
-3. **Continue collaboration**: Original sender can send a NEW message with `autonomous=true` if more work needed
+4. **Operator confirmation**: Human operators can "Confirm" completion in the Messages UI
+   - Shows a green "Confirmed" badge on the message
+   - Operators can also "Undo" confirmation if more work is needed
+   - This provides a human-in-the-loop verification step
+
+5. **Continue collaboration**: Original sender can send a NEW message with `autonomous=true` if more work needed
    - "Thanks, but we also need Y. Please continue and reply when done."
    - This keeps the collaboration loop going
 
-This creates a natural back-and-forth where agents can work independently but stay coordinated.
+This creates a natural back-and-forth where agents can work independently but stay coordinated, with optional human oversight.
 
 EXAMPLES:
 - {"channel": "general", "content": "Starting work on auth module", "message_type": "status"}
 - {"channel": "backend", "content": "Need help with database schema", "message_type": "question", "priority": "high"}
 - {"to_agent": "claude-backend", "content": "Please implement the auth API and reply when done", "autonomous": true} → Request autonomous work
+- {"content": "Acknowledged! I'll implement auth with JWT tokens. ETA ~15 min.", "reply_to": "msg-abc123"} → Acknowledge immediately
 - {"content": "Done! I implemented the auth API with JWT tokens.", "reply_to": "msg-abc123"} → Reply when complete (autonomous=false by default)
 - {"to_agent": "claude-backend", "content": "Great, but we also need refresh tokens. Please add that.", "autonomous": true} → Continue collaboration
 

@@ -356,6 +356,59 @@ def register_message_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
+    @ns.route('/confirm/<string:message_key>')
+    @ns.param('message_key', 'Message identifier')
+    class ConfirmMessage(Resource):
+        @ns.doc('confirm_message')
+        @ns.param('confirmed_by', 'Agent or human confirming the task', type=str, required=True)
+        @ns.marshal_with(response_model)
+        def post(self, message_key):
+            """
+            Confirm task completion on a message.
+
+            Used by operators to explicitly confirm that an autonomous task
+            has been completed satisfactorily. This marks the message as confirmed.
+            """
+            message = Message.get_by_key(message_key)
+            if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            confirmed_by = request.args.get('confirmed_by')
+            if not confirmed_by:
+                return {'success': False, 'msg': 'confirmed_by is required'}, 400
+
+            try:
+                message.confirm(confirmed_by)
+                return {
+                    'success': True,
+                    'msg': f'Message confirmed by {confirmed_by}',
+                    'data': message.to_dict(include_thread_info=True)
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+        @ns.doc('unconfirm_message')
+        @ns.marshal_with(response_model)
+        def delete(self, message_key):
+            """
+            Remove confirmation from a message.
+
+            Used when an operator realizes more work is needed after confirming.
+            """
+            message = Message.get_by_key(message_key)
+            if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            try:
+                message.unconfirm()
+                return {
+                    'success': True,
+                    'msg': 'Confirmation removed',
+                    'data': message.to_dict(include_thread_info=True)
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
     @ns.route('/detail/<string:message_key>')
     @ns.param('message_key', 'Message identifier')
     class MessageDetail(Resource):

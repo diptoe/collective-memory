@@ -176,6 +176,9 @@ export interface Message {
   content: Record<string, unknown>;
   priority: Priority;
   autonomous?: boolean;  // Task requiring receiver to work independently and reply
+  confirmed?: boolean;   // Operator confirmed task completion
+  confirmed_by?: string; // Who confirmed
+  confirmed_at?: string; // When confirmed
   is_read: boolean;
   read_at?: string;
   created_at: string;

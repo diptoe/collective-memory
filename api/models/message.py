@@ -45,6 +45,9 @@ class Message(BaseModel):
     content = Column(JSONB, nullable=False)
     priority = Column(String(20), default='normal')
     autonomous = Column(Boolean, default=False, index=True)  # Task requiring autonomous action
+    confirmed = Column(Boolean, default=False)  # Operator confirmed task completion
+    confirmed_by = Column(String(100), nullable=True)  # Agent/human who confirmed
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)  # When confirmed
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
@@ -55,12 +58,12 @@ class Message(BaseModel):
         Index('ix_messages_reply_to', 'reply_to_key'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous']
+    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at']
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 4  # Bumped for autonomous flag
+        return 5  # Bumped for confirmation fields
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:
@@ -184,6 +187,32 @@ class Message(BaseModel):
             # Legacy behavior - mark globally
             self.read_at = get_now()
             return self.save()
+
+    def confirm(self, confirmed_by: str) -> bool:
+        """
+        Confirm task completion on this message.
+
+        Used by operators to explicitly confirm that an autonomous task
+        has been completed satisfactorily.
+
+        Args:
+            confirmed_by: Agent ID or human name who confirmed
+        """
+        self.confirmed = True
+        self.confirmed_by = confirmed_by
+        self.confirmed_at = get_now()
+        return self.save()
+
+    def unconfirm(self) -> bool:
+        """
+        Remove confirmation from this message.
+
+        Used when an operator realizes more work is needed after confirming.
+        """
+        self.confirmed = False
+        self.confirmed_by = None
+        self.confirmed_at = None
+        return self.save()
 
     def is_read_by(self, agent_id: str) -> bool:
         """Check if a specific agent has read this message."""

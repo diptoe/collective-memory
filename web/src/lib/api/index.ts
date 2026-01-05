@@ -298,6 +298,10 @@ export const api = {
       apiClient.get<Message>(`/messages/detail/${messageKey}`, { params: { include_thread: true, include_readers: true, ...params } }),
     markRead: (messageKey: string) =>
       apiClient.post(`/messages/mark-read/${messageKey}`),
+    confirm: (messageKey: string, confirmedBy: string) =>
+      apiClient.post<Message>(`/messages/confirm/${messageKey}`, null, { params: { confirmed_by: confirmedBy } }),
+    unconfirm: (messageKey: string) =>
+      apiClient.delete<Message>(`/messages/confirm/${messageKey}`),
     deleteThread: (messageKey: string) =>
       apiClient.delete<{ deleted_count: number; deleted_keys: string[] }>(`/messages/detail/${messageKey}`),
     clearAll: () =>
