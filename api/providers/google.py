@@ -72,37 +72,44 @@ class GoogleProvider(BaseModelProvider):
         temperature: float = 0.7,
         **kwargs
     ) -> AsyncGenerator[StreamChunk, None]:
-        """Stream completion from Gemini."""
+        """Stream completion from Gemini using synchronous streaming."""
 
-        # Convert messages to Gemini format
+        # Convert messages to Gemini format using proper genai_types
         contents = []
         for msg in messages:
             role = 'user' if msg.role == 'user' else 'model'
+            text_part = genai_types.Part.from_text(text=msg.content)
             contents.append(genai_types.Content(
                 role=role,
-                parts=[genai_types.Part(text=msg.content)]
+                parts=[text_part]
             ))
 
-        # Build config
+        # Build config with stream=True
         config = genai_types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=max_tokens,
+            stream=True
         )
 
+        # Add system instruction if provided (as list of Parts)
         if system_prompt:
-            config.system_instruction = system_prompt
+            config.system_instruction = [genai_types.Part.from_text(text=system_prompt)]
 
         try:
             resolved_model = self._resolve_model(model)
-            stream = await self.client.aio.models.generate_content_stream(
+
+            # Use synchronous streaming API
+            response_stream = self.client.models.generate_content(
                 model=resolved_model,
                 contents=contents,
                 config=config,
             )
-            async for response in stream:
-                if response.text:
+
+            # Iterate through synchronous stream
+            for chunk in response_stream:
+                if hasattr(chunk, 'text') and chunk.text:
                     yield StreamChunk(
-                        content=response.text,
+                        content=chunk.text,
                         done=False
                     )
 
