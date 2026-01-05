@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Entity } from '@/types';
 import { cn } from '@/lib/utils';
@@ -230,7 +231,12 @@ export default function DocumentDetailPage() {
             ) : (
               <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">{document.name}</h1>
             )}
-
+            <Link
+              href="/entities?type=Document"
+              className="text-sm text-[#6b8fa8] hover:underline"
+            >
+              Document
+            </Link>
             <div className="flex items-center gap-2 mt-1">
               {editMode ? (
                 <select

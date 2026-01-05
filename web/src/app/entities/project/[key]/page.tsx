@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Entity, Relationship } from '@/types';
 import { cn } from '@/lib/utils';
@@ -166,6 +167,12 @@ export default function ProjectDetailPage() {
           </div>
           <div>
             <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">{project.name}</h1>
+            <Link
+              href="/entities?type=Project"
+              className="text-sm text-[#e8a756] hover:underline"
+            >
+              Project
+            </Link>
             <div className="flex items-center gap-2 mt-1">
               {props.status && (
                 <span className={cn('px-2 py-0.5 text-xs rounded-full', getStatusColor(props.status))}>

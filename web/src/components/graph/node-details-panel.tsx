@@ -1,6 +1,8 @@
 'use client';
 
-import { X, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { X, ArrowRight, Focus, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import { Entity, Relationship } from '@/types';
 import { TYPE_COLORS } from '@/lib/graph/layout';
 
@@ -9,6 +11,8 @@ interface NodeDetailsPanelProps {
   relationships: Relationship[];
   allEntities: Entity[];
   onClose: () => void;
+  onFocus?: () => void;
+  isFocused?: boolean;
 }
 
 /**
@@ -19,8 +23,17 @@ export function NodeDetailsPanel({
   relationships,
   allEntities,
   onClose,
+  onFocus,
+  isFocused,
 }: NodeDetailsPanelProps) {
+  const router = useRouter();
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const color = TYPE_COLORS[entity.entity_type] || TYPE_COLORS.Default;
+
+  // Navigate to entity detail page
+  const handleEdit = () => {
+    router.push(`/entities/${encodeURIComponent(entity.entity_type)}/${entity.entity_key}`);
+  };
 
   // Get entity by key
   const getEntity = (key: string) => {
@@ -60,16 +73,47 @@ export function NodeDetailsPanel({
             </span>
             <h3 className="font-medium text-cm-charcoal mt-0.5">{entity.name}</h3>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-cm-coffee hover:text-cm-charcoal transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleEdit}
+              className="p-1.5 rounded text-cm-coffee hover:text-cm-charcoal hover:bg-cm-sand/50 transition-colors"
+              title="Edit entity"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            {onFocus && (
+              <button
+                onClick={onFocus}
+                className={`p-1.5 rounded transition-colors ${
+                  isFocused
+                    ? 'bg-cm-terracotta text-cm-ivory'
+                    : 'text-cm-coffee hover:text-cm-charcoal hover:bg-cm-sand/50'
+                }`}
+                title={isFocused ? 'Currently focused' : 'Focus on this entity'}
+              >
+                <Focus className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="p-1 text-cm-coffee hover:text-cm-charcoal transition-colors"
+              title={isCollapsed ? 'Expand panel' : 'Collapse panel'}
+            >
+              {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 text-cm-coffee hover:text-cm-charcoal transition-colors"
+              title="Close panel"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Content */}
+      {!isCollapsed && (
       <div className="p-4 max-h-[400px] overflow-y-auto">
         {/* Properties */}
         {entity.properties && Object.keys(entity.properties).length > 0 && (
@@ -169,6 +213,7 @@ export function NodeDetailsPanel({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -47,6 +47,9 @@ interface KnowledgeGraphProps {
   entities: Entity[];
   relationships: Relationship[];
   onEntitySelect?: (entity: Entity | null) => void;
+  focusedEntityKey?: string | null;
+  onFocusEntity?: (entityKey: string | null) => void;
+  searchQuery?: string;
 }
 
 /**
@@ -56,6 +59,9 @@ function KnowledgeGraphInner({
   entities,
   relationships,
   onEntitySelect,
+  focusedEntityKey,
+  onFocusEntity,
+  searchQuery,
 }: KnowledgeGraphProps) {
   const { fitView } = useReactFlow();
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -84,11 +90,62 @@ function KnowledgeGraphInner({
     });
   }, [entityTypes]);
 
-  // Filter entities based on visible types
-  const filteredEntities = useMemo(
-    () => entities.filter((e) => visibleTypes.has(e.entity_type)),
-    [entities, visibleTypes]
-  );
+  // Get entities connected to the focused entity
+  const focusedConnectedKeys = useMemo(() => {
+    if (!focusedEntityKey) return null;
+    const connectedKeys = new Set<string>([focusedEntityKey]);
+    relationships.forEach((r) => {
+      if (r.from_entity_key === focusedEntityKey) {
+        connectedKeys.add(r.to_entity_key);
+      }
+      if (r.to_entity_key === focusedEntityKey) {
+        connectedKeys.add(r.from_entity_key);
+      }
+    });
+    return connectedKeys;
+  }, [focusedEntityKey, relationships]);
+
+  // Get entities matching search query
+  const searchMatchedKeys = useMemo(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) return null;
+    const query = searchQuery.toLowerCase().trim();
+    const matchedKeys = new Set<string>();
+    entities.forEach((e) => {
+      if (
+        e.name.toLowerCase().includes(query) ||
+        e.entity_type.toLowerCase().includes(query) ||
+        e.entity_key.toLowerCase().includes(query)
+      ) {
+        matchedKeys.add(e.entity_key);
+      }
+    });
+    // Also include connected entities for matched ones
+    relationships.forEach((r) => {
+      if (matchedKeys.has(r.from_entity_key)) {
+        matchedKeys.add(r.to_entity_key);
+      }
+      if (matchedKeys.has(r.to_entity_key)) {
+        matchedKeys.add(r.from_entity_key);
+      }
+    });
+    return matchedKeys;
+  }, [searchQuery, entities, relationships]);
+
+  // Filter entities based on visible types, focus, and search
+  const filteredEntities = useMemo(() => {
+    let filtered = entities.filter((e) => visibleTypes.has(e.entity_type));
+
+    // Apply focus filter (takes precedence)
+    if (focusedConnectedKeys) {
+      filtered = filtered.filter((e) => focusedConnectedKeys.has(e.entity_key));
+    }
+    // Apply search filter (only if not focused)
+    else if (searchMatchedKeys) {
+      filtered = filtered.filter((e) => searchMatchedKeys.has(e.entity_key));
+    }
+
+    return filtered;
+  }, [entities, visibleTypes, focusedConnectedKeys, searchMatchedKeys]);
 
   // Filter relationships to only show those between visible entities
   const filteredRelationships = useMemo(() => {
@@ -108,11 +165,13 @@ function KnowledgeGraphInner({
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Update nodes/edges when filtered data changes
+  // Update nodes/edges when filtered data changes and fit view
   useMemo(() => {
     setNodes(initialNodes);
     setEdges(initialEdges);
-  }, [initialNodes, initialEdges, setNodes, setEdges]);
+    // Fit view when focus or search filter changes
+    setTimeout(() => fitView({ padding: 0.2 }), 50);
+  }, [initialNodes, initialEdges, setNodes, setEdges, fitView]);
 
   // Toggle type visibility
   const handleToggleType = useCallback((type: string) => {
@@ -248,6 +307,8 @@ function KnowledgeGraphInner({
             setSelectedNode(null);
             onEntitySelect?.(null);
           }}
+          onFocus={onFocusEntity ? () => onFocusEntity(selectedEntity.entity_key) : undefined}
+          isFocused={focusedEntityKey === selectedEntity.entity_key}
         />
       )}
     </div>

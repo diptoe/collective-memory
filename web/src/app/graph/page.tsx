@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { X, Search, Focus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Entity, Relationship } from '@/types';
 import { KnowledgeGraph } from '@/components/graph';
@@ -10,6 +11,8 @@ export default function GraphPage() {
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [focusedEntityKey, setFocusedEntityKey] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     async function loadGraph() {
@@ -38,6 +41,19 @@ export default function GraphPage() {
     }
   }, []);
 
+  const handleFocusEntity = useCallback((entityKey: string | null) => {
+    setFocusedEntityKey(entityKey);
+    // Clear search when focusing
+    if (entityKey) {
+      setSearchQuery('');
+    }
+  }, []);
+
+  // Get focused entity name for display
+  const focusedEntity = focusedEntityKey
+    ? entities.find((e) => e.entity_key === focusedEntityKey)
+    : null;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -65,14 +81,51 @@ export default function GraphPage() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-cm-sand bg-cm-ivory">
-        <div>
+      <div className="flex items-center justify-between p-4 border-b border-cm-sand bg-cm-ivory gap-4">
+        <div className="flex-shrink-0">
           <h1 className="font-serif text-xl font-semibold text-cm-charcoal">
             Knowledge Graph
           </h1>
           <p className="text-sm text-cm-coffee">
             Visualize entities and their relationships
           </p>
+        </div>
+
+        {/* Focus indicator */}
+        {focusedEntity && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-cm-terracotta/10 border border-cm-terracotta/30 rounded-lg">
+            <Focus className="w-4 h-4 text-cm-terracotta" />
+            <span className="text-sm text-cm-charcoal">
+              Focused: <strong>{focusedEntity.name}</strong>
+            </span>
+            <button
+              onClick={() => setFocusedEntityKey(null)}
+              className="p-0.5 text-cm-terracotta hover:text-cm-sienna transition-colors"
+              title="Clear focus"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Search box */}
+        <div className="relative flex-shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50" />
+          <input
+            type="text"
+            placeholder="Filter entities..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-64 pl-9 pr-8 py-2 text-sm border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta bg-white"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -108,6 +161,9 @@ export default function GraphPage() {
             entities={entities}
             relationships={relationships}
             onEntitySelect={handleEntitySelect}
+            focusedEntityKey={focusedEntityKey}
+            onFocusEntity={handleFocusEntity}
+            searchQuery={searchQuery}
           />
         )}
       </div>

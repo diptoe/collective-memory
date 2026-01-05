@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Entity } from '@/types';
 import { cn } from '@/lib/utils';
@@ -324,6 +325,12 @@ export default function RepositoryDetailPage() {
           </div>
           <div>
             <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">{repository.name}</h1>
+            <Link
+              href="/entities?type=Repository"
+              className="text-sm text-[#7c5cbf] hover:underline"
+            >
+              Repository
+            </Link>
             <div className="flex items-center gap-2 mt-1">
               {props.language && (
                 <span className="px-2 py-0.5 text-xs rounded-full bg-cm-sand text-cm-coffee">
