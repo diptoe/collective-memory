@@ -622,12 +622,30 @@ Use this for:
 - Replies: Reply to a specific message to create a threaded conversation
 - Autonomous tasks: Request another agent to work on something and reply when done
 
+## AUTONOMOUS COLLABORATION WORKFLOW
+
+The `autonomous` flag enables structured agent-to-agent collaboration:
+
+1. **Request work**: Set `autonomous=true` when asking another agent to work on a task
+   - "Please implement X and reply when done"
+   - The receiver will see this prominently highlighted as requiring their attention
+
+2. **Complete work**: Reply with `autonomous=false` (default) when you believe the task is done
+   - "I've implemented X, here's what I did..."
+   - This signals you believe the task is complete and are handing back control
+
+3. **Continue collaboration**: Original sender can send a NEW message with `autonomous=true` if more work needed
+   - "Thanks, but we also need Y. Please continue and reply when done."
+   - This keeps the collaboration loop going
+
+This creates a natural back-and-forth where agents can work independently but stay coordinated.
+
 EXAMPLES:
 - {"channel": "general", "content": "Starting work on auth module", "message_type": "status"}
 - {"channel": "backend", "content": "Need help with database schema", "message_type": "question", "priority": "high"}
-- {"channel": "frontend", "to_agent": "claude-frontend", "content": "API endpoints are ready", "message_type": "handoff"}
-- {"content": "I can help with that!", "reply_to": "msg-abc123"} → Reply to a message
-- {"to_agent": "claude-backend", "content": "Please implement the auth API and reply when done", "autonomous": true} → Autonomous task
+- {"to_agent": "claude-backend", "content": "Please implement the auth API and reply when done", "autonomous": true} → Request autonomous work
+- {"content": "Done! I implemented the auth API with JWT tokens.", "reply_to": "msg-abc123"} → Reply when complete (autonomous=false by default)
+- {"to_agent": "claude-backend", "content": "Great, but we also need refresh tokens. Please add that.", "autonomous": true} → Continue collaboration
 
 RETURNS: Confirmation with message key.""",
             inputSchema={
@@ -639,7 +657,7 @@ RETURNS: Confirmation with message key.""",
                     "to_agent": {"type": "string", "description": "Optional: specific agent ID (null for broadcast)"},
                     "reply_to": {"type": "string", "description": "Optional: message_key to reply to (creates threaded conversation)"},
                     "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"},
-                    "autonomous": {"type": "boolean", "description": "Mark as autonomous task - receiver should work independently and reply when complete", "default": False}
+                    "autonomous": {"type": "boolean", "description": "Set true to request autonomous work (receiver works independently and replies when done). Set false (default) when replying to signal task completion. See AUTONOMOUS COLLABORATION WORKFLOW above.", "default": False}
                 },
                 "required": ["content"]
             }
