@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -57,6 +57,43 @@ export default function EntityDetailPage() {
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString();
+  };
+
+  // Render property value with special handling for arrays
+  const renderValue = (value: unknown): React.ReactNode => {
+    if (Array.isArray(value)) {
+      if (value.length === 0) return <span className="text-cm-coffee/50 italic">Empty list</span>;
+      // Check if it's an array of primitives (strings, numbers)
+      const isPrimitiveArray = value.every(
+        (item) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+      );
+      if (isPrimitiveArray) {
+        return (
+          <ul className="space-y-1">
+            {value.map((item, index) => (
+              <li key={index} className="flex items-start gap-2">
+                <span className="text-cm-coffee/50">-</span>
+                <span>{String(item)}</span>
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      // Complex array - show as JSON
+      return (
+        <pre className="text-xs bg-cm-sand/30 rounded p-2 overflow-x-auto">
+          {JSON.stringify(value, null, 2)}
+        </pre>
+      );
+    }
+    if (typeof value === 'object' && value !== null) {
+      return (
+        <pre className="text-xs bg-cm-sand/30 rounded p-2 overflow-x-auto">
+          {JSON.stringify(value, null, 2)}
+        </pre>
+      );
+    }
+    return String(value);
   };
 
   const color = entity ? (TYPE_COLORS[entity.entity_type] || TYPE_COLORS.Default) : TYPE_COLORS.Default;
@@ -163,15 +200,9 @@ export default function EntityDetailPage() {
                   {Object.entries(entity.properties).map(([key, value]) => (
                     <div key={key} className="flex px-4 py-3">
                       <span className="text-cm-coffee min-w-[150px] font-medium">{key}</span>
-                      <span className="text-cm-charcoal">
-                        {typeof value === 'object' ? (
-                          <pre className="text-xs bg-cm-sand/30 rounded p-2 overflow-x-auto">
-                            {JSON.stringify(value, null, 2)}
-                          </pre>
-                        ) : (
-                          String(value)
-                        )}
-                      </span>
+                      <div className="text-cm-charcoal flex-1">
+                        {renderValue(value)}
+                      </div>
                     </div>
                   ))}
                 </div>
