@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Entity, Relationship } from '@/types';
 import { cn } from '@/lib/utils';
+import { EntityPropertiesPanel } from '@/components/entity/entity-properties-panel';
+import { EntityRelationshipsPanel } from '@/components/entity/entity-relationships-panel';
+import { EntityJsonEditor } from '@/components/entity/entity-json-editor';
 
 interface ProjectProperties {
   description?: string;
@@ -22,7 +25,7 @@ interface ProjectEntity extends Entity {
   properties: ProjectProperties;
 }
 
-type TabType = 'overview' | 'repositories' | 'technologies' | 'team' | 'documents' | 'relationships';
+type TabType = 'overview' | 'repositories' | 'technologies' | 'team' | 'documents' | 'properties' | 'relationships' | 'json';
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -66,6 +69,10 @@ export default function ProjectDetailPage() {
       alert('Failed to delete project');
       setDeleting(false);
     }
+  };
+
+  const handleEntityUpdate = (updatedEntity: Entity) => {
+    setProject(updatedEntity as ProjectEntity);
   };
 
   const getStatusColor = (status?: string) => {
@@ -212,7 +219,7 @@ export default function ProjectDetailPage() {
       {/* Tabs */}
       <div className="border-b border-cm-sand bg-cm-cream">
         <div className="flex overflow-x-auto">
-          {(['overview', 'repositories', 'technologies', 'team', 'documents', 'relationships'] as TabType[]).map((tab) => (
+          {(['overview', 'repositories', 'technologies', 'team', 'documents', 'properties', 'relationships', 'json'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -405,73 +412,21 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
+        {activeTab === 'properties' && (
+          <div className="max-w-4xl">
+            <EntityPropertiesPanel entity={project} />
+          </div>
+        )}
+
         {activeTab === 'relationships' && (
           <div className="max-w-4xl">
-            {project.relationships && (
-              <>
-                {project.relationships.outgoing.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                      Outgoing Relationships ({project.relationships.outgoing.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {project.relationships.outgoing.map((rel) => (
-                        <div
-                          key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
-                        >
-                          <span className="text-cm-charcoal font-medium">{project.name}</span>
-                          <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                            {rel.relationship_type}
-                          </span>
-                          <span className="text-cm-charcoal font-medium">
-                            {rel.to_entity?.name || rel.to_entity_key}
-                          </span>
-                          {rel.to_entity?.entity_type && (
-                            <span className="text-xs text-cm-coffee">
-                              ({rel.to_entity.entity_type})
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            <EntityRelationshipsPanel entity={project} />
+          </div>
+        )}
 
-                {project.relationships.incoming.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                      Incoming Relationships ({project.relationships.incoming.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {project.relationships.incoming.map((rel) => (
-                        <div
-                          key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
-                        >
-                          <span className="text-cm-charcoal font-medium">
-                            {rel.from_entity?.name || rel.from_entity_key}
-                          </span>
-                          {rel.from_entity?.entity_type && (
-                            <span className="text-xs text-cm-coffee">
-                              ({rel.from_entity.entity_type})
-                            </span>
-                          )}
-                          <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                            {rel.relationship_type}
-                          </span>
-                          <span className="text-cm-charcoal font-medium">{project.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {project.relationships.outgoing.length === 0 && project.relationships.incoming.length === 0 && (
-                  <p className="text-cm-coffee/70 italic">No relationships yet.</p>
-                )}
-              </>
-            )}
+        {activeTab === 'json' && (
+          <div className="max-w-4xl">
+            <EntityJsonEditor entity={project} onSave={handleEntityUpdate} />
           </div>
         )}
       </div>

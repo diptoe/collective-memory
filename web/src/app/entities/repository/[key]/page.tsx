@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Entity } from '@/types';
 import { cn } from '@/lib/utils';
+import { EntityPropertiesPanel } from '@/components/entity/entity-properties-panel';
+import { EntityRelationshipsPanel } from '@/components/entity/entity-relationships-panel';
+import { EntityJsonEditor } from '@/components/entity/entity-json-editor';
 
 interface RepositoryProperties {
   url?: string;
@@ -50,7 +53,7 @@ interface DailyStat {
   ai_assisted_commits: number;
 }
 
-type TabType = 'overview' | 'commits' | 'stats' | 'relationships';
+type TabType = 'overview' | 'commits' | 'stats' | 'properties' | 'relationships' | 'json';
 
 export default function RepositoryDetailPage() {
   const params = useParams();
@@ -206,6 +209,10 @@ export default function RepositoryDetailPage() {
       alert('Failed to delete repository');
       setDeleting(false);
     }
+  };
+
+  const handleEntityUpdate = (updatedEntity: Entity) => {
+    setRepository(updatedEntity as RepositoryEntity);
   };
 
   const formatDate = (dateStr?: string) => {
@@ -369,7 +376,7 @@ export default function RepositoryDetailPage() {
       {/* Tabs */}
       <div className="border-b border-cm-sand bg-cm-cream">
         <div className="flex">
-          {(['overview', 'commits', 'stats', 'relationships'] as TabType[]).map((tab) => (
+          {(['overview', 'commits', 'stats', 'properties', 'relationships', 'json'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -607,73 +614,21 @@ export default function RepositoryDetailPage() {
           </div>
         )}
 
+        {activeTab === 'properties' && (
+          <div className="max-w-4xl">
+            <EntityPropertiesPanel entity={repository} />
+          </div>
+        )}
+
         {activeTab === 'relationships' && (
           <div className="max-w-4xl">
-            {repository.relationships && (
-              <>
-                {repository.relationships.outgoing.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                      Outgoing Relationships ({repository.relationships.outgoing.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {repository.relationships.outgoing.map((rel) => (
-                        <div
-                          key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
-                        >
-                          <span className="text-cm-charcoal font-medium">{repository.name}</span>
-                          <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                            {rel.relationship_type}
-                          </span>
-                          <span className="text-cm-charcoal font-medium">
-                            {rel.to_entity?.name || rel.to_entity_key}
-                          </span>
-                          {rel.to_entity?.entity_type && (
-                            <span className="text-xs text-cm-coffee">
-                              ({rel.to_entity.entity_type})
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            <EntityRelationshipsPanel entity={repository} />
+          </div>
+        )}
 
-                {repository.relationships.incoming.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                      Incoming Relationships ({repository.relationships.incoming.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {repository.relationships.incoming.map((rel) => (
-                        <div
-                          key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
-                        >
-                          <span className="text-cm-charcoal font-medium">
-                            {rel.from_entity?.name || rel.from_entity_key}
-                          </span>
-                          {rel.from_entity?.entity_type && (
-                            <span className="text-xs text-cm-coffee">
-                              ({rel.from_entity.entity_type})
-                            </span>
-                          )}
-                          <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                            {rel.relationship_type}
-                          </span>
-                          <span className="text-cm-charcoal font-medium">{repository.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {repository.relationships.outgoing.length === 0 && repository.relationships.incoming.length === 0 && (
-                  <p className="text-cm-coffee/70 italic">No relationships yet.</p>
-                )}
-              </>
-            )}
+        {activeTab === 'json' && (
+          <div className="max-w-4xl">
+            <EntityJsonEditor entity={repository} onSave={handleEntityUpdate} />
           </div>
         )}
       </div>

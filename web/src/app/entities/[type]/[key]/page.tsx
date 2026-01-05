@@ -4,10 +4,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Entity, Relationship } from '@/types';
+import { Entity } from '@/types';
 import { TYPE_COLORS } from '@/lib/graph/layout';
+import { EntityPropertiesPanel } from '@/components/entity/entity-properties-panel';
+import { EntityRelationshipsPanel } from '@/components/entity/entity-relationships-panel';
+import { EntityJsonEditor } from '@/components/entity/entity-json-editor';
 
-type TabType = 'properties' | 'relationships';
+type TabType = 'properties' | 'relationships' | 'json';
 
 export default function EntityDetailPage() {
   const params = useParams();
@@ -54,46 +57,8 @@ export default function EntityDetailPage() {
     }
   };
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString();
-  };
-
-  // Render property value with special handling for arrays
-  const renderValue = (value: unknown): React.ReactNode => {
-    if (Array.isArray(value)) {
-      if (value.length === 0) return <span className="text-cm-coffee/50 italic">Empty list</span>;
-      // Check if it's an array of primitives (strings, numbers)
-      const isPrimitiveArray = value.every(
-        (item) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
-      );
-      if (isPrimitiveArray) {
-        return (
-          <ul className="space-y-1">
-            {value.map((item, index) => (
-              <li key={index} className="flex items-start gap-2">
-                <span className="text-cm-coffee/50">-</span>
-                <span>{String(item)}</span>
-              </li>
-            ))}
-          </ul>
-        );
-      }
-      // Complex array - show as JSON
-      return (
-        <pre className="text-xs bg-cm-sand/30 rounded p-2 overflow-x-auto">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      );
-    }
-    if (typeof value === 'object' && value !== null) {
-      return (
-        <pre className="text-xs bg-cm-sand/30 rounded p-2 overflow-x-auto">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      );
-    }
-    return String(value);
+  const handleEntityUpdate = (updatedEntity: Entity) => {
+    setEntity(updatedEntity);
   };
 
   const color = entity ? (TYPE_COLORS[entity.entity_type] || TYPE_COLORS.Default) : TYPE_COLORS.Default;
@@ -119,9 +84,6 @@ export default function EntityDetailPage() {
       </div>
     );
   }
-
-  const outgoing = entity.relationships?.outgoing || [];
-  const incoming = entity.relationships?.incoming || [];
 
   return (
     <div className="h-full flex flex-col">
@@ -172,7 +134,7 @@ export default function EntityDetailPage() {
       {/* Tabs */}
       <div className="border-b border-cm-sand bg-cm-cream">
         <div className="flex overflow-x-auto">
-          {(['properties', 'relationships'] as TabType[]).map((tab) => (
+          {(['properties', 'relationships', 'json'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -191,122 +153,20 @@ export default function EntityDetailPage() {
       {/* Content Area */}
       <div className="flex-1 overflow-auto p-6">
         {activeTab === 'properties' && (
-          <div className="max-w-4xl space-y-6">
-            {/* Properties */}
-            {entity.properties && Object.keys(entity.properties).length > 0 ? (
-              <div>
-                <h3 className="text-sm font-medium text-cm-coffee mb-3">Properties</h3>
-                <div className="bg-cm-cream border border-cm-sand rounded-lg divide-y divide-cm-sand">
-                  {Object.entries(entity.properties).map(([key, value]) => (
-                    <div key={key} className="flex px-4 py-3">
-                      <span className="text-cm-coffee min-w-[150px] font-medium">{key}</span>
-                      <div className="text-cm-charcoal flex-1">
-                        {renderValue(value)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="text-cm-coffee/70 italic">No properties defined.</p>
-            )}
-
-            {/* Metadata */}
-            <div>
-              <h3 className="text-sm font-medium text-cm-coffee mb-3">Entity Metadata</h3>
-              <div className="bg-cm-cream border border-cm-sand rounded-lg divide-y divide-cm-sand">
-                <div className="flex px-4 py-3">
-                  <span className="text-cm-coffee min-w-[150px] font-medium">Entity Key</span>
-                  <span className="text-cm-charcoal font-mono text-sm">{entity.entity_key}</span>
-                </div>
-                <div className="flex px-4 py-3">
-                  <span className="text-cm-coffee min-w-[150px] font-medium">Confidence</span>
-                  <span className="text-cm-charcoal">{Math.round(entity.confidence * 100)}%</span>
-                </div>
-                <div className="flex px-4 py-3">
-                  <span className="text-cm-coffee min-w-[150px] font-medium">Source</span>
-                  <span className="text-cm-charcoal">{entity.source || '-'}</span>
-                </div>
-                <div className="flex px-4 py-3">
-                  <span className="text-cm-coffee min-w-[150px] font-medium">Created</span>
-                  <span className="text-cm-charcoal">{formatDate(entity.created_at)}</span>
-                </div>
-                <div className="flex px-4 py-3">
-                  <span className="text-cm-coffee min-w-[150px] font-medium">Updated</span>
-                  <span className="text-cm-charcoal">{formatDate(entity.updated_at)}</span>
-                </div>
-              </div>
-            </div>
+          <div className="max-w-4xl">
+            <EntityPropertiesPanel entity={entity} />
           </div>
         )}
 
         {activeTab === 'relationships' && (
           <div className="max-w-4xl">
-            {outgoing.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                  Outgoing Relationships ({outgoing.length})
-                </h3>
-                <div className="space-y-2">
-                  {outgoing.map((rel: Relationship) => (
-                    <Link
-                      key={rel.relationship_key}
-                      href={`/entities/${encodeURIComponent(rel.to_entity?.entity_type || 'unknown')}/${rel.to_entity_key}`}
-                      className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap hover:border-cm-terracotta/50 transition-colors"
-                    >
-                      <span className="text-cm-charcoal font-medium">{entity.name}</span>
-                      <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                        {rel.relationship_type}
-                      </span>
-                      <span className="text-cm-coffee">→</span>
-                      <span className="text-cm-charcoal font-medium">
-                        {rel.to_entity?.name || rel.to_entity_key}
-                      </span>
-                      {rel.to_entity?.entity_type && (
-                        <span className="text-xs text-cm-coffee">
-                          ({rel.to_entity.entity_type})
-                        </span>
-                      )}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
+            <EntityRelationshipsPanel entity={entity} />
+          </div>
+        )}
 
-            {incoming.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                  Incoming Relationships ({incoming.length})
-                </h3>
-                <div className="space-y-2">
-                  {incoming.map((rel: Relationship) => (
-                    <Link
-                      key={rel.relationship_key}
-                      href={`/entities/${encodeURIComponent(rel.from_entity?.entity_type || 'unknown')}/${rel.from_entity_key}`}
-                      className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap hover:border-cm-terracotta/50 transition-colors"
-                    >
-                      <span className="text-cm-charcoal font-medium">
-                        {rel.from_entity?.name || rel.from_entity_key}
-                      </span>
-                      {rel.from_entity?.entity_type && (
-                        <span className="text-xs text-cm-coffee">
-                          ({rel.from_entity.entity_type})
-                        </span>
-                      )}
-                      <span className="text-cm-coffee">→</span>
-                      <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                        {rel.relationship_type}
-                      </span>
-                      <span className="text-cm-charcoal font-medium">{entity.name}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {outgoing.length === 0 && incoming.length === 0 && (
-              <p className="text-cm-coffee/70 italic">No relationships yet.</p>
-            )}
+        {activeTab === 'json' && (
+          <div className="max-w-4xl">
+            <EntityJsonEditor entity={entity} onSave={handleEntityUpdate} />
           </div>
         )}
       </div>

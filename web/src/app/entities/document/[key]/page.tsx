@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Entity } from '@/types';
 import { cn } from '@/lib/utils';
+import { EntityPropertiesPanel } from '@/components/entity/entity-properties-panel';
+import { EntityRelationshipsPanel } from '@/components/entity/entity-relationships-panel';
+import { EntityJsonEditor } from '@/components/entity/entity-json-editor';
 
 interface DocumentProperties {
   status?: string;
@@ -29,7 +32,7 @@ export default function DocumentDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'content' | 'properties' | 'relationships'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'properties' | 'relationships' | 'json'>('content');
 
   // Editable fields
   const [name, setName] = useState('');
@@ -123,6 +126,16 @@ export default function DocumentDetailPage() {
       alert('Failed to delete document');
       setDeleting(false);
     }
+  };
+
+  const handleEntityUpdate = (updatedEntity: Entity) => {
+    const doc = updatedEntity as DocumentEntity;
+    setDocument(doc);
+    setName(doc.name);
+    setContent(doc.properties.content || '');
+    setStatus(doc.properties.status || 'Draft');
+    const { content: _, status: __, ...otherProps } = doc.properties;
+    setPropertiesJson(JSON.stringify(otherProps, null, 2));
   };
 
   const getStatusColor = (status: string) => {
@@ -267,7 +280,7 @@ export default function DocumentDetailPage() {
       {/* Tabs */}
       <div className="border-b border-cm-sand bg-cm-cream">
         <div className="flex">
-          {(['content', 'properties', 'relationships'] as const).map((tab) => (
+          {(['content', 'properties', 'relationships', 'json'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -309,125 +322,19 @@ export default function DocumentDetailPage() {
 
         {activeTab === 'properties' && (
           <div className="max-w-4xl">
-            <h3 className="text-sm font-medium text-cm-coffee mb-2">
-              Additional Properties (JSON)
-            </h3>
-            {editMode ? (
-              <>
-                <textarea
-                  value={propertiesJson}
-                  onChange={(e) => {
-                    setPropertiesJson(e.target.value);
-                    setJsonError(null);
-                  }}
-                  className={cn(
-                    "w-full h-[50vh] p-4 font-mono text-sm bg-cm-cream border rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 resize-none",
-                    jsonError ? 'border-red-500' : 'border-cm-sand focus:border-cm-terracotta'
-                  )}
-                />
-                {jsonError && (
-                  <p className="text-red-500 text-sm mt-1">{jsonError}</p>
-                )}
-              </>
-            ) : (
-              <pre className="bg-cm-sand/30 p-4 rounded-lg overflow-auto font-mono text-sm text-cm-charcoal">
-                {propertiesJson || '{}'}
-              </pre>
-            )}
-
-            <div className="mt-6 pt-6 border-t border-cm-sand">
-              <h3 className="text-sm font-medium text-cm-coffee mb-2">Metadata</h3>
-              <dl className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <dt className="text-cm-coffee/70">Entity Key</dt>
-                  <dd className="font-mono text-cm-charcoal">{document.entity_key}</dd>
-                </div>
-                <div>
-                  <dt className="text-cm-coffee/70">Created</dt>
-                  <dd className="text-cm-charcoal">{new Date(document.created_at).toLocaleString()}</dd>
-                </div>
-                <div>
-                  <dt className="text-cm-coffee/70">Confidence</dt>
-                  <dd className="text-cm-charcoal">{Math.round(document.confidence * 100)}%</dd>
-                </div>
-                {document.source && (
-                  <div>
-                    <dt className="text-cm-coffee/70">Source</dt>
-                    <dd className="text-cm-charcoal">{document.source}</dd>
-                  </div>
-                )}
-              </dl>
-            </div>
+            <EntityPropertiesPanel entity={document} excludeKeys={['content', 'status']} />
           </div>
         )}
 
         {activeTab === 'relationships' && (
           <div className="max-w-4xl">
-            {document.relationships && (
-              <>
-                {document.relationships.outgoing.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                      Outgoing Relationships ({document.relationships.outgoing.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {document.relationships.outgoing.map((rel) => (
-                        <div
-                          key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
-                        >
-                          <span className="text-cm-charcoal font-medium">{document.name}</span>
-                          <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                            {rel.relationship_type}
-                          </span>
-                          <span className="text-cm-charcoal font-medium">
-                            {rel.to_entity?.name || rel.to_entity_key}
-                          </span>
-                          {rel.to_entity?.entity_type && (
-                            <span className="text-xs text-cm-coffee">
-                              ({rel.to_entity.entity_type})
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            <EntityRelationshipsPanel entity={document} />
+          </div>
+        )}
 
-                {document.relationships.incoming.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-cm-coffee mb-3">
-                      Incoming Relationships ({document.relationships.incoming.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {document.relationships.incoming.map((rel) => (
-                        <div
-                          key={rel.relationship_key}
-                          className="flex items-center gap-2 text-sm p-3 bg-cm-cream border border-cm-sand rounded-lg flex-wrap"
-                        >
-                          <span className="text-cm-charcoal font-medium">
-                            {rel.from_entity?.name || rel.from_entity_key}
-                          </span>
-                          {rel.from_entity?.entity_type && (
-                            <span className="text-xs text-cm-coffee">
-                              ({rel.from_entity.entity_type})
-                            </span>
-                          )}
-                          <span className="px-2 py-0.5 bg-cm-terracotta/20 text-cm-terracotta rounded text-xs">
-                            {rel.relationship_type}
-                          </span>
-                          <span className="text-cm-charcoal font-medium">{document.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {document.relationships.outgoing.length === 0 && document.relationships.incoming.length === 0 && (
-                  <p className="text-cm-coffee/70 italic">No relationships yet.</p>
-                )}
-              </>
-            )}
+        {activeTab === 'json' && (
+          <div className="max-w-4xl">
+            <EntityJsonEditor entity={document} onSave={handleEntityUpdate} />
           </div>
         )}
       </div>
