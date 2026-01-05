@@ -119,32 +119,87 @@ async def get_entity_context(
             output += "### Properties\n"
             output += f"```json\n{json.dumps(props, indent=2)}\n```\n\n"
 
-        # Get relationships
-        rel_result = await _make_request(
-            config, "GET", "/relationships",
-            params={"entity_key": entity_key, "limit": 20}
+        # Use the neighbors endpoint for proper depth traversal
+        neighbors_result = await _make_request(
+            config, "POST", "/context/neighbors",
+            json={"entity_key": entity_key, "max_hops": depth}
         )
 
-        if rel_result.get("success"):
-            rels = rel_result.get("data", {}).get("relationships", [])
+        if neighbors_result.get("success"):
+            data = neighbors_result.get("data", {})
+            neighbor_entities = data.get("entities", [])
+            relationships = data.get("relationships", [])
 
-            outgoing = [r for r in rels if r['from_entity_key'] == entity_key]
-            incoming = [r for r in rels if r['to_entity_key'] == entity_key]
+            # Show related entities
+            if neighbor_entities:
+                output += f"### Related Entities (depth={depth})\n"
+                for e in neighbor_entities:
+                    output += f"- **{e['name']}** ({e['entity_type']})\n"
+                output += "\n"
+
+            # Categorize relationships
+            outgoing = [r for r in relationships if r['from_entity_key'] == entity_key]
+            incoming = [r for r in relationships if r['to_entity_key'] == entity_key]
+            other = [r for r in relationships if r['from_entity_key'] != entity_key and r['to_entity_key'] != entity_key]
 
             if outgoing:
                 output += "### Outgoing Relationships\n"
                 for r in outgoing:
-                    output += f"- **{r['relationship_type']}** → {r['to_entity_key']}\n"
+                    # Find target entity name
+                    target = next((e for e in neighbor_entities if e['entity_key'] == r['to_entity_key']), None)
+                    target_name = target['name'] if target else r['to_entity_key']
+                    output += f"- **{r['relationship_type']}** → {target_name}\n"
                 output += "\n"
 
             if incoming:
                 output += "### Incoming Relationships\n"
                 for r in incoming:
-                    output += f"- {r['from_entity_key']} → **{r['relationship_type']}**\n"
+                    # Find source entity name
+                    source = next((e for e in neighbor_entities if e['entity_key'] == r['from_entity_key']), None)
+                    source_name = source['name'] if source else r['from_entity_key']
+                    output += f"- {source_name} → **{r['relationship_type']}**\n"
                 output += "\n"
 
-            if not outgoing and not incoming:
+            if other and depth > 1:
+                output += "### Extended Graph Relationships\n"
+                for r in other:
+                    # Find both entity names
+                    source = next((e for e in neighbor_entities if e['entity_key'] == r['from_entity_key']), None)
+                    target = next((e for e in neighbor_entities if e['entity_key'] == r['to_entity_key']), None)
+                    source_name = source['name'] if source else r['from_entity_key']
+                    target_name = target['name'] if target else r['to_entity_key']
+                    output += f"- {source_name} **{r['relationship_type']}** → {target_name}\n"
+                output += "\n"
+
+            if not relationships:
                 output += "### Relationships\nNo relationships found for this entity.\n"
+        else:
+            # Fallback to simple relationship lookup if neighbors endpoint fails
+            rel_result = await _make_request(
+                config, "GET", "/relationships",
+                params={"entity_key": entity_key, "limit": 20}
+            )
+
+            if rel_result.get("success"):
+                rels = rel_result.get("data", {}).get("relationships", [])
+
+                outgoing = [r for r in rels if r['from_entity_key'] == entity_key]
+                incoming = [r for r in rels if r['to_entity_key'] == entity_key]
+
+                if outgoing:
+                    output += "### Outgoing Relationships\n"
+                    for r in outgoing:
+                        output += f"- **{r['relationship_type']}** → {r['to_entity_key']}\n"
+                    output += "\n"
+
+                if incoming:
+                    output += "### Incoming Relationships\n"
+                    for r in incoming:
+                        output += f"- {r['from_entity_key']} → **{r['relationship_type']}**\n"
+                    output += "\n"
+
+                if not outgoing and not incoming:
+                    output += "### Relationships\nNo relationships found for this entity.\n"
 
         return [types.TextContent(type="text", text=output)]
 
