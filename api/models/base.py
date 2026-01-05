@@ -17,7 +17,20 @@ T = TypeVar('T', bound='BaseModel')
 
 
 def get_key() -> str:
-    """Generate a new UUID key."""
+    """
+    Generate a new human-readable key.
+
+    Format: adjective-adjective-adjective-noun
+    Examples: swift-bold-keen-lion, calm-fresh-wild-river
+
+    For database-tracked keys with UUID mapping, use Key.create_key() instead.
+    """
+    from api.utils.readable_keys import generate_readable_key
+    return generate_readable_key()
+
+
+def get_uuid() -> str:
+    """Generate a new UUID (for legacy compatibility)."""
     return str(uuid.uuid4())
 
 
