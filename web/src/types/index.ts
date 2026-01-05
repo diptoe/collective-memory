@@ -217,6 +217,7 @@ export type ActivityType =
   | 'message_sent'
   | 'agent_heartbeat'
   | 'agent_registered'
+  | 'search_performed'
   | 'entity_created'
   | 'entity_updated'
   | 'entity_deleted'

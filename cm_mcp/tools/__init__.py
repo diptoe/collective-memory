@@ -16,6 +16,7 @@ from .entity import (
 from .relationship import (
     list_relationships,
     create_relationship,
+    delete_relationship,
 )
 
 from .context import (
@@ -55,6 +56,11 @@ from .github import (
     get_repo_contributors,
 )
 
+from .activity import (
+    list_activities,
+    get_activity_summary,
+)
+
 __all__ = [
     # Entity tools
     'search_entities',
@@ -66,6 +72,7 @@ __all__ = [
     # Relationship tools
     'list_relationships',
     'create_relationship',
+    'delete_relationship',
     # Context tools
     'get_context',
     'get_entity_context',
@@ -91,4 +98,7 @@ __all__ = [
     'get_repo_issues',
     'get_repo_commits',
     'get_repo_contributors',
+    # Activity tools
+    'list_activities',
+    'get_activity_summary',
 ]

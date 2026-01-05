@@ -106,7 +106,8 @@ class ActivityService:
         agent_key: str,
         client: Optional[str] = None,
         persona: Optional[str] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        is_reconnect: bool = False
     ) -> Activity:
         """Record an agent_registered activity."""
         return self.record(
@@ -117,7 +118,8 @@ class ActivityService:
             extra_data={
                 'client': client,
                 'persona': persona,
-                'model': model
+                'model': model,
+                'is_reconnect': is_reconnect
             }
         )
 
@@ -194,6 +196,28 @@ class ActivityService:
             extra_data={
                 'entity_type': entity_type,
                 'entity_name': entity_name
+            }
+        )
+
+    def record_search(
+        self,
+        actor: str,
+        query: Optional[str] = None,
+        search_type: str = 'entity',
+        entity_type: Optional[str] = None,
+        result_count: int = 0
+    ) -> Activity:
+        """Record a search_performed activity."""
+        return self.record(
+            activity_type=ActivityType.SEARCH_PERFORMED.value,
+            actor=actor,
+            target_key=None,
+            target_type='search',
+            extra_data={
+                'query': query,
+                'search_type': search_type,
+                'entity_type': entity_type,
+                'result_count': result_count
             }
         )
 

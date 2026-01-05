@@ -158,7 +158,7 @@ def register_agent_routes(api: Api):
             existing = Agent.get_by_agent_id(data['agent_id'])
 
             if existing:
-                # Update existing agent
+                # Update existing agent (reconnection)
                 if client:
                     existing.client = client
                 if model_key:
@@ -173,6 +173,16 @@ def register_agent_routes(api: Api):
                     existing.capabilities = data['capabilities']
                 existing.update_heartbeat()
                 existing.save()
+
+                # Record reconnection activity
+                activity_service.record_agent_registered(
+                    actor=existing.agent_id,
+                    agent_key=existing.agent_key,
+                    client=existing.client,
+                    persona=existing.persona_key,
+                    model=existing.model_key,
+                    is_reconnect=True
+                )
 
                 result = {
                     'success': True,

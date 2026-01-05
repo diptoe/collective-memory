@@ -25,6 +25,7 @@ from .tools import (
     # Relationship tools
     list_relationships,
     create_relationship,
+    delete_relationship,
     # Context tools
     get_context,
     get_entity_context,
@@ -50,6 +51,9 @@ from .tools import (
     get_repo_issues,
     get_repo_commits,
     get_repo_contributors,
+    # Activity tools
+    list_activities,
+    get_activity_summary,
 )
 
 
@@ -110,7 +114,7 @@ To stay active during a long session:
 - Use `list_agents()` to see who else is collaborating
 - Use `update_focus()` when your task changes
 
-## Available Tools (27 total)
+## Available Tools (30 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
 - identify: FIRST tool to call - shows options or registers you with CM
@@ -126,9 +130,10 @@ To stay active during a long session:
 - update_entity: Update entity properties or type
 - extract_entities_from_text: NER extraction from text
 
-### RELATIONSHIP OPERATIONS (2 tools)
+### RELATIONSHIP OPERATIONS (3 tools)
 - list_relationships: View connections between entities
 - create_relationship: Link entities (WORKS_ON, KNOWS, USES, CREATED, etc.)
+- delete_relationship: Remove a relationship from the graph
 
 ### CONTEXT/RAG OPERATIONS (2 tools)
 - get_context: Get relevant context for a query (primary RAG tool)
@@ -154,6 +159,10 @@ To stay active during a long session:
 - get_repo_issues: Fetch open/closed issues from a repository
 - get_repo_commits: Get recent commits with co-author detection
 - get_repo_contributors: List contributors with commit counts
+
+### ACTIVITY MONITORING (2 tools) - Track system activity
+- list_activities: View recent activities with filtering (by type, actor, time)
+- get_activity_summary: Get aggregated activity counts by type
 
 ## Recommended Workflow
 1. Identify yourself: identify() to see options, then identify with your agent_id
@@ -396,6 +405,25 @@ RETURNS: The created relationship with its assigned relationship_key.""",
                     "properties": {"type": "object", "description": "Additional properties for the relationship"}
                 },
                 "required": ["from_entity_key", "to_entity_key", "relationship_type"]
+            }
+        ),
+        types.Tool(
+            name="delete_relationship",
+            description="""Delete a relationship from the knowledge graph.
+
+USE THIS WHEN: You need to remove a connection between entities that is no longer valid or was created in error.
+
+EXAMPLE: {"relationship_key": "rel-abc123"}
+
+CAUTION: This permanently removes the relationship. Use list_relationships first to confirm the correct key.
+
+RETURNS: Confirmation of deletion.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "relationship_key": {"type": "string", "description": "The unique relationship key to delete"}
+                },
+                "required": ["relationship_key"]
             }
         ),
 
@@ -831,6 +859,60 @@ RETURNS: Contributors ranked by commit count with percentages.""",
                 "required": ["repository_url"]
             }
         ),
+
+        # ============================================================
+        # ACTIVITY MONITORING TOOLS - Track system activity
+        # ============================================================
+        types.Tool(
+            name="list_activities",
+            description="""List recent system activities with optional filtering.
+
+USE THIS WHEN: You want to see what's been happening in Collective Memory - entity changes, messages, agent connections.
+
+ACTIVITY TYPES:
+- message_sent: Messages sent to channels
+- agent_heartbeat: Agent keep-alive signals
+- agent_registered: Agent connections/reconnections
+- search_performed: Search and list operations
+- entity_created, entity_updated, entity_deleted, entity_read
+- relationship_created, relationship_deleted
+
+EXAMPLES:
+- {} → Activities from last 24 hours
+- {"hours": 1} → Activities from last hour
+- {"activity_type": "entity_created"} → Only entity creations
+- {"actor": "claude-code-myproject"} → Only activities by specific agent
+- {"hours": 24, "limit": 100} → More results
+
+RETURNS: Activities grouped by type with timestamps, actors, and details.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hours": {"type": "integer", "description": "Hours to look back (default 24)", "default": 24},
+                    "activity_type": {"type": "string", "description": "Filter by type: message_sent, agent_heartbeat, entity_created, etc."},
+                    "actor": {"type": "string", "description": "Filter by actor (agent_id)"},
+                    "limit": {"type": "integer", "description": "Maximum results (default 50)", "default": 50}
+                }
+            }
+        ),
+        types.Tool(
+            name="get_activity_summary",
+            description="""Get activity summary with counts by type.
+
+USE THIS WHEN: You want a quick overview of system activity without detailed logs.
+
+EXAMPLES:
+- {} → Summary of last 24 hours
+- {"hours": 168} → Summary of last week
+
+RETURNS: Table of activity types with counts and percentages.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hours": {"type": "integer", "description": "Hours to summarize (default 24)", "default": 24}
+                }
+            }
+        ),
     ]
 
 
@@ -865,6 +947,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         return await list_relationships(arguments, config, _session_state)
     elif name == "create_relationship":
         return await create_relationship(arguments, config, _session_state)
+    elif name == "delete_relationship":
+        return await delete_relationship(arguments, config, _session_state)
 
     # Context tools
     elif name == "get_context":
@@ -935,6 +1019,12 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             arguments.get("limit", 20)
         )
         return [types.TextContent(type="text", text=result)]
+
+    # Activity monitoring tools
+    elif name == "list_activities":
+        return await list_activities(arguments, config, _session_state)
+    elif name == "get_activity_summary":
+        return await get_activity_summary(arguments, config, _session_state)
 
     else:
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]

@@ -17,6 +17,7 @@ class ActivityType(str, Enum):
     MESSAGE_SENT = 'message_sent'
     AGENT_HEARTBEAT = 'agent_heartbeat'
     AGENT_REGISTERED = 'agent_registered'
+    SEARCH_PERFORMED = 'search_performed'
     ENTITY_CREATED = 'entity_created'
     ENTITY_UPDATED = 'entity_updated'
     ENTITY_DELETED = 'entity_deleted'

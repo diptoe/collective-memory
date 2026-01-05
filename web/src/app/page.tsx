@@ -11,6 +11,7 @@ const ACTIVITY_COLORS: Record<ActivityType, string> = {
   message_sent: '#d97757',       // terracotta
   agent_heartbeat: '#6b8fa8',    // blue
   agent_registered: '#4a90a4',   // teal
+  search_performed: '#9b7bb8',   // lavender
   entity_created: '#5d8a66',     // green
   entity_updated: '#e8a756',     // amber
   entity_deleted: '#c45c5c',     // red
@@ -24,6 +25,7 @@ const ACTIVITY_LABELS: Record<ActivityType, string> = {
   message_sent: 'Message',
   agent_heartbeat: 'Heartbeat',
   agent_registered: 'Agent Connected',
+  search_performed: 'Search',
   entity_created: 'Entity Created',
   entity_updated: 'Entity Updated',
   entity_deleted: 'Entity Deleted',
@@ -37,6 +39,7 @@ const ACTIVITY_ICONS: Record<ActivityType, string> = {
   message_sent: 'M',
   agent_heartbeat: 'H',
   agent_registered: '@',
+  search_performed: '?',
   entity_created: '+',
   entity_updated: '~',
   entity_deleted: '-',
@@ -56,6 +59,7 @@ const TILE_CATEGORIES: TileCategory[] = [
   { label: 'Messages', color: '#d97757', types: ['message_sent'] },
   { label: 'Connections', color: '#4a90a4', types: ['agent_registered'] },
   { label: 'Heartbeats', color: '#6b8fa8', types: ['agent_heartbeat'] },
+  { label: 'Searches', color: '#9b7bb8', types: ['search_performed'] },
   { label: 'Reads', color: '#7b6b8a', types: ['entity_read'] },
   { label: 'Creates', color: '#5d8a66', types: ['entity_created', 'relationship_created'] },
   { label: 'Updates', color: '#e8a756', types: ['entity_updated'] },
@@ -376,6 +380,14 @@ export default function ActivityPage() {
         return `Heartbeat`;
       case 'agent_registered':
         return `Connected${meta.client ? ` via ${meta.client}` : ''}`;
+      case 'search_performed': {
+        const query = meta.query as string;
+        const searchType = meta.search_type as string || 'entity';
+        const resultCount = meta.result_count as number || 0;
+        return query
+          ? `Searched "${query}" (${resultCount} results)`
+          : `Listed ${meta.entity_type || searchType}s (${resultCount} results)`;
+      }
       case 'entity_created':
         return `Created ${meta.entity_type}: ${meta.entity_name}`;
       case 'entity_updated':

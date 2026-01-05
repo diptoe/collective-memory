@@ -85,6 +85,16 @@ def register_entity_routes(api: Api):
             total = query.count()
             entities = query.limit(limit).offset(offset).all()
 
+            # Record search activity if a search was performed
+            if search or entity_type:
+                activity_service.record_search(
+                    actor=get_actor(),
+                    query=search,
+                    search_type='entity',
+                    entity_type=entity_type,
+                    result_count=total
+                )
+
             return {
                 'success': True,
                 'msg': f'Found {total} entities',

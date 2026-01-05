@@ -9,6 +9,12 @@ from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Entity, Document
 from api.services import embedding_service
+from api.services.activity import activity_service
+
+
+def get_actor() -> str:
+    """Get actor from X-Agent-Id header or return 'system'."""
+    return request.headers.get('X-Agent-Id', 'system')
 
 
 def register_search_routes(api: Api):
@@ -89,6 +95,16 @@ def register_search_routes(api: Api):
                         # pgvector not available
                         results['documents_error'] = str(e)
 
+                # Record search activity
+                total_results = len(results['entities']) + len(results['documents'])
+                activity_service.record_search(
+                    actor=get_actor(),
+                    query=query,
+                    search_type='semantic',
+                    entity_type=entity_type,
+                    result_count=total_results
+                )
+
                 return {
                     'success': True,
                     'msg': f'Found {len(results["entities"])} entities and {len(results["documents"])} documents',
@@ -132,6 +148,15 @@ def register_search_routes(api: Api):
                 # Filter by type if specified
                 if entity_type:
                     entities = [e for e in entities if e.entity_type == entity_type]
+
+                # Record search activity
+                activity_service.record_search(
+                    actor=get_actor(),
+                    query=query,
+                    search_type='hybrid',
+                    entity_type=entity_type,
+                    result_count=len(entities)
+                )
 
                 return {
                     'success': True,
