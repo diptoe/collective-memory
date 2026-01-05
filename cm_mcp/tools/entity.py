@@ -76,7 +76,7 @@ async def get_entity(
         result = await _make_request(config, "GET", f"/entities/{entity_key}")
 
         if result.get("success"):
-            entity = result.get("data", {})
+            entity = result.get("data", {}).get("entity", {})
             output = f"# {entity.get('name', 'Unknown')}\n\n"
             output += f"**Type:** {entity.get('entity_type', 'Unknown')}\n"
             output += f"**Key:** {entity.get('entity_key')}\n"
@@ -134,7 +134,7 @@ async def create_entity(
         )
 
         if result.get("success"):
-            entity = result.get("data", {})
+            entity = result.get("data", {}).get("entity", {})
             output = f"Entity created successfully!\n\n"
             output += f"**Name:** {entity.get('name')}\n"
             output += f"**Type:** {entity.get('entity_type')}\n"
@@ -186,7 +186,7 @@ async def update_entity(
         )
 
         if result.get("success"):
-            entity = result.get("data", {})
+            entity = result.get("data", {}).get("entity", {})
             output = f"Entity updated successfully!\n\n"
             output += f"**Name:** {entity.get('name')}\n"
             output += f"**Type:** {entity.get('entity_type')}\n"

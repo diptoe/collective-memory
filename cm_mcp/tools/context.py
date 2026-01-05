@@ -63,7 +63,7 @@ async def get_context(
                 try:
                     rel_result = await _make_request(
                         config, "GET", "/relationships",
-                        params={"entity_key": entity_key, "limit": 5}
+                        params={"entity": entity_key, "limit": 5}  # API expects "entity"
                     )
                     rels = rel_result.get("data", {}).get("relationships", [])
                     for r in rels:
@@ -108,7 +108,7 @@ async def get_entity_context(
         if not entity_result.get("success"):
             return [types.TextContent(type="text", text=f"Error: Entity not found: {entity_key}")]
 
-        entity = entity_result.get("data", {})
+        entity = entity_result.get("data", {}).get("entity", {})
 
         output = f"## Entity Context: {entity.get('name')}\n\n"
         output += f"**Type:** {entity.get('entity_type')}\n"
@@ -177,7 +177,7 @@ async def get_entity_context(
             # Fallback to simple relationship lookup if neighbors endpoint fails
             rel_result = await _make_request(
                 config, "GET", "/relationships",
-                params={"entity_key": entity_key, "limit": 20}
+                params={"entity": entity_key, "limit": 20}  # API expects "entity"
             )
 
             if rel_result.get("success"):

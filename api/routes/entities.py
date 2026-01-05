@@ -116,7 +116,7 @@ def register_entity_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Entity created',
-                    'data': entity.to_dict()
+                    'data': {'entity': entity.to_dict()}
                 }, 201
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -164,7 +164,7 @@ def register_entity_routes(api: Api):
             return {
                 'success': True,
                 'msg': 'Entity retrieved',
-                'data': entity.to_dict(include_relationships=include_rels)
+                'data': {'entity': entity.to_dict(include_relationships=include_rels)}
             }
 
         @ns.doc('update_entity')
@@ -184,7 +184,7 @@ def register_entity_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Entity updated',
-                    'data': entity.to_dict()
+                    'data': {'entity': entity.to_dict()}
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500

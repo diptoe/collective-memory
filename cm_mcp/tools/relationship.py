@@ -29,7 +29,7 @@ async def list_relationships(
     try:
         params = {"limit": limit}
         if entity_key:
-            params["entity_key"] = entity_key
+            params["entity"] = entity_key  # API expects "entity" not "entity_key"
 
         result = await _make_request(config, "GET", "/relationships", params=params)
 
