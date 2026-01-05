@@ -28,8 +28,10 @@ function EntitiesContent() {
   const showTypesSummary = !filterType;
 
   // Navigate to entity detail page
+  // Use lowercase for type-specific routes (repository, document, project)
   const handleEntityClick = (entity: Entity) => {
-    router.push(`/entities/${encodeURIComponent(entity.entity_type)}/${entity.entity_key}`);
+    const typeLower = entity.entity_type.toLowerCase();
+    router.push(`/entities/${encodeURIComponent(typeLower)}/${entity.entity_key}`);
   };
 
   // Load entity types on mount
