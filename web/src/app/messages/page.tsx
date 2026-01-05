@@ -21,16 +21,17 @@ export default function MessagesPage() {
     { id: 'all', label: 'All', isAgent: false },
   ]);
   const [agentsLoading, setAgentsLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
 
-  // Load registered agents for channel tabs
+  // Load registered agents for channel tabs (active only)
   useEffect(() => {
     async function loadAgents() {
       setAgentsLoading(true);
       try {
-        const res = await api.agents.list({ active_only: false });
+        const res = await api.agents.list({ active_only: true });
         const agents = res.data?.agents || [];
 
-        // Build channel tabs: "All" + each registered agent
+        // Build channel tabs: "All" + each active agent
         const agentTabs: ChannelTab[] = agents.map((agent: Agent) => ({
           id: agent.agent_id,
           label: agent.agent_id,
@@ -51,6 +52,23 @@ export default function MessagesPage() {
 
     loadAgents();
   }, []);
+
+  // Clear all messages
+  const handleClearMessages = async () => {
+    if (!confirm('Are you sure you want to clear all messages? This cannot be undone.')) {
+      return;
+    }
+
+    setClearing(true);
+    try {
+      await api.messages.clearAll();
+      setMessages([]);
+    } catch (err) {
+      console.error('Failed to clear messages:', err);
+    } finally {
+      setClearing(false);
+    }
+  };
 
   // Load messages for selected channel
   useEffect(() => {
@@ -89,6 +107,15 @@ export default function MessagesPage() {
             <span className="px-3 py-1 bg-cm-terracotta text-cm-ivory rounded-full text-sm">
               {unreadCount} unread
             </span>
+          )}
+          {messages.length > 0 && (
+            <button
+              onClick={handleClearMessages}
+              disabled={clearing}
+              className="px-4 py-2 bg-cm-sand text-cm-coffee rounded-lg hover:bg-cm-sand/80 transition-colors disabled:opacity-50"
+            >
+              {clearing ? 'Clearing...' : 'Clear All'}
+            </button>
           )}
           <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors">
             + New Message

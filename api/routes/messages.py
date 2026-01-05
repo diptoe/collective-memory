@@ -252,6 +252,39 @@ def register_message_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
+    @ns.route('/clear-all')
+    class ClearAllMessages(Resource):
+        @ns.doc('clear_all_messages')
+        @ns.marshal_with(response_model)
+        def delete(self):
+            """
+            Delete all messages from the queue.
+
+            This is a destructive operation that removes all messages
+            and their read tracking records.
+            """
+            from api.models import db
+
+            try:
+                # Delete all read tracking records first
+                MessageRead.query.delete()
+
+                # Delete all messages
+                count = Message.query.delete()
+
+                db.session.commit()
+
+                return {
+                    'success': True,
+                    'msg': f'Cleared {count} messages',
+                    'data': {
+                        'deleted_count': count
+                    }
+                }
+            except Exception as e:
+                db.session.rollback()
+                return {'success': False, 'msg': str(e)}, 500
+
     @ns.route('/mark-all-read')
     class MarkAllMessagesRead(Resource):
         @ns.doc('mark_all_messages_read')

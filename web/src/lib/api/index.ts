@@ -284,6 +284,8 @@ export const api = {
       apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params }),
     markRead: (messageKey: string) =>
       apiClient.post(`/messages/mark-read/${messageKey}`),
+    clearAll: () =>
+      apiClient.delete<{ deleted_count: number }>('/messages/clear-all'),
   },
 
   // Context
