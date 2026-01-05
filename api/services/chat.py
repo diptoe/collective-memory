@@ -173,6 +173,7 @@ class ChatService:
         # Get provider for model
         try:
             provider = get_provider(model)
+            logger.info(f"Using provider '{provider.name}' for model '{model}'")
         except ValueError as e:
             logger.error(f"Provider error: {e}")
             yield ChatStreamChunk(

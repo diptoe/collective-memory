@@ -141,11 +141,12 @@ export default function ChatPage() {
 
     setClearing(true);
     try {
-      // Clear messages locally
+      // Clear messages from database
+      await api.conversations.clear(conversation.conversation_key);
+      // Clear local state
       setMessages([]);
-
-      // Note: If we had a clear messages endpoint, we'd call it here
-      // For now, we just clear the local state
+    } catch (err) {
+      console.error('Failed to clear chat:', err);
     } finally {
       setClearing(false);
     }

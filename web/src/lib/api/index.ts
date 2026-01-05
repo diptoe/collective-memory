@@ -245,6 +245,8 @@ export const api = {
       apiClient.post<MessageResponse>(`/conversations/${conversationKey}/messages`, { content, role }),
     getMessages: (conversationKey: string, params?: { limit?: number; offset?: number }) =>
       apiClient.get<MessagesResponse>(`/conversations/${conversationKey}/messages`, { params }),
+    clear: (conversationKey: string) =>
+      apiClient.delete(`/conversations/${conversationKey}/clear`),
   },
 
   // Agents

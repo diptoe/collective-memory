@@ -27,13 +27,6 @@ class GoogleProvider(BaseModelProvider):
 
     # Map short model names to full Google model IDs
     MODEL_MAPPING = {
-        # Gemini 1.x models
-        'gemini-pro': 'gemini-1.0-pro',
-        'gemini-1.5-pro': 'gemini-1.5-pro',
-        'gemini-1.5-flash': 'gemini-1.5-flash',
-        # Gemini 2.x models
-        'gemini-2.0-flash': 'gemini-2.0-flash',
-        'gemini-2.0-pro': 'gemini-2.0-pro',
         # Gemini 3.x preview models (pass through as-is)
         'gemini-3-flash-preview': 'gemini-3-flash-preview',
         'gemini-3-pro-preview': 'gemini-3-pro-preview',
@@ -87,7 +80,6 @@ class GoogleProvider(BaseModelProvider):
         # Build config (no stream parameter - streaming is method-based)
         config = genai_types.GenerateContentConfig(
             temperature=temperature,
-            max_output_tokens=max_tokens,
         )
 
         # Add system instruction if provided (as list of Parts)
@@ -96,6 +88,7 @@ class GoogleProvider(BaseModelProvider):
 
         try:
             resolved_model = self._resolve_model(model)
+            logger.info(f"Calling Gemini API: model={resolved_model}, messages={len(contents)}")
 
             # Use streaming API method
             response_stream = self.client.models.generate_content_stream(
@@ -104,13 +97,17 @@ class GoogleProvider(BaseModelProvider):
                 config=config,
             )
 
+            chunk_count = 0
             # Iterate through synchronous stream
             for chunk in response_stream:
                 if hasattr(chunk, 'text') and chunk.text:
+                    chunk_count += 1
                     yield StreamChunk(
                         content=chunk.text,
                         done=False
                     )
+
+            logger.info(f"Gemini streaming complete: {chunk_count} chunks")
 
             # Final chunk
             yield StreamChunk(
