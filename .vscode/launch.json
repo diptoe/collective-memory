@@ -22,6 +22,7 @@
             "name": "API: Flask (debug run.py)",
             "type": "debugpy",
             "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
             "program": "${workspaceFolder}/run.py",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",

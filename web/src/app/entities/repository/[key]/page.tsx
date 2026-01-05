@@ -13,12 +13,9 @@ interface RepositoryProperties {
   default_branch?: string;
   language?: string;
   size_kb?: number;
-  stars?: number;
-  forks?: number;
   open_issues?: number;
   visibility?: string;
   is_archived?: boolean;
-  is_fork?: boolean;
   topics?: string[];
   description?: string;
   created_at?: string;
@@ -32,15 +29,42 @@ interface RepositoryEntity extends Entity {
   properties: RepositoryProperties;
 }
 
+interface Commit {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  additions: number;
+  deletions: number;
+  co_authors: string[];
+}
+
+interface DailyStat {
+  date: string;
+  commits_count: number;
+  additions: number;
+  deletions: number;
+  files_changed: number;
+  unique_authors: number;
+  ai_assisted_commits: number;
+}
+
+type TabType = 'overview' | 'commits' | 'stats' | 'relationships';
+
 export default function RepositoryDetailPage() {
   const params = useParams();
   const router = useRouter();
   const repositoryKey = params.key as string;
 
   const [repository, setRepository] = useState<RepositoryEntity | null>(null);
+  const [commits, setCommits] = useState<Commit[]>([]);
+  const [stats, setStats] = useState<DailyStat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingCommits, setLoadingCommits] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [syncingStats, setSyncingStats] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'relationships'>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const loadRepository = useCallback(async () => {
     try {
@@ -65,16 +89,86 @@ export default function RepositoryDetailPage() {
     }
   }, [repositoryKey]);
 
+  const loadCommits = useCallback(async (ownerRepo: string) => {
+    setLoadingCommits(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/repo/${ownerRepo}/commits?limit=30`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setCommits(data.data?.commits || []);
+      }
+    } catch (err) {
+      console.error('Failed to load commits:', err);
+    } finally {
+      setLoadingCommits(false);
+    }
+  }, []);
+
+  const loadStats = useCallback(async (entityKey: string) => {
+    setLoadingStats(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/stats/${encodeURIComponent(entityKey)}?days=90`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data.data?.stats || []);
+      }
+    } catch (err) {
+      console.error('Failed to load stats:', err);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, []);
+
+  const handleSyncStats = async () => {
+    if (!repository?.properties.url || syncingStats) return;
+
+    setSyncingStats(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/stats/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repository_url: repository.properties.url, days: 90 }),
+      });
+
+      if (response.ok) {
+        // Reload stats after sync
+        loadStats(repository.entity_key);
+      }
+    } catch (err) {
+      console.error('Failed to sync stats:', err);
+    } finally {
+      setSyncingStats(false);
+    }
+  };
+
   useEffect(() => {
     loadRepository();
   }, [loadRepository]);
+
+  // Load commits when switching to commits tab
+  useEffect(() => {
+    if (activeTab === 'commits' && repository?.properties.owner && commits.length === 0) {
+      const ownerRepo = `${repository.properties.owner}/${repository.name}`;
+      loadCommits(ownerRepo);
+    }
+  }, [activeTab, repository, commits.length, loadCommits]);
+
+  // Load stats when switching to stats tab
+  useEffect(() => {
+    if (activeTab === 'stats' && repository && stats.length === 0) {
+      loadStats(repository.entity_key);
+    }
+  }, [activeTab, repository, stats.length, loadStats]);
 
   const handleSync = async (repoUrl?: string) => {
     if (!repoUrl || syncing) return;
 
     setSyncing(true);
     try {
-      // Call the sync endpoint - this will update the entity via the API
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -82,8 +176,12 @@ export default function RepositoryDetailPage() {
       });
 
       if (response.ok) {
-        // Reload the entity to get fresh data
         await loadRepository();
+        // Refresh commits too
+        if (repository?.properties.owner) {
+          const ownerRepo = `${repository.properties.owner}/${repository.name}`;
+          loadCommits(ownerRepo);
+        }
       }
     } catch (err) {
       console.error('Failed to sync repository:', err);
@@ -92,21 +190,23 @@ export default function RepositoryDetailPage() {
     }
   };
 
-  const formatNumber = (num?: number) => {
-    if (num === undefined) return '-';
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
-    return num.toString();
-  };
-
-  const formatSize = (kb?: number) => {
-    if (kb === undefined) return '-';
-    if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`;
-    return `${kb} KB`;
-  };
-
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString();
+  };
+
+  const formatRelativeDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'today';
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return formatDate(dateStr);
   };
 
   const isStale = () => {
@@ -235,30 +335,10 @@ export default function RepositoryDetailPage() {
         )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-cm-cream border-b border-cm-sand">
-        <div className="bg-cm-ivory rounded-lg p-4 text-center">
-          <div className="text-2xl font-semibold text-cm-charcoal">{formatNumber(props.stars)}</div>
-          <div className="text-sm text-cm-coffee">Stars</div>
-        </div>
-        <div className="bg-cm-ivory rounded-lg p-4 text-center">
-          <div className="text-2xl font-semibold text-cm-charcoal">{formatNumber(props.forks)}</div>
-          <div className="text-sm text-cm-coffee">Forks</div>
-        </div>
-        <div className="bg-cm-ivory rounded-lg p-4 text-center">
-          <div className="text-2xl font-semibold text-cm-charcoal">{formatNumber(props.open_issues)}</div>
-          <div className="text-sm text-cm-coffee">Open Issues</div>
-        </div>
-        <div className="bg-cm-ivory rounded-lg p-4 text-center">
-          <div className="text-2xl font-semibold text-cm-charcoal">{formatSize(props.size_kb)}</div>
-          <div className="text-sm text-cm-coffee">Size</div>
-        </div>
-      </div>
-
       {/* Tabs */}
       <div className="border-b border-cm-sand bg-cm-cream">
         <div className="flex">
-          {(['overview', 'relationships'] as const).map((tab) => (
+          {(['overview', 'commits', 'stats', 'relationships'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -319,6 +399,10 @@ export default function RepositoryDetailPage() {
                     <dt className="text-cm-coffee/70">Last Push</dt>
                     <dd className="text-cm-charcoal">{formatDate(props.pushed_at)}</dd>
                   </div>
+                  <div className="flex justify-between">
+                    <dt className="text-cm-coffee/70">Open Issues</dt>
+                    <dd className="text-cm-charcoal">{props.open_issues ?? '-'}</dd>
+                  </div>
                 </dl>
               </div>
 
@@ -340,6 +424,155 @@ export default function RepositoryDetailPage() {
                 </dl>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'commits' && (
+          <div className="max-w-4xl">
+            {loadingCommits ? (
+              <p className="text-cm-coffee">Loading commits...</p>
+            ) : commits.length > 0 ? (
+              <div className="space-y-3">
+                {commits.map((commit) => (
+                  <div
+                    key={commit.sha}
+                    className="p-4 bg-cm-cream border border-cm-sand rounded-lg"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-cm-charcoal font-medium truncate">
+                          {commit.message}
+                        </p>
+                        <div className="flex items-center gap-3 mt-2 text-sm text-cm-coffee">
+                          <span>{commit.author}</span>
+                          <span className="text-cm-coffee/50">•</span>
+                          <span>{formatRelativeDate(commit.date)}</span>
+                          {commit.co_authors.length > 0 && (
+                            <>
+                              <span className="text-cm-coffee/50">•</span>
+                              <span className="text-cm-terracotta">
+                                +{commit.co_authors.length} co-author{commit.co_authors.length > 1 ? 's' : ''}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {commit.co_authors.length > 0 && (
+                          <div className="mt-1 text-xs text-cm-coffee/70">
+                            Co-authored by: {commit.co_authors.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-sm flex-shrink-0">
+                        <span className="text-green-600">+{commit.additions}</span>
+                        <span className="text-red-600">-{commit.deletions}</span>
+                        <code className="px-2 py-0.5 bg-cm-sand rounded text-xs font-mono">
+                          {commit.sha}
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-cm-coffee/70 italic">No commits found. Click Sync to fetch commit history.</p>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'stats' && (
+          <div className="max-w-4xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-cm-charcoal">Daily Activity Statistics</h3>
+              <button
+                onClick={handleSyncStats}
+                disabled={syncingStats}
+                className="px-4 py-1.5 text-sm bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {syncingStats ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Sync Stats
+                  </>
+                )}
+              </button>
+            </div>
+
+            {loadingStats ? (
+              <p className="text-cm-coffee">Loading stats...</p>
+            ) : stats.length > 0 ? (
+              <div className="space-y-6">
+                {/* Summary cards */}
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="p-4 bg-cm-cream border border-cm-sand rounded-lg">
+                    <p className="text-2xl font-semibold text-cm-charcoal">
+                      {stats.reduce((sum, s) => sum + s.commits_count, 0)}
+                    </p>
+                    <p className="text-sm text-cm-coffee">Total Commits</p>
+                  </div>
+                  <div className="p-4 bg-cm-cream border border-cm-sand rounded-lg">
+                    <p className="text-2xl font-semibold text-green-600">
+                      +{stats.reduce((sum, s) => sum + s.additions, 0).toLocaleString()}
+                    </p>
+                    <p className="text-sm text-cm-coffee">Lines Added</p>
+                  </div>
+                  <div className="p-4 bg-cm-cream border border-cm-sand rounded-lg">
+                    <p className="text-2xl font-semibold text-red-600">
+                      -{stats.reduce((sum, s) => sum + s.deletions, 0).toLocaleString()}
+                    </p>
+                    <p className="text-sm text-cm-coffee">Lines Removed</p>
+                  </div>
+                  <div className="p-4 bg-cm-cream border border-cm-sand rounded-lg">
+                    <p className="text-2xl font-semibold text-cm-terracotta">
+                      {stats.reduce((sum, s) => sum + s.ai_assisted_commits, 0)}
+                    </p>
+                    <p className="text-sm text-cm-coffee">AI-Assisted</p>
+                  </div>
+                </div>
+
+                {/* Daily activity table */}
+                <div className="border border-cm-sand rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-cm-cream">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium text-cm-coffee">Date</th>
+                        <th className="px-4 py-3 text-right font-medium text-cm-coffee">Commits</th>
+                        <th className="px-4 py-3 text-right font-medium text-cm-coffee">Additions</th>
+                        <th className="px-4 py-3 text-right font-medium text-cm-coffee">Deletions</th>
+                        <th className="px-4 py-3 text-right font-medium text-cm-coffee">Authors</th>
+                        <th className="px-4 py-3 text-right font-medium text-cm-coffee">AI</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-cm-sand">
+                      {stats.slice().reverse().map((stat) => (
+                        <tr key={stat.date} className="hover:bg-cm-cream/50">
+                          <td className="px-4 py-3 text-cm-charcoal">{formatDate(stat.date)}</td>
+                          <td className="px-4 py-3 text-right text-cm-charcoal">{stat.commits_count}</td>
+                          <td className="px-4 py-3 text-right text-green-600">+{stat.additions}</td>
+                          <td className="px-4 py-3 text-right text-red-600">-{stat.deletions}</td>
+                          <td className="px-4 py-3 text-right text-cm-charcoal">{stat.unique_authors}</td>
+                          <td className="px-4 py-3 text-right text-cm-terracotta">{stat.ai_assisted_commits}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-cm-coffee/70 italic mb-4">No stats available yet.</p>
+                <p className="text-sm text-cm-coffee/50">Click "Sync Stats" to fetch and aggregate commit statistics from GitHub.</p>
+              </div>
+            )}
           </div>
         )}
 

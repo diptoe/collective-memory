@@ -17,6 +17,7 @@ from api.routes.context import register_context_routes
 from api.routes.search import register_search_routes
 from api.routes.documents import register_document_routes
 from api.routes.ner import register_ner_routes
+from api.routes.github import register_github_routes
 
 
 def register_routes(api: Api):
@@ -33,3 +34,4 @@ def register_routes(api: Api):
     register_search_routes(api)
     register_document_routes(api)
     register_ner_routes(api)
+    register_github_routes(api)

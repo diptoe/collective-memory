@@ -14,10 +14,12 @@ from dataclasses import dataclass
 try:
     from github import Github, GithubException
     GITHUB_AVAILABLE = True
-except ImportError:
+    print("[GitHub Service] PyGithub imported successfully")
+except ImportError as e:
     GITHUB_AVAILABLE = False
     Github = None
     GithubException = Exception
+    print(f"[GitHub Service] PyGithub import failed: {e}")
 
 
 @dataclass
@@ -296,6 +298,12 @@ class GitHubService:
                 # Get commit stats
                 stats = commit.stats
 
+                # Get file count - commit.files can be a PaginatedList, so count via iteration
+                try:
+                    files_changed = sum(1 for _ in commit.files) if commit.files else 0
+                except Exception:
+                    files_changed = 0
+
                 result.append(CommitInfo(
                     sha=commit.sha,
                     message=commit.commit.message,
@@ -304,7 +312,7 @@ class GitHubService:
                     date=commit.commit.author.date if commit.commit.author else datetime.now(),
                     additions=stats.additions if stats else 0,
                     deletions=stats.deletions if stats else 0,
-                    files_changed=len(commit.files) if commit.files else 0,
+                    files_changed=files_changed,
                     co_authors=co_authors,
                     url=commit.html_url,
                 ))
@@ -448,5 +456,6 @@ def github_service() -> Optional[GitHubService]:
     """
     try:
         return get_github_service()
-    except (ImportError, ValueError):
+    except (ImportError, ValueError) as e:
+        print(f"[GitHub Service] Failed to initialize: {e}")
         return None

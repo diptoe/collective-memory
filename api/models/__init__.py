@@ -18,6 +18,7 @@ from api.models.conversation import Conversation
 from api.models.chat_message import ChatMessage
 from api.models.table import Table
 from api.models.table_status import TableStatus
+from api.models.repository_stats import RepositoryStats
 
 __all__ = [
     'db',
@@ -42,4 +43,5 @@ __all__ = [
     'ChatMessage',
     'Table',
     'TableStatus',
+    'RepositoryStats',
 ]

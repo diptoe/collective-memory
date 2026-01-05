@@ -4,10 +4,12 @@ Collective Memory Platform - Configuration
 Environment-based configuration following Jai API patterns.
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file (use project root)
+PROJECT_ROOT = Path(__file__).parent.parent
+load_dotenv(PROJECT_ROOT / '.env')
 
 # Environment type
 ENV_TYPE = os.getenv('CM_ENV', 'dev')
