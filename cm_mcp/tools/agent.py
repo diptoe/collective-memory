@@ -407,7 +407,8 @@ async def identify(
                 output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"
 
             output += "\nYou are now registered and can collaborate in CM.\n"
-            output += "Use `update_focus` to let others know what you're working on."
+            output += "Use `update_focus` to let others know what you're working on.\n\n"
+            output += "*Heartbeats are sent automatically when you use CM tools to keep you active.*"
 
             return [types.TextContent(type="text", text=output)]
         else:

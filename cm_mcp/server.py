@@ -100,6 +100,16 @@ update_focus(focus="Now working on X")
 
 Periodically ask yourself: "Am I still focused on what I registered?"
 
+## STAYING ACTIVE
+
+Heartbeats are sent automatically whenever you use any CM tool. This keeps you visible
+as an active collaborator. If you go 15 minutes without using CM tools, you'll appear offline.
+
+To stay active during a long session:
+- Use `get_messages()` to check for messages from other agents
+- Use `list_agents()` to see who else is collaborating
+- Use `update_focus()` when your task changes
+
 ## Available Tools (27 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
@@ -824,6 +834,14 @@ RETURNS: Contributors ranked by commit count with percentages.""",
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     """Handle tool calls by dispatching to appropriate tool functions"""
+
+    # Send heartbeat on every tool call (if registered) to keep agent active
+    # Skip for identify/get_my_identity since they handle registration themselves
+    if _session_state.get("registered") and name not in ("identify", "get_my_identity"):
+        try:
+            await send_heartbeat()
+        except Exception:
+            pass  # Don't fail tool call if heartbeat fails
 
     # Entity tools
     if name == "search_entities":
