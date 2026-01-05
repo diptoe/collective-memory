@@ -169,7 +169,8 @@ async def identify(
         output += "\n"
 
         # Available models
-        output += "## Available Models (optional)\n"
+        output += "## Available Models\n"
+        output += "*Use model_id when registering (not model_key)*\n\n"
         if options["models"]:
             by_provider = {}
             for m in options["models"]:
@@ -181,7 +182,7 @@ async def identify(
             for provider, models in by_provider.items():
                 output += f"**{provider.title()}:**\n"
                 for m in models:
-                    output += f"- `{m['model_key']}` - {m['name']}\n"
+                    output += f"- {m['name']}: `{m['model_id']}`\n"
         else:
             output += "- *No models registered*\n"
         output += "\n"
