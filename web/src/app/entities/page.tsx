@@ -24,6 +24,7 @@ function EntitiesContent() {
 
   // Read filter from URL query param - null means show types summary
   const filterType = searchParams.get('type');
+  const browseAll = filterType === 'all';
   const showTypesSummary = !filterType;
 
   // Navigate to entity detail page
@@ -44,7 +45,7 @@ function EntitiesContent() {
     loadTypes();
   }, []);
 
-  // Load entities when filter changes (only if a type is selected)
+  // Load entities when filter changes (only if a type is selected or browse all)
   useEffect(() => {
     async function loadEntities() {
       if (showTypesSummary) {
@@ -52,7 +53,10 @@ function EntitiesContent() {
         return;
       }
       try {
-        const params: Record<string, string> = { type: filterType };
+        const params: Record<string, string> = {};
+        if (!browseAll && filterType) {
+          params.type = filterType;
+        }
         const res = await api.entities.list(params);
         setEntities(res.data?.entities || []);
       } catch (err) {
@@ -63,7 +67,7 @@ function EntitiesContent() {
     }
 
     loadEntities();
-  }, [filterType, showTypesSummary]);
+  }, [filterType, showTypesSummary, browseAll]);
 
   const filteredEntities = entities.filter((entity) =>
     entity.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -83,13 +87,21 @@ function EntitiesContent() {
   if (showTypesSummary) {
     return (
       <div className="p-6">
-        <div className="mb-8">
-          <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
-            Entities
-          </h1>
-          <p className="text-cm-coffee mt-1">
-            Browse and manage entities in the knowledge graph
-          </p>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+              Entities
+            </h1>
+            <p className="text-cm-coffee mt-1">
+              Browse and manage entities in the knowledge graph
+            </p>
+          </div>
+          <Link
+            href="/entities?type=all"
+            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
+          >
+            Browse All
+          </Link>
         </div>
 
         {/* Summary stats */}
@@ -179,7 +191,10 @@ function EntitiesContent() {
     );
   }
 
-  // Entity list view (when type is selected)
+  // Entity list view (when type is selected or browse all)
+  const displayType = browseAll ? 'All Entities' : filterType;
+  const searchPlaceholder = browseAll ? 'Search entities...' : `Search ${filterType?.toLowerCase()}s...`;
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -194,28 +209,30 @@ function EntitiesContent() {
             <span className="text-cm-coffee/50">/</span>
             <span
               className="font-medium"
-              style={{ color: TYPE_COLORS[filterType] || TYPE_COLORS.Default }}
+              style={{ color: browseAll ? TYPE_COLORS.Default : (TYPE_COLORS[filterType!] || TYPE_COLORS.Default) }}
             >
-              {filterType}
+              {displayType}
             </span>
           </div>
           <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
-            {filterType}
+            {displayType}
           </h1>
           <p className="text-cm-coffee mt-1">
             {filteredEntities.length} {filteredEntities.length === 1 ? 'entity' : 'entities'}
           </p>
         </div>
-        <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors">
-          + New {filterType}
-        </button>
+        {!browseAll && (
+          <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors">
+            + New {filterType}
+          </button>
+        )}
       </div>
 
       {/* Search */}
       <div className="mb-6">
         <input
           type="text"
-          placeholder={`Search ${filterType.toLowerCase()}s...`}
+          placeholder={searchPlaceholder}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full max-w-md px-4 py-2 bg-cm-cream border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta text-cm-charcoal"
@@ -225,9 +242,9 @@ function EntitiesContent() {
       {/* Entity grid */}
       {filteredEntities.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-cm-coffee mb-4">No {filterType.toLowerCase()}s found.</p>
+          <p className="text-cm-coffee mb-4">No entities found.</p>
           <p className="text-sm text-cm-coffee/70">
-            Create your first {filterType.toLowerCase()} or adjust your search.
+            {browseAll ? 'Create your first entity to get started.' : `Create your first ${filterType?.toLowerCase()} or adjust your search.`}
           </p>
         </div>
       ) : (
