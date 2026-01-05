@@ -36,7 +36,7 @@ async def search_entities(
         if query:
             params["search"] = query
         if entity_type:
-            params["entity_type"] = entity_type
+            params["type"] = entity_type  # API expects "type" not "entity_type"
 
         result = await _make_request(config, "GET", "/entities", params=params, agent_id=agent_id)
 
