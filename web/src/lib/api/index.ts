@@ -15,7 +15,7 @@ interface ProvidersResponse { providers: string[] }
 interface ClientsResponse { clients: Client[] }
 interface ClientResponse extends Client {}
 interface PersonasResponse { personas: Persona[] }
-interface PersonaResponse { persona: Persona }
+interface PersonaResponse extends Persona {}
 interface ConversationsResponse { conversations: Conversation[] }
 interface ConversationResponse { conversation: Conversation }
 interface MessagesResponse { messages: ChatMessage[] }

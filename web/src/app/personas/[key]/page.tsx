@@ -39,9 +39,9 @@ export default function PersonaDetailPage({ params }: { params: Promise<{ key: s
     try {
       setLoading(true);
       const res = await api.personas.get(key, true);
-      const p = res.data?.persona;
-      
-      if (p) {
+      const p = res.data;
+
+      if (p && p.persona_key) {
         setPersona(p);
         // Initialize form data
         setFormData({
