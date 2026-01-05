@@ -258,12 +258,18 @@ export default function MessagesPage() {
                 href={`/messages/${message.message_key}`}
                 className={cn(
                   'block p-4 transition-colors cursor-pointer hover:bg-cm-sand/30',
-                  !message.is_read && 'bg-cm-terracotta/5'
+                  !message.is_read && 'bg-cm-terracotta/5',
+                  message.autonomous && 'bg-purple-50 border-l-4 border-purple-500'
                 )}
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-cm-charcoal text-cm-ivory flex items-center justify-center text-sm font-mono">
-                    {typeIcons[message.message_type] || '?'}
+                  <div className={cn(
+                    'w-8 h-8 rounded-lg flex items-center justify-center text-sm font-mono',
+                    message.autonomous
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-cm-charcoal text-cm-ivory'
+                  )}>
+                    {message.autonomous ? '🤖' : (typeIcons[message.message_type] || '?')}
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -286,6 +292,12 @@ export default function MessagesPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        {/* Autonomous task badge */}
+                        {message.autonomous && (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-purple-600 text-white font-medium flex items-center gap-1">
+                            🤖 AUTONOMOUS
+                          </span>
+                        )}
                         {/* Reply count badge */}
                         {message.reply_count !== undefined && message.reply_count > 0 && (
                           <span className="px-2 py-0.5 text-xs rounded-full bg-cm-terracotta/10 text-cm-terracotta flex items-center gap-1">

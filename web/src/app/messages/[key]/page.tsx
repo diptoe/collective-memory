@@ -46,14 +46,21 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
     <div
       className={cn(
         'p-4 rounded-lg border transition-colors',
-        isHighlighted
-          ? 'bg-cm-terracotta/10 border-cm-terracotta'
-          : 'bg-cm-ivory border-cm-sand hover:border-cm-coffee/30'
+        message.autonomous
+          ? 'bg-purple-50 border-purple-500 border-l-4'
+          : isHighlighted
+            ? 'bg-cm-terracotta/10 border-cm-terracotta'
+            : 'bg-cm-ivory border-cm-sand hover:border-cm-coffee/30'
       )}
     >
       <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-cm-charcoal text-cm-ivory flex items-center justify-center text-sm font-mono flex-shrink-0">
-          {typeIcons[message.message_type] || '?'}
+        <div className={cn(
+          'w-8 h-8 rounded-lg flex items-center justify-center text-sm font-mono flex-shrink-0',
+          message.autonomous
+            ? 'bg-purple-600 text-white'
+            : 'bg-cm-charcoal text-cm-ivory'
+        )}>
+          {message.autonomous ? '🤖' : (typeIcons[message.message_type] || '?')}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -68,6 +75,11 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
               </span>
             </div>
             <div className="flex items-center gap-2">
+              {message.autonomous && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-purple-600 text-white font-medium">
+                  🤖 AUTONOMOUS
+                </span>
+              )}
               <span
                 className={cn(
                   'px-2 py-0.5 text-xs rounded-full',
@@ -143,6 +155,7 @@ export default function MessageDetailPage() {
   const [replyPriority, setReplyPriority] = useState<typeof PRIORITIES[number]>('normal');
   const [sending, setSending] = useState(false);
   const [activeAgents, setActiveAgents] = useState<Agent[]>([]);
+  const [deleting, setDeleting] = useState(false);
 
   // Track if we've ensured the person entity exists
   const personEnsured = useRef(false);
@@ -178,6 +191,28 @@ export default function MessageDetailPage() {
     loadMessage();
     loadAgents();
   }, [messageKey]);
+
+  const handleDeleteThread = async () => {
+    if (!message) return;
+
+    const replyCount = message.reply_count || message.replies?.length || 0;
+    const confirmMsg = replyCount > 0
+      ? `Are you sure you want to delete this message and its ${replyCount} replies? This cannot be undone.`
+      : 'Are you sure you want to delete this message? This cannot be undone.';
+
+    if (!confirm(confirmMsg)) return;
+
+    setDeleting(true);
+    try {
+      await api.messages.deleteThread(message.message_key);
+      // Navigate back to messages list after deletion
+      window.location.href = '/messages';
+    } catch (err) {
+      console.error('Failed to delete thread:', err);
+      alert('Failed to delete thread');
+      setDeleting(false);
+    }
+  };
 
   // Ensure person entity exists in the knowledge graph
   const ensurePersonEntity = async () => {
@@ -272,12 +307,23 @@ export default function MessageDetailPage() {
           </svg>
           Back to messages
         </Link>
-        <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
-          Message Thread
-        </h1>
-        <p className="text-cm-coffee mt-1">
-          #{message.channel} · {formatDateTime(message.created_at)}
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+              Message Thread
+            </h1>
+            <p className="text-cm-coffee mt-1">
+              #{message.channel} · {formatDateTime(message.created_at)}
+            </p>
+          </div>
+          <button
+            onClick={handleDeleteThread}
+            disabled={deleting}
+            className="px-3 py-1.5 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete Thread'}
+          </button>
+        </div>
       </div>
 
       {/* Parent message (if this is a reply) */}
