@@ -20,6 +20,8 @@ from api.models.chat_message import ChatMessage
 from api.models.table import Table
 from api.models.table_status import TableStatus
 from api.models.repository_stats import RepositoryStats
+from api.models.commit import Commit
+from api.models.metric import Metric, MetricTypes
 
 __all__ = [
     'db',
@@ -47,4 +49,7 @@ __all__ = [
     'Table',
     'TableStatus',
     'RepositoryStats',
+    'Commit',
+    'Metric',
+    'MetricTypes',
 ]

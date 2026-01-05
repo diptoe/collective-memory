@@ -7,8 +7,8 @@ from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 from datetime import datetime, timezone
 
-from api.models import Entity, RepositoryStats, db
-from api.services.github import github_service
+from api.models import Entity, RepositoryStats, Commit, Metric, MetricTypes, db
+from api.services.github import github_service, store_commits, store_repository_metrics
 from collections import defaultdict
 
 
@@ -97,10 +97,24 @@ def register_github_routes(api: Api):
 
                 db.session.commit()
 
+                # Store metrics snapshot
+                metrics_result = store_repository_metrics(entity_key, repo_info)
+
+                # Optionally sync commits (if requested)
+                commits_result = None
+                if data.get('sync_commits', True):
+                    owner, repo = repo_info.full_name.split('/')
+                    commits = gh.get_commits(owner, repo, limit=100)
+                    commits_result = store_commits(entity_key, commits)
+
                 return {
                     'success': True,
                     'msg': msg,
-                    'data': {'entity': entity.to_dict()}
+                    'data': {
+                        'entity': entity.to_dict(),
+                        'metrics': metrics_result,
+                        'commits': commits_result,
+                    }
                 }
 
             except Exception as e:
@@ -454,6 +468,221 @@ def register_github_routes(api: Api):
                     'data': {
                         'stats': [s.to_dict() for s in stats],
                         'count': len(stats),
+                    }
+                }
+
+            except Exception as e:
+                return {
+                    'success': False,
+                    'msg': str(e),
+                    'data': None
+                }, 500
+
+    # ========== Stored Commits Routes ==========
+
+    @ns.route('/commits/<path:entity_key>')
+    @ns.param('entity_key', 'Repository entity key')
+    class StoredCommits(Resource):
+        @ns.doc('get_stored_commits')
+        @ns.param('limit', 'Maximum commits to return', type=int, default=100)
+        @ns.param('offset', 'Offset for pagination', type=int, default=0)
+        @ns.marshal_with(response_model)
+        def get(self, entity_key):
+            """Get stored commits for a repository."""
+            limit = request.args.get('limit', 100, type=int)
+            offset = request.args.get('offset', 0, type=int)
+
+            try:
+                commits = Commit.get_by_repository(entity_key, limit=limit, offset=offset)
+                total = Commit.query.filter_by(repository_key=entity_key).count()
+
+                return {
+                    'success': True,
+                    'msg': f'Retrieved {len(commits)} commits',
+                    'data': {
+                        'commits': [c.to_dict() for c in commits],
+                        'count': len(commits),
+                        'total': total,
+                    }
+                }
+
+            except Exception as e:
+                return {
+                    'success': False,
+                    'msg': str(e),
+                    'data': None
+                }, 500
+
+    @ns.route('/commits/ai-assisted')
+    class AIAssistedCommits(Resource):
+        @ns.doc('get_ai_assisted_commits')
+        @ns.param('repository_key', 'Filter by repository entity key')
+        @ns.param('limit', 'Maximum commits to return', type=int, default=100)
+        @ns.marshal_with(response_model)
+        def get(self):
+            """Get commits with AI co-authors."""
+            repository_key = request.args.get('repository_key')
+            limit = request.args.get('limit', 100, type=int)
+
+            try:
+                commits = Commit.get_ai_assisted(repository_key=repository_key, limit=limit)
+
+                return {
+                    'success': True,
+                    'msg': f'Retrieved {len(commits)} AI-assisted commits',
+                    'data': {
+                        'commits': [c.to_dict() for c in commits],
+                        'count': len(commits),
+                    }
+                }
+
+            except Exception as e:
+                return {
+                    'success': False,
+                    'msg': str(e),
+                    'data': None
+                }, 500
+
+    @ns.route('/commits/by-author/<path:author_email>')
+    @ns.param('author_email', 'Author email address')
+    class CommitsByAuthor(Resource):
+        @ns.doc('get_commits_by_author')
+        @ns.param('limit', 'Maximum commits to return', type=int, default=100)
+        @ns.marshal_with(response_model)
+        def get(self, author_email):
+            """Get commits by author email."""
+            limit = request.args.get('limit', 100, type=int)
+
+            try:
+                commits = Commit.get_by_author(author_email, limit=limit)
+
+                return {
+                    'success': True,
+                    'msg': f'Retrieved {len(commits)} commits by {author_email}',
+                    'data': {
+                        'commits': [c.to_dict() for c in commits],
+                        'count': len(commits),
+                    }
+                }
+
+            except Exception as e:
+                return {
+                    'success': False,
+                    'msg': str(e),
+                    'data': None
+                }, 500
+
+    # ========== Metrics Routes ==========
+
+    @ns.route('/metrics/<path:entity_key>')
+    @ns.param('entity_key', 'Entity key to get metrics for')
+    class EntityMetrics(Resource):
+        @ns.doc('get_entity_metrics')
+        @ns.param('metric_type', 'Filter by metric type (e.g., stars, forks)')
+        @ns.param('limit', 'Maximum metrics to return', type=int, default=100)
+        @ns.marshal_with(response_model)
+        def get(self, entity_key):
+            """Get metrics for an entity."""
+            metric_type = request.args.get('metric_type')
+            limit = request.args.get('limit', 100, type=int)
+
+            try:
+                metrics = Metric.get_for_entity(entity_key, metric_type=metric_type, limit=limit)
+
+                return {
+                    'success': True,
+                    'msg': f'Retrieved {len(metrics)} metrics',
+                    'data': {
+                        'metrics': [m.to_dict() for m in metrics],
+                        'count': len(metrics),
+                    }
+                }
+
+            except Exception as e:
+                return {
+                    'success': False,
+                    'msg': str(e),
+                    'data': None
+                }, 500
+
+    @ns.route('/metrics/<path:entity_key>/timeseries')
+    @ns.param('entity_key', 'Entity key')
+    class MetricsTimeSeries(Resource):
+        @ns.doc('get_metrics_timeseries')
+        @ns.param('metric_type', 'Metric type (required)', required=True)
+        @ns.param('days', 'Number of days of history', type=int, default=90)
+        @ns.marshal_with(response_model)
+        def get(self, entity_key):
+            """Get time series data for a metric."""
+            metric_type = request.args.get('metric_type')
+            days = request.args.get('days', 90, type=int)
+
+            if not metric_type:
+                return {
+                    'success': False,
+                    'msg': 'metric_type is required',
+                    'data': None
+                }, 400
+
+            try:
+                from datetime import timedelta
+                start_date = datetime.now(timezone.utc) - timedelta(days=days)
+                metrics = Metric.get_time_series(entity_key, metric_type, start_date=start_date)
+
+                return {
+                    'success': True,
+                    'msg': f'Retrieved {len(metrics)} data points',
+                    'data': {
+                        'metric_type': metric_type,
+                        'series': [
+                            {
+                                'timestamp': m.recorded_at.isoformat(),
+                                'value': m.value,
+                            }
+                            for m in metrics
+                        ],
+                        'count': len(metrics),
+                    }
+                }
+
+            except Exception as e:
+                return {
+                    'success': False,
+                    'msg': str(e),
+                    'data': None
+                }, 500
+
+    @ns.route('/metrics/<path:entity_key>/latest')
+    @ns.param('entity_key', 'Entity key')
+    class LatestMetrics(Resource):
+        @ns.doc('get_latest_metrics')
+        @ns.marshal_with(response_model)
+        def get(self, entity_key):
+            """Get latest value for each metric type."""
+            try:
+                # Get latest for common metrics
+                metric_types = [
+                    MetricTypes.STARS,
+                    MetricTypes.FORKS,
+                    MetricTypes.OPEN_ISSUES,
+                    MetricTypes.SIZE_KB,
+                ]
+
+                latest = {}
+                for mt in metric_types:
+                    metric = Metric.get_latest(entity_key, mt)
+                    if metric:
+                        latest[mt] = {
+                            'value': metric.value,
+                            'recorded_at': metric.recorded_at.isoformat(),
+                        }
+
+                return {
+                    'success': True,
+                    'msg': f'Retrieved {len(latest)} latest metrics',
+                    'data': {
+                        'entity_key': entity_key,
+                        'metrics': latest,
                     }
                 }
 

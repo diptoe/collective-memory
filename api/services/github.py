@@ -459,3 +459,114 @@ def github_service() -> Optional[GitHubService]:
     except (ImportError, ValueError) as e:
         print(f"[GitHub Service] Failed to initialize: {e}")
         return None
+
+
+def store_commits(repository_key: str, commits: List[CommitInfo]) -> Dict[str, Any]:
+    """
+    Store commits to the database.
+
+    Args:
+        repository_key: The entity key of the repository
+        commits: List of CommitInfo dataclasses from GitHub
+
+    Returns:
+        Dict with counts of created, updated, and skipped commits
+    """
+    from api.models import db, Commit
+
+    created = 0
+    updated = 0
+    skipped = 0
+
+    for commit_info in commits:
+        # Check if commit already exists
+        existing = Commit.get_by_sha(repository_key, commit_info.sha)
+
+        if existing:
+            # Update existing commit
+            existing.additions = commit_info.additions
+            existing.deletions = commit_info.deletions
+            existing.files_changed = commit_info.files_changed
+            updated += 1
+        else:
+            # Detect AI co-authors
+            ai_coauthors = []
+            for coauthor in commit_info.co_authors:
+                coauthor_lower = coauthor.lower()
+                if 'claude' in coauthor_lower:
+                    ai_coauthors.append('Claude')
+                elif 'copilot' in coauthor_lower or 'github' in coauthor_lower:
+                    ai_coauthors.append('GitHub Copilot')
+                elif 'gpt' in coauthor_lower or 'openai' in coauthor_lower:
+                    ai_coauthors.append('GPT')
+                elif 'gemini' in coauthor_lower or 'google' in coauthor_lower:
+                    ai_coauthors.append('Gemini')
+
+            # Create new commit
+            new_commit = Commit(
+                sha=commit_info.sha,
+                repository_key=repository_key,
+                message=commit_info.message,
+                author_name=commit_info.author_name,
+                author_email=commit_info.author_email,
+                committed_at=commit_info.date,
+                authored_at=commit_info.date,
+                additions=commit_info.additions,
+                deletions=commit_info.deletions,
+                files_changed=commit_info.files_changed,
+                ai_coauthors=ai_coauthors if ai_coauthors else [],
+            )
+            db.session.add(new_commit)
+            created += 1
+
+    db.session.commit()
+
+    return {
+        'created': created,
+        'updated': updated,
+        'skipped': skipped,
+        'total': len(commits),
+    }
+
+
+def store_repository_metrics(repository_key: str, repo_info) -> Dict[str, Any]:
+    """
+    Store repository metrics (stars, forks, etc.) to the database.
+
+    Args:
+        repository_key: The entity key of the repository
+        repo_info: RepositoryInfo dataclass from GitHub
+
+    Returns:
+        Dict with count of metrics recorded
+    """
+    from api.models import db, Metric, MetricTypes
+
+    now = datetime.now(timezone.utc)
+    metrics_recorded = 0
+
+    # Record each metric type
+    metric_values = [
+        (MetricTypes.STARS, repo_info.stars),
+        (MetricTypes.FORKS, repo_info.forks),
+        (MetricTypes.OPEN_ISSUES, repo_info.open_issues),
+        (MetricTypes.SIZE_KB, repo_info.size_kb),
+    ]
+
+    for metric_type, value in metric_values:
+        if value is not None:
+            Metric.record(
+                entity_key=repository_key,
+                metric_type=metric_type,
+                value=float(value),
+                recorded_at=now,
+                extra={'source': 'github_api'},
+            )
+            metrics_recorded += 1
+
+    db.session.commit()
+
+    return {
+        'metrics_recorded': metrics_recorded,
+        'recorded_at': now.isoformat(),
+    }
