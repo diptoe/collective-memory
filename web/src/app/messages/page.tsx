@@ -1,10 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Message, Agent } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
+
+// Get person ID from environment
+const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'unknown-user';
+
+// Derive display name from person ID (e.g., 'wayne-houlden' -> 'Wayne Houlden')
+function personIdToName(personId: string): string {
+  return personId
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message'] as const;
 const PRIORITIES = ['normal', 'high', 'urgent'] as const;
@@ -42,6 +53,9 @@ export default function MessagesPage() {
 
   // Message detail modal state
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+
+  // Track if we've ensured the person entity exists
+  const personEnsured = useRef(false);
 
   // Load messages and extract channels
   const loadMessages = async () => {
@@ -99,14 +113,44 @@ export default function MessagesPage() {
     }
   };
 
+  // Ensure person entity exists in the knowledge graph
+  const ensurePersonEntity = async () => {
+    if (personEnsured.current || PERSON_ID === 'unknown-user') return;
+
+    try {
+      // Check if person exists
+      const res = await api.entities.get(PERSON_ID);
+      if (res.data?.entity?.entity_key) {
+        personEnsured.current = true;
+        return;
+      }
+    } catch {
+      // Entity doesn't exist, create it with PERSON_ID as the key
+      try {
+        await api.entities.create({
+          entity_key: PERSON_ID,
+          entity_type: 'Person',
+          name: personIdToName(PERSON_ID),
+          properties: { source: 'web-ui' },
+        });
+        personEnsured.current = true;
+      } catch (createErr) {
+        console.error('Failed to create person entity:', createErr);
+      }
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!newMessageContent.trim()) return;
 
     setSending(true);
     try {
+      // Ensure person entity exists before first message
+      await ensurePersonEntity();
+
       await api.messages.post({
         channel: newMessageChannel,
-        from_agent: 'web-ui',
+        from_agent: `human:${PERSON_ID}`,
         to_agent: newMessageRecipient === 'broadcast' ? undefined : newMessageRecipient,
         message_type: newMessageType,
         content: { text: newMessageContent },

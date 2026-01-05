@@ -165,7 +165,7 @@ export const api = {
       apiClient.get<EntitiesResponse>('/entities', { params }),
     get: (key: string, includeRelationships = false) =>
       apiClient.get<EntityResponse>(`/entities/${key}`, { params: { include_relationships: includeRelationships } }),
-    create: (data: { entity_type: string; name: string; properties?: Record<string, unknown>; context_domain?: string }) =>
+    create: (data: { entity_key?: string; entity_type: string; name: string; properties?: Record<string, unknown>; context_domain?: string }) =>
       apiClient.post<EntityResponse>('/entities', data),
     update: (key: string, data: Record<string, unknown>) =>
       apiClient.put<EntityResponse>(`/entities/${key}`, data),

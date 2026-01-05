@@ -94,13 +94,20 @@ def register_entity_routes(api: Api):
         @ns.expect(entity_create)
         @ns.marshal_with(response_model, code=201)
         def post(self):
-            """Create a new entity."""
+            """Create a new entity. Optionally specify entity_key for deterministic keys."""
             data = request.json
 
             if not data.get('entity_type'):
                 return {'success': False, 'msg': 'entity_type is required'}, 400
             if not data.get('name'):
                 return {'success': False, 'msg': 'name is required'}, 400
+
+            # Check if entity_key is specified and already exists
+            custom_key = data.get('entity_key')
+            if custom_key:
+                existing = Entity.get_by_key(custom_key)
+                if existing:
+                    return {'success': False, 'msg': f'Entity with key {custom_key} already exists'}, 409
 
             entity = Entity(
                 entity_type=data['entity_type'],
@@ -110,6 +117,10 @@ def register_entity_routes(api: Api):
                 confidence=data.get('confidence', 1.0),
                 source=data.get('source')
             )
+
+            # Override auto-generated key if custom key provided
+            if custom_key:
+                entity.entity_key = custom_key
 
             try:
                 entity.save()
