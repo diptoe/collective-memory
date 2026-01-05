@@ -359,7 +359,9 @@ def register_agent_routes(api: Api):
         @ns.doc('agent_heartbeat')
         @ns.marshal_with(response_model)
         def post(self, agent_id):
-            """Update agent heartbeat."""
+            """Update agent heartbeat. Returns unread message count."""
+            from api.models import Message
+
             agent = Agent.get_by_agent_id(agent_id)
             if not agent:
                 return {'success': False, 'msg': 'Agent not found'}, 404
@@ -372,10 +374,23 @@ def register_agent_routes(api: Api):
                     agent_key=agent.agent_key,
                     status=agent.status.get('progress') if agent.status else None
                 )
+
+                # Get unread message count for this agent
+                unread_count = Message.get_unread_count(agent_id=agent_id)
+
+                # Build response with message notification
+                agent_data = agent.to_dict()
+                agent_data['unread_messages'] = unread_count
+
+                if unread_count > 0:
+                    msg = f'Heartbeat updated. ACTION REQUIRED: You have {unread_count} unread message(s). Use get_messages to check them.'
+                else:
+                    msg = 'Heartbeat updated'
+
                 return {
                     'success': True,
-                    'msg': 'Heartbeat updated',
-                    'data': agent.to_dict()
+                    'msg': msg,
+                    'data': agent_data
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500

@@ -922,112 +922,128 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
     # Send heartbeat on every tool call (if registered) to keep agent active
     # Skip for identify/get_my_identity since they handle registration themselves
-    if _session_state.get("registered") and name not in ("identify", "get_my_identity"):
+    # Skip for get_messages/mark_* since those are message-related
+    unread_count = 0
+    message_tools = ("get_messages", "mark_message_read", "mark_all_messages_read", "send_message")
+    if _session_state.get("registered") and name not in ("identify", "get_my_identity", *message_tools):
         try:
-            await send_heartbeat()
+            unread_count = await send_heartbeat()
         except Exception:
             pass  # Don't fail tool call if heartbeat fails
 
+    # Helper to append unread notice to results
+    def maybe_append_unread_notice(result: list[types.TextContent]) -> list[types.TextContent]:
+        if unread_count > 0 and name not in message_tools:
+            notice = f"\n\n---\n⚠️ **ACTION REQUIRED:** You have {unread_count} unread message(s). Use `get_messages` to check them."
+            result.append(types.TextContent(type="text", text=notice))
+        return result
+
+    # Dispatch to tool handler
+    result = None
+
     # Entity tools
     if name == "search_entities":
-        return await search_entities(arguments, config, _session_state)
+        result = await search_entities(arguments, config, _session_state)
     elif name == "get_entity":
-        return await get_entity(arguments, config, _session_state)
+        result = await get_entity(arguments, config, _session_state)
     elif name == "create_entity":
-        return await create_entity(arguments, config, _session_state)
+        result = await create_entity(arguments, config, _session_state)
     elif name == "update_entity":
-        return await update_entity(arguments, config, _session_state)
+        result = await update_entity(arguments, config, _session_state)
     elif name == "search_entities_semantic":
-        return await search_entities_semantic(arguments, config, _session_state)
+        result = await search_entities_semantic(arguments, config, _session_state)
     elif name == "extract_entities_from_text":
-        return await extract_entities_from_text(arguments, config, _session_state)
+        result = await extract_entities_from_text(arguments, config, _session_state)
 
     # Relationship tools
     elif name == "list_relationships":
-        return await list_relationships(arguments, config, _session_state)
+        result = await list_relationships(arguments, config, _session_state)
     elif name == "create_relationship":
-        return await create_relationship(arguments, config, _session_state)
+        result = await create_relationship(arguments, config, _session_state)
     elif name == "delete_relationship":
-        return await delete_relationship(arguments, config, _session_state)
+        result = await delete_relationship(arguments, config, _session_state)
 
     # Context tools
     elif name == "get_context":
-        return await get_context(arguments, config, _session_state)
+        result = await get_context(arguments, config, _session_state)
     elif name == "get_entity_context":
-        return await get_entity_context(arguments, config, _session_state)
+        result = await get_entity_context(arguments, config, _session_state)
 
     # Persona tools
     elif name == "list_personas":
-        return await list_personas(arguments, config, _session_state)
+        result = await list_personas(arguments, config, _session_state)
     elif name == "chat_with_persona":
-        return await chat_with_persona(arguments, config, _session_state)
+        result = await chat_with_persona(arguments, config, _session_state)
 
     # Agent collaboration tools
     elif name == "identify":
-        return await identify(arguments, config, _session_state)
+        result = await identify(arguments, config, _session_state)
     elif name == "list_agents":
-        return await list_agents(arguments, config, _session_state)
+        result = await list_agents(arguments, config, _session_state)
     elif name == "get_my_identity":
-        return await get_my_identity(arguments, config, _session_state)
+        result = await get_my_identity(arguments, config, _session_state)
     elif name == "update_my_identity":
-        return await update_my_identity(arguments, config, _session_state)
+        result = await update_my_identity(arguments, config, _session_state)
 
     # Message queue tools
     elif name == "send_message":
-        return await send_message(arguments, config, _session_state)
+        result = await send_message(arguments, config, _session_state)
     elif name == "get_messages":
-        return await get_messages(arguments, config, _session_state)
+        result = await get_messages(arguments, config, _session_state)
     elif name == "mark_message_read":
-        return await mark_message_read(arguments, config, _session_state)
+        result = await mark_message_read(arguments, config, _session_state)
     elif name == "mark_all_messages_read":
-        return await mark_all_messages_read(arguments, config, _session_state)
+        result = await mark_all_messages_read(arguments, config, _session_state)
 
     # Model and client tools
     elif name == "list_models":
-        return await list_models(arguments, config, _session_state)
+        result = await list_models(arguments, config, _session_state)
     elif name == "list_clients":
-        return await list_clients(arguments, config, _session_state)
+        result = await list_clients(arguments, config, _session_state)
     elif name == "update_focus":
-        return await update_focus(arguments, config, _session_state)
+        result = await update_focus(arguments, config, _session_state)
 
     # GitHub integration tools
     elif name == "sync_repository":
-        result = await sync_repository(
+        text = await sync_repository(
             arguments.get("repository_url"),
             arguments.get("create_if_missing", True)
         )
-        return [types.TextContent(type="text", text=result)]
+        result = [types.TextContent(type="text", text=text)]
     elif name == "get_repo_issues":
-        result = await get_repo_issues(
+        text = await get_repo_issues(
             arguments.get("repository_url"),
             arguments.get("state", "open"),
             arguments.get("limit", 20),
             arguments.get("labels")
         )
-        return [types.TextContent(type="text", text=result)]
+        result = [types.TextContent(type="text", text=text)]
     elif name == "get_repo_commits":
-        result = await get_repo_commits(
+        text = await get_repo_commits(
             arguments.get("repository_url"),
             arguments.get("days", 7),
             arguments.get("limit", 20),
             arguments.get("branch")
         )
-        return [types.TextContent(type="text", text=result)]
+        result = [types.TextContent(type="text", text=text)]
     elif name == "get_repo_contributors":
-        result = await get_repo_contributors(
+        text = await get_repo_contributors(
             arguments.get("repository_url"),
             arguments.get("limit", 20)
         )
-        return [types.TextContent(type="text", text=result)]
+        result = [types.TextContent(type="text", text=text)]
 
     # Activity monitoring tools
     elif name == "list_activities":
-        return await list_activities(arguments, config, _session_state)
+        result = await list_activities(arguments, config, _session_state)
     elif name == "get_activity_summary":
-        return await get_activity_summary(arguments, config, _session_state)
+        result = await get_activity_summary(arguments, config, _session_state)
 
     else:
-        return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
+        result = [types.TextContent(type="text", text=f"Unknown tool: {name}")]
+
+    # Append unread message notice if applicable
+    return maybe_append_unread_notice(result)
 
 
 async def register_agent():
@@ -1238,13 +1254,16 @@ HEARTBEAT_INTERVAL = 300
 _heartbeat_running = False
 
 
-async def send_heartbeat():
-    """Send a heartbeat to keep the agent active"""
+async def send_heartbeat() -> int:
+    """Send a heartbeat to keep the agent active.
+
+    Returns the number of unread messages (0 if heartbeat fails).
+    """
     import httpx
 
     agent_id = _session_state.get("agent_id")
     if not agent_id:
-        return False
+        return 0
 
     try:
         async with httpx.AsyncClient(timeout=config.timeout) as client:
@@ -1252,17 +1271,24 @@ async def send_heartbeat():
                 f"{config.api_endpoint}/agents/{agent_id}/heartbeat"
             )
             if response.status_code == 200:
+                data = response.json()
+                unread = data.get("data", {}).get("unread_messages", 0)
+                _session_state["unread_messages"] = unread
+
                 if config.debug:
                     print(f"  Heartbeat sent for {agent_id}", file=sys.stderr)
-                return True
+                if unread > 0:
+                    print(f"  ⚠️  You have {unread} unread message(s) - use get_messages to check them", file=sys.stderr)
+
+                return unread
             else:
                 if config.debug:
                     print(f"  Heartbeat failed: {response.status_code}", file=sys.stderr)
-                return False
+                return 0
     except Exception as e:
         if config.debug:
             print(f"  Heartbeat error: {e}", file=sys.stderr)
-        return False
+        return 0
 
 
 async def heartbeat_loop():
