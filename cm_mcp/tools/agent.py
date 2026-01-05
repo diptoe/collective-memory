@@ -88,7 +88,7 @@ async def identify(
     Args:
         agent_id: Your unique agent identifier (e.g., "claude-code-wayne-auth-task")
         persona: Persona role to adopt (e.g., "backend-code", "architect", "consultant")
-        client: Client type - you know this! (claude-code, claude-desktop, codex, gemini)
+        client: Client type - you know this! (claude-code, claude-desktop, codex, gemini-cli)
         model_id: Your model identifier - you know this! (e.g., "claude-opus-4-5-20251101")
         model_key: Model key from database (alternative to model_id)
         focus: What you're currently working on - describe your task
@@ -165,7 +165,7 @@ async def identify(
             for c in options["clients"]:
                 output += f"- **{c['client']}**: {c['description']}\n"
         else:
-            output += "- claude-code, claude-desktop, codex, gemini, custom\n"
+            output += "- claude-code, claude-desktop, codex, gemini-cli\n"
         output += "\n"
 
         # Available models
@@ -202,26 +202,58 @@ async def identify(
         return [types.TextContent(type="text", text=output)]
 
     # Otherwise, register/update identity
+    # Collect missing required fields
+    missing_fields = []
+
     if not agent_id:
         agent_id = session_state.get("agent_id") or config.agent_id
         if not agent_id:
-            # Provide helpful guidance instead of just failing
-            output = "## Agent ID Required\n\n"
-            output += "To register with Collective Memory, you need to provide an `agent_id`.\n\n"
-            output += "**How to choose your agent_id:**\n"
-            output += "- Based on your project: `claude-code-{project-name}`\n"
-            output += "- Based on your task: `cc-{user}-{task-description}`\n"
-            output += "- With uniqueness: `claude-code-{project}-{timestamp}`\n\n"
-            output += "**Example:**\n"
-            output += "```\n"
-            output += 'identify(agent_id="claude-code-myproject", persona="backend-code")\n'
-            output += "```\n\n"
-            output += "*Tip: Look at your current working directory or task to create a meaningful name.*\n"
-            return [types.TextContent(type="text", text=output)]
+            missing_fields.append("agent_id")
 
-    # Use detected client if not provided (but AI should provide this!)
     if not client_type:
-        client_type = config.detected_client
+        # Don't auto-detect - require explicit client
+        missing_fields.append("client")
+
+    if not model_id and not model_key:
+        missing_fields.append("model_id")
+
+    if missing_fields:
+        output = "## Missing Required Fields\n\n"
+        output += f"The following fields are **required** to register: `{', '.join(missing_fields)}`\n\n"
+        output += "**You know these things about yourself - provide them!**\n\n"
+
+        if "agent_id" in missing_fields:
+            output += "### agent_id\n"
+            output += "Choose based on your project/task context:\n"
+            output += "- `claude-code-{project-name}` or `claude-desktop-{user}-{context}`\n\n"
+
+        if "client" in missing_fields:
+            output += "### client (REQUIRED)\n"
+            output += "**You know what client you are!** Pick one:\n"
+            output += "- `claude-code` - Claude Code CLI\n"
+            output += "- `claude-desktop` - Claude Desktop app or claude.ai web\n"
+            output += "- `codex` - OpenAI Codex\n"
+            output += "- `gemini-cli` - Google Gemini CLI\n\n"
+
+        if "model_id" in missing_fields:
+            output += "### model_id (REQUIRED)\n"
+            output += "**You know your model!** Examples:\n"
+            output += "- `claude-opus-4-5-20251101`\n"
+            output += "- `claude-sonnet-4-20250514`\n"
+            output += "- `gpt-4-turbo`\n"
+            output += "- `gemini-pro`\n\n"
+
+        output += "**Example registration:**\n"
+        output += "```\n"
+        output += 'identify(\n'
+        output += '    agent_id="claude-code-myproject",\n'
+        output += '    client="claude-code",\n'
+        output += '    model_id="claude-opus-4-5-20251101",\n'
+        output += '    persona="backend-code",\n'
+        output += '    focus="Working on feature X"\n'
+        output += ')\n'
+        output += "```\n"
+        return [types.TextContent(type="text", text=output)]
 
     try:
         # Resolve model_id to model_key if provided
@@ -332,8 +364,6 @@ async def identify(
                 output += f"**Model:** "
                 if model_name:
                     output += f"{model_name}"
-                    if model_id:
-                        output += f" ({model_id})"
                 elif model_id:
                     output += f"{model_id}"
                 elif resolved_model_key:
@@ -463,23 +493,23 @@ async def get_my_identity(
                 output += f"   - ... and {len(options['personas']) - 6} more\n"
         output += "\n"
 
-        output += "**3. Provide what you KNOW about yourself:**\n"
-        output += "   - `client`: Are you claude-code, claude-desktop, codex, or gemini?\n"
-        output += "   - `model_id`: What is your model? (e.g., `claude-opus-4-5-20251101`)\n"
+        output += "**3. Provide what you KNOW about yourself (REQUIRED):**\n"
+        output += "   - `client` (REQUIRED): claude-code, claude-desktop (includes claude.ai), codex, or gemini-cli\n"
+        output += "   - `model_id` (REQUIRED): Your model (e.g., `claude-opus-4-5-20251101`)\n"
         output += "   - `focus`: What task are you currently helping with?\n\n"
 
         output += "**4. Register with `identify`:**\n"
         output += "```\n"
         output += 'identify(\n'
         output += '    agent_id="claude-code-{project}",\n'
+        output += '    client="claude-code",           # REQUIRED - you know this!\n'
+        output += '    model_id="claude-opus-4-5-20251101",  # REQUIRED - you know this!\n'
         output += '    persona="backend-code",\n'
-        output += '    client="claude-code",\n'
-        output += '    model_id="claude-opus-4-5-20251101",\n'
         output += '    focus="What you are working on"\n'
         output += ')\n'
         output += "```\n\n"
 
-        output += "**You know these things - provide them!**\n"
+        output += "**You MUST provide client and model_id - you know these!**\n"
 
         return [types.TextContent(type="text", text=output)]
 

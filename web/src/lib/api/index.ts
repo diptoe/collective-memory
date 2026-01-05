@@ -270,6 +270,10 @@ export const api = {
       apiClient.put<FocusResponse>(`/agents/${agentId}/focus`, { focus }),
     heartbeat: (agentId: string) =>
       apiClient.post(`/agents/${agentId}/heartbeat`),
+    delete: (agentKey: string) =>
+      apiClient.delete<{ agent_id: string; agent_key: string }>(`/agents/${agentKey}`),
+    deleteInactive: () =>
+      apiClient.delete<{ deleted_count: number; deleted_agents: string[] }>('/agents/inactive'),
   },
 
   // Messages (inter-agent)

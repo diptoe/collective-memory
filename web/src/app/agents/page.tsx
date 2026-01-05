@@ -11,16 +11,14 @@ const CLIENT_LABELS: Record<ClientType, string> = {
   'claude-code': 'Claude Code',
   'claude-desktop': 'Claude Desktop',
   'codex': 'Codex',
-  'gemini': 'Gemini',
-  'custom': 'Custom',
+  'gemini-cli': 'Gemini CLI',
 };
 
 const CLIENT_COLORS: Record<ClientType, string> = {
   'claude-code': 'bg-orange-100 text-orange-800',
   'claude-desktop': 'bg-purple-100 text-purple-800',
   'codex': 'bg-green-100 text-green-800',
-  'gemini': 'bg-blue-100 text-blue-800',
-  'custom': 'bg-gray-100 text-gray-800',
+  'gemini-cli': 'bg-blue-100 text-blue-800',
 };
 
 export default function AgentsPage() {
@@ -29,28 +27,61 @@ export default function AgentsPage() {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [filterClient, setFilterClient] = useState<string>('all');
   const [showInactive, setShowInactive] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadAgents = async () => {
+    try {
+      const params: { active_only?: boolean; client?: string } = {};
+      if (!showInactive) {
+        params.active_only = true;
+      }
+      if (filterClient !== 'all') {
+        params.client = filterClient;
+      }
+      const res = await api.agents.list(params);
+      setAgents(res.data?.agents || []);
+    } catch (err) {
+      console.error('Failed to load agents:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadAgents() {
-      try {
-        const params: { active_only?: boolean; client?: string } = {};
-        if (!showInactive) {
-          params.active_only = true;
-        }
-        if (filterClient !== 'all') {
-          params.client = filterClient;
-        }
-        const res = await api.agents.list(params);
-        setAgents(res.data?.agents || []);
-      } catch (err) {
-        console.error('Failed to load agents:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadAgents();
   }, [filterClient, showInactive]);
+
+  const handleDeleteAgent = async (agentKey: string) => {
+    if (!confirm('Are you sure you want to delete this agent?')) return;
+
+    setDeleting(true);
+    try {
+      await api.agents.delete(agentKey);
+      setSelectedAgent(null);
+      await loadAgents();
+    } catch (err) {
+      console.error('Failed to delete agent:', err);
+      alert('Failed to delete agent. It may still be active.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteAllInactive = async () => {
+    if (!confirm(`Are you sure you want to delete all ${inactiveAgents.length} inactive agents?`)) return;
+
+    setDeleting(true);
+    try {
+      const res = await api.agents.deleteInactive();
+      alert(`Deleted ${res.data?.deleted_count || 0} inactive agents`);
+      await loadAgents();
+    } catch (err) {
+      console.error('Failed to delete inactive agents:', err);
+      alert('Failed to delete inactive agents');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const activeAgents = agents.filter((a) => a.is_active);
   const inactiveAgents = agents.filter((a) => !a.is_active);
@@ -156,7 +187,16 @@ export default function AgentsPage() {
 
           {showInactive && inactiveAgents.length > 0 && (
             <div>
-              <h2 className="font-medium text-cm-coffee mb-4">Inactive Agents</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-medium text-cm-coffee">Inactive Agents</h2>
+                <button
+                  onClick={handleDeleteAllInactive}
+                  disabled={deleting}
+                  className="px-3 py-1.5 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Delete All Inactive'}
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {inactiveAgents.map((agent) => (
                   <AgentStatus
@@ -358,6 +398,17 @@ export default function AgentsPage() {
                       <span className="text-cm-charcoal">{formatDateTime(selectedAgent.created_at)}</span>
                     </div>
                   </div>
+
+                  {/* Delete button for inactive agents */}
+                  {!selectedAgent.is_active && (
+                    <button
+                      onClick={() => handleDeleteAgent(selectedAgent.agent_key)}
+                      disabled={deleting}
+                      className="mt-4 w-full px-4 py-2 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors disabled:opacity-50"
+                    >
+                      {deleting ? 'Deleting...' : 'Delete Agent'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

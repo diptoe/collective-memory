@@ -64,22 +64,22 @@ enabling you to search, create, and connect entities in a shared knowledge graph
 
 **You MUST establish your identity before using other CM tools.**
 
-Call `identify()` first to see options, then register with your details:
+Call `identify()` with ALL required fields:
 
 ```
 identify(
-    agent_id="claude-code-{project-name}",  # Based on your working directory/task
+    agent_id="claude-code-{project-name}",  # REQUIRED: Based on your working directory/task
+    client="claude-code",                    # REQUIRED: You know what client you are!
+    model_id="claude-opus-4-5-20251101",    # REQUIRED: You know your model ID!
     persona="backend-code",                  # Based on project type you're working on
-    client="claude-code",                    # You know what client you are
-    model_id="claude-opus-4-5-20251101",    # You know your model ID
     focus="What you're currently working on"
 )
 ```
 
-**You know these things about yourself - provide them:**
-- **client**: Are you claude-code, claude-desktop, codex, or gemini?
-- **model_id**: What is your model identifier? (e.g., claude-opus-4-5-20251101)
-- **focus**: What task are you currently helping with?
+**REQUIRED - You know these things about yourself:**
+- **client** (REQUIRED): claude-code, claude-desktop (includes claude.ai web), codex, or gemini-cli
+- **model_id** (REQUIRED): Your model identifier (e.g., claude-opus-4-5-20251101, gpt-4, gemini-pro)
+- **agent_id** (REQUIRED): Based on your project/task context
 
 **Choose agent_id based on context:**
 - Your working directory or project name
@@ -487,25 +487,23 @@ BEHAVIOR:
 - Called WITHOUT parameters: Shows guidance for dynamic self-identification, available personas, clients, and models
 - Called WITH parameters: Registers you with CM using the provided identity
 
-DYNAMIC IDENTITY: If CM_AGENT_ID is not configured, you should:
-1. Call identify() to see options
-2. Choose an agent_id based on context (project name, task, hostname)
-3. Select persona based on project files (Python→backend-code, React→frontend-code)
-4. Register with your chosen identity
+REQUIRED FIELDS when registering:
+- agent_id: Your unique identifier based on project/task context
+- client: You KNOW this! Are you claude-code, claude-desktop, codex, or gemini-cli?
+- model_id: You KNOW this! Your model identifier (e.g., claude-opus-4-5-20251101)
 
 EXAMPLES:
 - {} → Show dynamic identity guidance with all options
-- {"agent_id": "claude-code-myproject-api", "persona": "backend-code"} → Register
-- {"agent_id": "cc-wayne-1", "persona": "architect", "focus": "Designing API"} → Register with focus
+- {"agent_id": "claude-code-myproject", "client": "claude-code", "model_id": "claude-opus-4-5-20251101", "persona": "backend-code"} → Full registration
 
 RETURNS: Either the identity guidance (options) or confirmation of registration.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Your unique agent ID (e.g., 'claude-code-collective-memory')"},
+                    "agent_id": {"type": "string", "description": "REQUIRED: Your unique agent ID (e.g., 'claude-code-collective-memory')"},
+                    "client": {"type": "string", "description": "REQUIRED: Client type - you know this! claude-code, claude-desktop (includes claude.ai), codex, gemini-cli"},
+                    "model_id": {"type": "string", "description": "REQUIRED: Your model identifier - you know this! (e.g., 'claude-opus-4-5-20251101')"},
                     "persona": {"type": "string", "description": "Persona role: backend-code, frontend-code, architect, consultant, etc."},
-                    "client": {"type": "string", "description": "Client type: claude-code, claude-desktop, codex, gemini"},
-                    "model_id": {"type": "string", "description": "Your model identifier (e.g., 'claude-opus-4-5-20251101') - you know this"},
                     "model_key": {"type": "string", "description": "Model key from database (alternative to model_id)"},
                     "focus": {"type": "string", "description": "What you're currently working on - describe your task"}
                 }
@@ -695,7 +693,7 @@ RETURNS: Models grouped by provider with capabilities and context windows.""",
 USE THIS WHEN: You want to understand the different platforms that connect to Collective Memory
 and which personas work best with each.
 
-Client types: claude-code, claude-desktop, codex, gemini, custom
+Client types: claude-code, claude-desktop, codex, gemini-cli
 
 RETURNS: Client types with descriptions and suggested personas.""",
             inputSchema={"type": "object", "properties": {}}
@@ -1022,7 +1020,7 @@ async def _create_persona(http_client) -> dict | None:
     # Determine suggested clients based on detected client
     suggested_clients = []
     detected = config.detected_client
-    if detected and detected != "custom":
+    if detected:
         suggested_clients = [detected]
 
     persona_payload = {

@@ -26,7 +26,7 @@ class Agent(BaseModel):
     agent_key = Column(String(36), primary_key=True, default=get_key)
     agent_id = Column(String(100), unique=True, nullable=False, index=True)
 
-    # Client type (claude-code, claude-desktop, codex, gemini, custom)
+    # Client type (claude-code, claude-desktop, codex, gemini-cli)
     client = Column(String(50), nullable=True, index=True)
 
     # Foreign keys to Model and Persona (nullable for backward compatibility)

@@ -13,16 +13,14 @@ const CLIENT_LABELS: Record<ClientType, string> = {
   'claude-code': 'Claude Code',
   'claude-desktop': 'Claude Desktop',
   'codex': 'Codex',
-  'gemini': 'Gemini',
-  'custom': 'Custom',
+  'gemini-cli': 'Gemini CLI',
 };
 
 const CLIENT_COLORS: Record<ClientType, string> = {
   'claude-code': 'bg-orange-100 text-orange-800',
   'claude-desktop': 'bg-purple-100 text-purple-800',
   'codex': 'bg-green-100 text-green-800',
-  'gemini': 'bg-blue-100 text-blue-800',
-  'custom': 'bg-gray-100 text-gray-800',
+  'gemini-cli': 'bg-blue-100 text-blue-800',
 };
 
 export function AgentStatus({ agent, onClick }: AgentStatusProps) {
@@ -73,7 +71,8 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
           </div>
         </div>
 
-        {agent.status?.progress && (
+        {/* Only show progress badge when there's an actual task */}
+        {agent.status?.current_task && agent.status?.progress && (
           <span
             className={cn(
               'px-2 py-0.5 text-xs rounded-full text-cm-ivory capitalize',

@@ -23,7 +23,7 @@ def register_agent_routes(api: Api):
     agent_model = ns.model('Agent', {
         'agent_key': fields.String(readonly=True, description='Unique agent identifier'),
         'agent_id': fields.String(required=True, description='Agent ID (e.g., claude-code-wayne-project)'),
-        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini, custom'),
+        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini-cli'),
         'model_key': fields.String(description='Foreign key to model'),
         'persona_key': fields.String(description='Foreign key to persona'),
         'focus': fields.String(description='Current work focus'),
@@ -39,7 +39,7 @@ def register_agent_routes(api: Api):
 
     agent_register = ns.model('AgentRegister', {
         'agent_id': fields.String(required=True, description='Agent ID'),
-        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini, custom'),
+        'client': fields.String(required=True, description='Client type: claude-code, claude-desktop, codex, gemini-cli'),
         'model_key': fields.String(description='Model key (optional)'),
         'persona_key': fields.String(description='Persona key (optional)'),
         'focus': fields.String(description='Current work focus'),
@@ -105,7 +105,7 @@ def register_agent_routes(api: Api):
 
             New registration protocol accepts:
             - agent_id (required): Unique agent identifier
-            - client: Client type (claude-code, claude-desktop, codex, gemini, custom)
+            - client (required): Client type (claude-code, claude-desktop, codex, gemini-cli)
             - model_key: Reference to AI model being used
             - persona_key: Reference to behavioral persona
             - focus: Current work focus/description
@@ -117,10 +117,18 @@ def register_agent_routes(api: Api):
             if not data.get('agent_id'):
                 return {'success': False, 'msg': 'agent_id is required'}, 400
 
-            # Validate client if provided
+            # Validate client - REQUIRED
             client = data.get('client')
-            if client and not is_valid_client(client):
-                return {'success': False, 'msg': f"Invalid client type: '{client}'"}, 400
+            if not client:
+                return {
+                    'success': False,
+                    'msg': 'client is required. Valid options: claude-code, claude-desktop, codex, gemini-cli'
+                }, 400
+            if not is_valid_client(client):
+                return {
+                    'success': False,
+                    'msg': f"Invalid client type: '{client}'. Valid options: claude-code, claude-desktop, codex, gemini-cli"
+                }, 400
 
             # Validate model_key if provided
             model_key = data.get('model_key')
@@ -203,6 +211,84 @@ def register_agent_routes(api: Api):
                 return result, 201
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/<string:agent_key>')
+    @ns.param('agent_key', 'Agent Key')
+    class AgentDetail(Resource):
+        @ns.doc('get_agent')
+        @ns.marshal_with(response_model)
+        def get(self, agent_key):
+            """Get agent by key."""
+            agent = Agent.get_by_key(agent_key)
+            if not agent:
+                return {'success': False, 'msg': 'Agent not found'}, 404
+
+            return {
+                'success': True,
+                'msg': 'Agent retrieved',
+                'data': agent.to_dict()
+            }
+
+        @ns.doc('delete_agent')
+        @ns.marshal_with(response_model)
+        def delete(self, agent_key):
+            """Delete an agent. Only inactive agents can be deleted."""
+            agent = Agent.get_by_key(agent_key)
+            if not agent:
+                return {'success': False, 'msg': 'Agent not found'}, 404
+
+            # Check if agent is active
+            if agent.is_active:
+                return {
+                    'success': False,
+                    'msg': 'Cannot delete an active agent. Wait for it to become inactive (15 min timeout).'
+                }, 400
+
+            agent_id = agent.agent_id
+            try:
+                agent.delete()
+                return {
+                    'success': True,
+                    'msg': f'Agent {agent_id} deleted',
+                    'data': {'agent_id': agent_id, 'agent_key': agent_key}
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/inactive')
+    class InactiveAgents(Resource):
+        @ns.doc('delete_inactive_agents')
+        @ns.marshal_with(response_model)
+        def delete(self):
+            """Delete all inactive agents."""
+            all_agents = Agent.get_all()
+            inactive_agents = [a for a in all_agents if not a.is_active]
+
+            if not inactive_agents:
+                return {
+                    'success': True,
+                    'msg': 'No inactive agents to delete',
+                    'data': {'deleted_count': 0}
+                }
+
+            deleted = []
+            errors = []
+            for agent in inactive_agents:
+                try:
+                    deleted.append(agent.agent_id)
+                    agent.delete()
+                except Exception as e:
+                    errors.append({'agent_id': agent.agent_id, 'error': str(e)})
+
+            return {
+                'success': True,
+                'msg': f'Deleted {len(deleted)} inactive agents',
+                'data': {
+                    'deleted_count': len(deleted),
+                    'deleted_agents': deleted,
+                    'errors': errors if errors else None
+                }
+            }
 
     @ns.route('/<string:agent_id>/status')
     @ns.param('agent_id', 'Agent ID')

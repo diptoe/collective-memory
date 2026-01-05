@@ -29,7 +29,7 @@ class MCPConfig:
 
     # Client identification - the connecting platform
     # Detected from environment or explicitly set
-    client: str = os.getenv("CM_CLIENT", "")  # claude-code, claude-desktop, codex, gemini, custom
+    client: str = os.getenv("CM_CLIENT", "")  # claude-code, claude-desktop, codex, gemini-cli
 
     # Model identification - the LLM being used
     model_key: str = os.getenv("CM_MODEL_KEY", "")  # Model key from DB, e.g., "mod-xxx"
@@ -88,11 +88,17 @@ class MCPConfig:
         1. Explicit CM_CLIENT environment variable
         2. CLAUDE_CODE environment variable → "claude-code"
         3. CLAUDE_DESKTOP indicator → "claude-desktop"
-        4. MCP_CLIENT environment variable
-        5. Default to "custom"
+        4. MCP_CLIENT environment variable (if valid)
+        5. CODEX_CLI/OPENAI_CODEX → "codex"
+        6. GEMINI_API/GOOGLE_GEMINI → "gemini-cli"
+        7. Empty string (client must be explicitly provided)
+
+        Valid clients: claude-code, claude-desktop, codex, gemini-cli
         """
+        valid_clients = {"claude-code", "claude-desktop", "codex", "gemini-cli"}
+
         if self.client:
-            return self.client
+            return self.client if self.client in valid_clients else ""
 
         # Claude Code detection
         if os.getenv("CLAUDE_CODE"):
@@ -102,9 +108,9 @@ class MCPConfig:
         if os.getenv("CLAUDE_DESKTOP") or os.getenv("__CLAUDE_MCP_ROOT__"):
             return "claude-desktop"
 
-        # Generic MCP client environment variable
+        # Generic MCP client environment variable (validate it)
         mcp_client = os.getenv("MCP_CLIENT")
-        if mcp_client:
+        if mcp_client and mcp_client in valid_clients:
             return mcp_client
 
         # Check for Codex-specific env vars
@@ -113,9 +119,9 @@ class MCPConfig:
 
         # Check for Gemini
         if os.getenv("GEMINI_API") or os.getenv("GOOGLE_GEMINI"):
-            return "gemini"
+            return "gemini-cli"
 
-        return "custom"
+        return ""
 
     def validate(self) -> tuple[bool, Optional[str]]:
         """
