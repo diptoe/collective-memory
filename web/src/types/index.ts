@@ -158,8 +158,13 @@ export interface Agent {
 }
 
 // Message types (inter-agent)
-export type MessageType = 'question' | 'handoff' | 'announcement' | 'status';
-export type Priority = 'high' | 'normal' | 'low';
+export type MessageType = 'status' | 'announcement' | 'request' | 'task' | 'message';
+export type Priority = 'normal' | 'high' | 'urgent';
+
+export interface MessageReader {
+  agent_id: string;
+  read_at: string | null;
+}
 
 export interface Message {
   message_key: string;
@@ -172,6 +177,9 @@ export interface Message {
   is_read: boolean;
   read_at?: string;
   created_at: string;
+  // Per-agent read tracking
+  readers?: MessageReader[];
+  read_count?: number;
 }
 
 // Context types

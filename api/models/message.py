@@ -163,13 +163,14 @@ class Message(BaseModel):
         reads = MessageRead.get_readers(self.message_key)
         return [r.agent_id for r in reads]
 
-    def to_dict(self, include_read_status: bool = True, for_agent: str = None) -> dict:
+    def to_dict(self, include_read_status: bool = True, for_agent: str = None, include_readers: bool = False) -> dict:
         """
         Convert to dictionary.
 
         Args:
             include_read_status: Include is_read field
             for_agent: Check read status for this specific agent
+            include_readers: Include list of agents who have read this message
         """
         result = super().to_dict()
         if include_read_status:
@@ -178,4 +179,11 @@ class Message(BaseModel):
             else:
                 # Legacy: use read_at field
                 result['is_read'] = self.read_at is not None
+
+        if include_readers:
+            from api.models.message_read import MessageRead
+            reads = MessageRead.get_readers(self.message_key)
+            result['readers'] = [{'agent_id': r.agent_id, 'read_at': r.read_at.isoformat() if r.read_at else None} for r in reads]
+            result['read_count'] = len(reads)
+
         return result

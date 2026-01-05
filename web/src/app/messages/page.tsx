@@ -124,7 +124,8 @@ export default function MessagesPage() {
     }
   };
 
-  const unreadCount = messages.filter((m) => !m.is_read).length;
+  // Count messages with no readers (truly unread by any agent)
+  const unreadCount = messages.filter((m) => (m.read_count || 0) === 0).length;
 
   return (
     <div className="p-6">
@@ -242,8 +243,15 @@ export default function MessagesPage() {
                         >
                           {message.priority}
                         </span>
-                        {!message.is_read && (
-                          <div className="w-2 h-2 rounded-full bg-cm-terracotta" />
+                        {message.read_count !== undefined && message.read_count > 0 ? (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            {message.read_count}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-cm-coffee/50">unread</span>
                         )}
                       </div>
                     </div>
@@ -467,24 +475,26 @@ export default function MessagesPage() {
 
               {/* Read Status */}
               <div>
-                <h3 className="text-sm font-medium text-cm-coffee mb-2">Read Status</h3>
+                <h3 className="text-sm font-medium text-cm-coffee mb-2">
+                  Read by {selectedMessage.read_count || 0} agent{(selectedMessage.read_count || 0) !== 1 ? 's' : ''}
+                </h3>
                 <div className="bg-cm-sand/30 rounded-lg p-4">
-                  {selectedMessage.is_read ? (
-                    <div className="flex items-center gap-2 text-green-700">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>Read</span>
-                      {selectedMessage.read_at && (
-                        <span className="text-sm text-cm-coffee">
-                          at {formatDateTime(selectedMessage.read_at)}
-                        </span>
-                      )}
+                  {selectedMessage.readers && selectedMessage.readers.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedMessage.readers.map((reader) => (
+                        <div key={reader.agent_id} className="flex items-center justify-between text-sm">
+                          <span className="text-cm-charcoal font-medium">{reader.agent_id}</span>
+                          {reader.read_at && (
+                            <span className="text-cm-coffee/70 text-xs">
+                              {formatDateTime(reader.read_at)}
+                            </span>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-cm-coffee">
-                      <div className="w-2 h-2 rounded-full bg-cm-terracotta" />
-                      <span>Unread</span>
+                    <div className="flex items-center gap-2 text-cm-coffee/70">
+                      <span>No agents have read this message yet</span>
                     </div>
                   )}
                 </div>

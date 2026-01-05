@@ -278,14 +278,14 @@ export const api = {
 
   // Messages (inter-agent)
   messages: {
-    list: (channel?: string, params?: { limit?: number; unread_only?: boolean }) =>
+    list: (channel?: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean }) =>
       channel
         ? apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params })
-        : apiClient.get<InterAgentMessagesResponse>('/messages', { params }),
+        : apiClient.get<InterAgentMessagesResponse>('/messages', { params: { ...params, include_readers: true } }),
     post: (data: { channel: string; from_agent: string; to_agent?: string; message_type: string; content: unknown; priority?: string }) =>
       apiClient.post('/messages', data),
-    getChannel: (channel: string, params?: { limit?: number; unread_only?: boolean }) =>
-      apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params }),
+    getChannel: (channel: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean }) =>
+      apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params: { ...params, include_readers: true } }),
     markRead: (messageKey: string) =>
       apiClient.post(`/messages/mark-read/${messageKey}`),
     clearAll: () =>

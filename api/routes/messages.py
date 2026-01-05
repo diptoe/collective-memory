@@ -61,6 +61,7 @@ def register_message_routes(api: Api):
         @ns.param('for_agent', 'Get messages for this agent (direct + broadcasts) with per-agent read status', type=str)
         @ns.param('from_agent', 'Filter by sender agent ID only', type=str)
         @ns.param('to_agent', 'Filter by recipient agent ID only', type=str)
+        @ns.param('include_readers', 'Include list of agents who have read each message', type=bool, default=False)
         @ns.marshal_with(response_model)
         def get(self):
             """
@@ -81,6 +82,7 @@ def register_message_routes(api: Api):
             for_agent = request.args.get('for_agent')
             from_agent = request.args.get('from_agent')
             to_agent = request.args.get('to_agent')
+            include_readers = request.args.get('include_readers', 'false').lower() == 'true'
 
             # Per-agent mode: use MessageRead-aware queries
             if for_agent:
@@ -95,7 +97,7 @@ def register_message_routes(api: Api):
                     'success': True,
                     'msg': f'Retrieved {len(messages)} messages for {for_agent}',
                     'data': {
-                        'messages': [m.to_dict(for_agent=for_agent) for m in messages]
+                        'messages': [m.to_dict(for_agent=for_agent, include_readers=include_readers) for m in messages]
                     }
                 }
 
@@ -121,7 +123,7 @@ def register_message_routes(api: Api):
                 'success': True,
                 'msg': f'Retrieved {len(messages)} messages',
                 'data': {
-                    'messages': [m.to_dict() for m in messages]
+                    'messages': [m.to_dict(include_readers=include_readers) for m in messages]
                 }
             }
 
