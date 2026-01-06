@@ -51,6 +51,7 @@ def register_message_routes(api: Api):
         'content': fields.Raw(required=True, description='Message content as JSON'),
         'priority': fields.String(description='Priority level', default='normal'),
         'autonomous': fields.Boolean(description='Mark as autonomous task - receiver should work on it and reply', default=False),
+        'entity_keys': fields.List(fields.String(), description='Entity keys to link this message to'),
     })
 
     response_model = ns.model('Response', {
@@ -171,6 +172,12 @@ def register_message_routes(api: Api):
             if not to_agent and parent:
                 to_agent = parent.from_agent
 
+            # Handle entity_keys - merge with parent's entity_keys for replies
+            entity_keys = data.get('entity_keys', []) or []
+            if parent and parent.entity_keys:
+                # Merge parent's entity_keys with new ones (unique)
+                entity_keys = list(set(entity_keys) | set(parent.entity_keys))
+
             message = Message(
                 channel=data['channel'],
                 from_agent=from_agent,
@@ -179,7 +186,8 @@ def register_message_routes(api: Api):
                 message_type=data['message_type'],
                 content=data['content'],
                 priority=data.get('priority', 'normal'),
-                autonomous=data.get('autonomous', False)
+                autonomous=data.get('autonomous', False),
+                entity_keys=entity_keys if entity_keys else None
             )
 
             try:
@@ -421,6 +429,7 @@ def register_message_routes(api: Api):
         @ns.doc('get_message_detail')
         @ns.param('include_thread', 'Include parent and replies', type=bool, default=True)
         @ns.param('include_readers', 'Include list of agents who have read', type=bool, default=True)
+        @ns.param('include_entities', 'Include linked entities from knowledge graph', type=bool, default=False)
         @ns.param('for_agent', 'Get per-agent read status', type=str)
         @ns.marshal_with(response_model)
         def get(self, message_key):
@@ -428,9 +437,11 @@ def register_message_routes(api: Api):
             Get a single message with full thread context.
 
             Returns the message along with its parent (if reply) and direct replies.
+            When include_entities=true, also returns all entities linked across the thread.
             """
             include_thread = request.args.get('include_thread', 'true').lower() == 'true'
             include_readers = request.args.get('include_readers', 'true').lower() == 'true'
+            include_entities = request.args.get('include_entities', 'false').lower() == 'true'
             for_agent = request.args.get('for_agent')
 
             message = Message.get_by_key(message_key)
@@ -463,6 +474,16 @@ def register_message_routes(api: Api):
                         include_thread_info=True
                     ) for r in replies
                 ]
+
+            # Include linked entities from across the thread
+            if include_entities:
+                from api.models import Entity
+                thread_entity_keys = Message.get_thread_entity_keys(message_key)
+                if thread_entity_keys:
+                    entities = Entity.query.filter(Entity.entity_key.in_(thread_entity_keys)).all()
+                    result['linked_entities'] = [e.to_dict() for e in entities]
+                else:
+                    result['linked_entities'] = []
 
             return {
                 'success': True,

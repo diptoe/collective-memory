@@ -4,8 +4,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Message, Agent } from '@/types';
+import { Message, Agent, Entity } from '@/types';
 import { cn } from '@/lib/utils';
+import { TYPE_COLORS } from '@/lib/graph/layout';
 import { formatDateTime } from '@/lib/utils';
 
 // Get person ID from environment
@@ -541,6 +542,38 @@ export default function MessageDetailPage() {
                   </span>
                 )}
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Linked Entities section */}
+      {message.linked_entities && message.linked_entities.length > 0 && (
+        <div className="mt-8 pt-6 border-t border-cm-sand">
+          <h3 className="text-sm font-medium text-cm-coffee mb-3 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Linked Entities ({message.linked_entities.length})
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {message.linked_entities.map((entity) => (
+              <Link
+                key={entity.entity_key}
+                href={`/entities/${entity.entity_type.toLowerCase()}/${entity.entity_key}`}
+                className="px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors hover:opacity-80"
+                style={{
+                  backgroundColor: `${TYPE_COLORS[entity.entity_type] || '#666'}20`,
+                  borderLeft: `3px solid ${TYPE_COLORS[entity.entity_type] || '#666'}`,
+                }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: TYPE_COLORS[entity.entity_type] || '#666' }}
+                />
+                <span className="text-cm-charcoal font-medium">{entity.name}</span>
+                <span className="text-cm-coffee/70 text-xs">{entity.entity_type}</span>
+              </Link>
             ))}
           </div>
         </div>

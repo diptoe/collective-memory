@@ -182,6 +182,7 @@ export interface Message {
   confirmed?: boolean;   // Operator confirmed task completion
   confirmed_by?: string; // Who confirmed
   confirmed_at?: string; // When confirmed
+  entity_keys?: string[];  // Linked entity keys for knowledge graph connection
   is_read: boolean;
   read_at?: string;
   created_at: string;
@@ -194,6 +195,8 @@ export interface Message {
   // Full thread context (from /detail endpoint)
   parent?: Message;
   replies?: Message[];
+  // Linked entities (when include_entities=true on detail endpoint)
+  linked_entities?: Entity[];
 }
 
 // Context types

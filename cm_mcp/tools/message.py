@@ -29,6 +29,7 @@ async def send_message(
         reply_to: Optional message_key to reply to (creates a threaded conversation)
         priority: Priority level: 'normal', 'high', 'urgent' (default: 'normal')
         autonomous: Mark as autonomous task - receiver should work on it independently and reply when complete
+        entity_keys: Optional list of entity keys to link this message to in the knowledge graph
     """
     channel = arguments.get("channel", "general")
     content = arguments.get("content")
@@ -37,6 +38,7 @@ async def send_message(
     reply_to = arguments.get("reply_to")
     priority = arguments.get("priority", "normal")
     autonomous = arguments.get("autonomous", False)
+    entity_keys = arguments.get("entity_keys", [])
 
     if not content:
         return [types.TextContent(type="text", text="Error: content is required")]
@@ -81,6 +83,9 @@ async def send_message(
         if reply_to:
             payload["reply_to_key"] = reply_to
 
+        if entity_keys:
+            payload["entity_keys"] = entity_keys
+
         result = await _make_request(
             config,
             "POST",
@@ -109,6 +114,9 @@ async def send_message(
             output += f"**Priority:** {priority}\n"
             if autonomous:
                 output += f"**Autonomous:** Yes - receiver should work on this and reply when complete\n"
+            msg_entity_keys = msg_data.get('entity_keys') or []
+            if msg_entity_keys:
+                output += f"**Linked Entities:** {len(msg_entity_keys)} entity(s)\n"
             output += f"**Message Key:** {msg_data.get('message_key')}\n"
             return [types.TextContent(type="text", text=output)]
         else:

@@ -48,6 +48,7 @@ class Message(BaseModel):
     confirmed = Column(Boolean, default=False)  # Operator confirmed task completion
     confirmed_by = Column(String(100), nullable=True)  # Agent/human who confirmed
     confirmed_at = Column(DateTime(timezone=True), nullable=True)  # When confirmed
+    entity_keys = Column(JSONB, default=list)  # Linked entity keys for knowledge graph connection
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
@@ -58,12 +59,12 @@ class Message(BaseModel):
         Index('ix_messages_reply_to', 'reply_to_key'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at']
+    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys']
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 5  # Bumped for confirmation fields
+        return 6  # Bumped for entity_keys field
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:
@@ -282,6 +283,34 @@ class Message(BaseModel):
                 'replies': cls._get_nested_replies(reply.message_key, depth + 1, max_depth)
             })
         return result
+
+    @classmethod
+    def get_thread_entity_keys(cls, message_key: str) -> list[str]:
+        """
+        Get all unique entity keys linked across a thread.
+        Aggregates entity_keys from root message and all replies.
+        """
+        thread = cls.get_thread(message_key)
+        if not thread:
+            return []
+
+        entity_keys = set()
+
+        # Add from root
+        root = thread.get('root')
+        if root and root.entity_keys:
+            entity_keys.update(root.entity_keys)
+
+        # Recursively collect from replies
+        def collect_from_replies(replies):
+            for item in replies:
+                msg = item.get('message')
+                if msg and msg.entity_keys:
+                    entity_keys.update(msg.entity_keys)
+                collect_from_replies(item.get('replies', []))
+
+        collect_from_replies(thread.get('replies', []))
+        return list(entity_keys)
 
     def to_dict(self, include_read_status: bool = True, for_agent: str = None, include_readers: bool = False, include_thread_info: bool = False) -> dict:
         """

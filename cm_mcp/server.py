@@ -681,7 +681,8 @@ RETURNS: Confirmation with message key.""",
                     "to_agent": {"type": "string", "description": "Optional: specific agent ID (null for broadcast)"},
                     "reply_to": {"type": "string", "description": "Optional: message_key to reply to (creates threaded conversation)"},
                     "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"},
-                    "autonomous": {"type": "boolean", "description": "Set true to request autonomous work (receiver works independently and replies when done). Set false (default) when replying to signal task completion. See AUTONOMOUS COLLABORATION WORKFLOW above.", "default": False}
+                    "autonomous": {"type": "boolean", "description": "Set true to request autonomous work (receiver works independently and replies when done). Set false (default) when replying to signal task completion. See AUTONOMOUS COLLABORATION WORKFLOW above.", "default": False},
+                    "entity_keys": {"type": "array", "items": {"type": "string"}, "description": "Optional: entity keys to link this message to in the knowledge graph. Replies auto-inherit parent's entity_keys."}
                 },
                 "required": ["content"]
             }

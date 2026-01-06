@@ -294,8 +294,8 @@ export const api = {
       apiClient.post('/messages', data),
     getChannel: (channel: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean }) =>
       apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params: { ...params, include_readers: true, include_thread_info: true } }),
-    detail: (messageKey: string, params?: { include_thread?: boolean; include_readers?: boolean; for_agent?: string }) =>
-      apiClient.get<Message>(`/messages/detail/${messageKey}`, { params: { include_thread: true, include_readers: true, ...params } }),
+    detail: (messageKey: string, params?: { include_thread?: boolean; include_readers?: boolean; include_entities?: boolean; for_agent?: string }) =>
+      apiClient.get<Message>(`/messages/detail/${messageKey}`, { params: { include_thread: true, include_readers: true, include_entities: true, ...params } }),
     markRead: (messageKey: string) =>
       apiClient.post(`/messages/mark-read/${messageKey}`),
     confirm: (messageKey: string, confirmedBy: string) =>
