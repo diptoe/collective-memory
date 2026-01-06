@@ -20,6 +20,8 @@ function personIdToName(personId: string): string {
 
 const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message', 'acknowledged', 'waiting', 'resumed'] as const;
 const PRIORITIES = ['normal', 'high', 'urgent'] as const;
+const TIME_FILTERS = ['1h', '24h', '7d', 'all'] as const;
+type TimeFilter = typeof TIME_FILTERS[number];
 
 const priorityColors: Record<string, string> = {
   urgent: 'bg-red-200 text-red-800',
@@ -43,6 +45,7 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [channel, setChannel] = useState('all');
   const [channels, setChannels] = useState<string[]>(['general']);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('24h');
   const [clearing, setClearing] = useState(false);
 
   // New message modal state
@@ -59,12 +62,29 @@ export default function MessagesPage() {
   // Track if we've ensured the person entity exists
   const personEnsured = useRef(false);
 
+  // Calculate since timestamp based on time filter
+  const getSinceTimestamp = (filter: TimeFilter): string | undefined => {
+    if (filter === 'all') return undefined;
+    const now = new Date();
+    switch (filter) {
+      case '1h':
+        return new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+      case '24h':
+        return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      case '7d':
+        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      default:
+        return undefined;
+    }
+  };
+
   // Load messages and extract channels
   const loadMessages = async () => {
     setLoading(true);
     try {
       const channelParam = channel === 'all' ? undefined : channel;
-      const res = await api.messages.list(channelParam);
+      const since = getSinceTimestamp(timeFilter);
+      const res = await api.messages.list(channelParam, { since });
       const msgs = res.data?.messages || [];
       setMessages(msgs);
 
@@ -94,7 +114,7 @@ export default function MessagesPage() {
 
   useEffect(() => {
     loadMessages();
-  }, [channel]);
+  }, [channel, timeFilter]);
 
   useEffect(() => {
     loadAgents();
@@ -208,39 +228,59 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* Channel tabs */}
-      <div className="flex items-center gap-1 mb-6 border-b border-cm-sand overflow-x-auto">
-        <button
-          onClick={() => setChannel('all')}
-          className={cn(
-            'px-4 py-2 text-sm font-medium transition-colors relative whitespace-nowrap',
-            channel === 'all'
-              ? 'text-cm-terracotta'
-              : 'text-cm-coffee hover:text-cm-charcoal'
-          )}
-        >
-          All
-          {channel === 'all' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cm-terracotta" />
-          )}
-        </button>
-        {channels.map((ch) => (
+      {/* Channel tabs and time filter */}
+      <div className="flex items-center justify-between mb-6 border-b border-cm-sand">
+        <div className="flex items-center gap-1 overflow-x-auto">
           <button
-            key={ch}
-            onClick={() => setChannel(ch)}
+            onClick={() => setChannel('all')}
             className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors relative whitespace-nowrap flex items-center gap-2',
-              channel === ch
+              'px-4 py-2 text-sm font-medium transition-colors relative whitespace-nowrap',
+              channel === 'all'
                 ? 'text-cm-terracotta'
                 : 'text-cm-coffee hover:text-cm-charcoal'
             )}
           >
-            #{ch}
-            {channel === ch && (
+            All
+            {channel === 'all' && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cm-terracotta" />
             )}
           </button>
-        ))}
+          {channels.map((ch) => (
+            <button
+              key={ch}
+              onClick={() => setChannel(ch)}
+              className={cn(
+                'px-4 py-2 text-sm font-medium transition-colors relative whitespace-nowrap flex items-center gap-2',
+                channel === ch
+                  ? 'text-cm-terracotta'
+                  : 'text-cm-coffee hover:text-cm-charcoal'
+              )}
+            >
+              #{ch}
+              {channel === ch && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cm-terracotta" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Time filter */}
+        <div className="flex items-center gap-1 pb-2">
+          {TIME_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setTimeFilter(filter)}
+              className={cn(
+                'px-3 py-1 text-xs font-medium rounded-full transition-colors',
+                timeFilter === filter
+                  ? 'bg-cm-terracotta text-cm-ivory'
+                  : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
+              )}
+            >
+              {filter === 'all' ? 'All time' : filter}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Messages */}

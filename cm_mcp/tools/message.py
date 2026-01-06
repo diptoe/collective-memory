@@ -142,10 +142,12 @@ async def get_messages(
         channel: Channel to read from (optional, reads all if not specified)
         unread_only: Only get unread messages (default: True)
         limit: Maximum messages to retrieve (default: 20)
+        since: Only return messages created after this ISO8601 timestamp (optional)
     """
     channel = arguments.get("channel")
     unread_only = arguments.get("unread_only", True)
     limit = arguments.get("limit", 20)
+    since = arguments.get("since")
 
     # Get agent ID for per-agent read tracking
     my_agent_id = session_state.get("agent_id")
@@ -164,6 +166,10 @@ async def get_messages(
         # Use per-agent tracking if we have an agent ID
         if my_agent_id:
             params["for_agent"] = my_agent_id
+
+        # Add time filter if specified
+        if since:
+            params["since"] = since
 
         result = await _make_request(config, "GET", endpoint, params=params)
 

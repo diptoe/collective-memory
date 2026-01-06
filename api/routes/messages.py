@@ -66,6 +66,7 @@ def register_message_routes(api: Api):
         @ns.param('limit', 'Maximum messages to return', type=int, default=50)
         @ns.param('unread_only', 'Only return unread messages', type=bool, default=False)
         @ns.param('channel', 'Filter by channel name', type=str)
+        @ns.param('since', 'Only return messages created after this ISO8601 timestamp', type=str)
         @ns.param('for_agent', 'Get messages for this agent (direct + broadcasts) with per-agent read status', type=str)
         @ns.param('from_agent', 'Filter by sender agent ID only', type=str)
         @ns.param('to_agent', 'Filter by recipient agent ID only', type=str)
@@ -85,14 +86,24 @@ def register_message_routes(api: Api):
             - Returns all messages matching other filters
             - Uses legacy global read_at for is_read status
             """
+            from datetime import datetime
             limit = request.args.get('limit', 50, type=int)
             unread_only = request.args.get('unread_only', 'false').lower() == 'true'
             channel = request.args.get('channel')
+            since = request.args.get('since')
             for_agent = request.args.get('for_agent')
             from_agent = request.args.get('from_agent')
             to_agent = request.args.get('to_agent')
             include_readers = request.args.get('include_readers', 'false').lower() == 'true'
             include_thread_info = request.args.get('include_thread_info', 'false').lower() == 'true'
+
+            # Parse since timestamp if provided
+            since_dt = None
+            if since:
+                try:
+                    since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+                except ValueError:
+                    pass  # Invalid timestamp, ignore
 
             # Per-agent mode: use MessageRead-aware queries
             if for_agent:
@@ -102,6 +113,10 @@ def register_message_routes(api: Api):
                     messages = Message.get_for_agent(for_agent, limit=limit, unread_only=False)
                     if channel:
                         messages = [m for m in messages if m.channel == channel]
+
+                # Apply since filter (post-query filtering for per-agent mode)
+                if since_dt:
+                    messages = [m for m in messages if m.created_at and m.created_at >= since_dt]
 
                 return {
                     'success': True,
@@ -117,6 +132,10 @@ def register_message_routes(api: Api):
             # Filter by channel
             if channel:
                 query = query.filter(Message.channel == channel)
+
+            # Filter by time
+            if since_dt:
+                query = query.filter(Message.created_at >= since_dt)
 
             # Specific filters
             if from_agent:

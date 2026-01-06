@@ -286,7 +286,7 @@ export const api = {
 
   // Messages (inter-agent)
   messages: {
-    list: (channel?: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean }) =>
+    list: (channel?: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean; since?: string }) =>
       channel
         ? apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params: { ...params, include_readers: true, include_thread_info: true } })
         : apiClient.get<InterAgentMessagesResponse>('/messages', { params: { ...params, include_readers: true, include_thread_info: true } }),

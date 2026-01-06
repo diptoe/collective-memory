@@ -699,6 +699,7 @@ EXAMPLES:
 - {} → Get all unread messages
 - {"channel": "backend"} → Messages from backend channel
 - {"unread_only": false, "limit": 50} → Get recent messages including read ones
+- {"since": "2025-01-06T10:00:00Z"} → Messages after a specific time
 
 RETURNS: List of messages with sender, content, type, and read status.""",
             inputSchema={
@@ -706,7 +707,8 @@ RETURNS: List of messages with sender, content, type, and read status.""",
                 "properties": {
                     "channel": {"type": "string", "description": "Filter by channel (optional)"},
                     "unread_only": {"type": "boolean", "description": "Only unread messages", "default": True},
-                    "limit": {"type": "integer", "description": "Maximum messages to retrieve", "default": 20}
+                    "limit": {"type": "integer", "description": "Maximum messages to retrieve", "default": 20},
+                    "since": {"type": "string", "description": "Only return messages created after this ISO8601 timestamp (optional)"}
                 }
             }
         ),
