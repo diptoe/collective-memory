@@ -46,6 +46,7 @@ from .tools import (
     list_models,
     list_clients,
     update_focus,
+    set_focused_mode,
     # GitHub integration tools
     sync_repository,
     get_repo_issues,
@@ -114,7 +115,7 @@ To stay active during a long session:
 - Use `list_agents()` to see who else is collaborating
 - Use `update_focus()` when your task changes
 
-## Available Tools (30 total)
+## Available Tools (31 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
 - identify: FIRST tool to call - shows options or registers you with CM
@@ -143,10 +144,11 @@ To stay active during a long session:
 - list_personas: See available AI personas
 - chat_with_persona: Chat with a specific persona (appears in Chat UI)
 
-### MODEL & CLIENT OPERATIONS (3 tools)
+### MODEL & CLIENT OPERATIONS (4 tools)
 - list_models: See available AI models (Claude, GPT, Gemini)
 - list_clients: See client types and persona affinities
 - update_focus: Update your current work focus
+- set_focused_mode: Enable fast heartbeats (30s) when waiting for replies
 
 ### MESSAGE QUEUE (4 tools) - Inter-agent communication
 - send_message: Send messages to other agents/humans (appears in Messages UI)
@@ -792,6 +794,39 @@ The focus is visible to other agents in the collaboration.""",
                 }
             }
         ),
+        types.Tool(
+            name="set_focused_mode",
+            description="""Enable or disable focused mode for faster heartbeats.
+
+USE THIS WHEN: You're actively waiting for a response from another agent and want to be notified quickly.
+
+FOCUSED MODE:
+- When ENABLED: Heartbeat interval is 30 seconds (fast polling for messages)
+- When DISABLED: Heartbeat interval is 5 minutes (normal polling)
+- Auto-expires after the specified duration (default 10 minutes)
+
+EXAMPLES:
+- {"enabled": true} → Enable focused mode for 10 minutes (default)
+- {"enabled": true, "duration_minutes": 15} → Enable for 15 minutes
+- {"enabled": false} → Disable focused mode immediately
+
+WORKFLOW:
+1. Send an autonomous task to another agent
+2. Enable focused mode: {"enabled": true}
+3. Agent works, replies when done
+4. You receive the reply quickly (30s polling)
+5. Focused mode auto-expires, or disable manually
+
+RETURNS: Current focused mode status with recommended heartbeat interval.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "enabled": {"type": "boolean", "description": "Enable (true) or disable (false) focused mode"},
+                    "duration_minutes": {"type": "integer", "description": "How long focused mode should last (default 10 minutes)", "default": 10}
+                },
+                "required": ["enabled"]
+            }
+        ),
 
         # ============================================================
         # GITHUB INTEGRATION TOOLS - Repository analysis and sync
@@ -1063,6 +1098,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = await list_clients(arguments, config, _session_state)
     elif name == "update_focus":
         result = await update_focus(arguments, config, _session_state)
+    elif name == "set_focused_mode":
+        result = await set_focused_mode(arguments, config, _session_state)
 
     # GitHub integration tools
     elif name == "sync_repository":

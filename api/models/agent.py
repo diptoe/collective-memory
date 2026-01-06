@@ -4,7 +4,7 @@ Collective Memory Platform - Agent Model
 Agent registration and status tracking.
 """
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 
 from api.models.base import BaseModel, db, get_key, get_now
@@ -37,6 +37,10 @@ class Agent(BaseModel):
     focus = Column(Text, nullable=True)
     focus_updated_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Focused mode - agent actively waiting for response (fast heartbeats)
+    focused_mode = Column(Boolean, default=False)
+    focused_mode_expires_at = Column(DateTime(timezone=True), nullable=True)
+
     # Legacy field - deprecated, use persona_key instead
     role = Column(String(100), nullable=True)
 
@@ -48,13 +52,16 @@ class Agent(BaseModel):
 
     _default_fields = [
         'agent_key', 'agent_id', 'client', 'model_key', 'persona_key',
-        'focus', 'role', 'capabilities', 'status'
+        'focus', 'focused_mode', 'role', 'capabilities', 'status'
     ]
     _readonly_fields = ['agent_key', 'created_at']
 
+    # Focused mode default duration (10 minutes)
+    FOCUSED_MODE_DURATION_MINUTES = 10
+
     @classmethod
     def current_schema_version(cls) -> int:
-        return 2  # Bumped for schema change
+        return 3  # Bumped for focused_mode fields
 
     @classmethod
     def get_by_agent_id(cls, agent_id: str) -> 'Agent':
@@ -105,6 +112,35 @@ class Agent(BaseModel):
         self.last_heartbeat = get_now()
         return self.save()
 
+    def set_focused_mode(self, enabled: bool, duration_minutes: int = None) -> bool:
+        """
+        Set focused mode for fast heartbeats.
+
+        When enabled, the agent signals it's actively waiting for a response
+        and should use faster heartbeat intervals (e.g., 30 seconds vs 5 minutes).
+
+        Args:
+            enabled: True to enable focused mode, False to disable
+            duration_minutes: How long focused mode should last (default 10 min)
+        """
+        self.focused_mode = enabled
+        if enabled:
+            duration = duration_minutes or self.FOCUSED_MODE_DURATION_MINUTES
+            self.focused_mode_expires_at = get_now() + timedelta(minutes=duration)
+        else:
+            self.focused_mode_expires_at = None
+        self.last_heartbeat = get_now()
+        return self.save()
+
+    @property
+    def is_focused(self) -> bool:
+        """Check if agent is in focused mode (and mode hasn't expired)."""
+        if not self.focused_mode:
+            return False
+        if self.focused_mode_expires_at:
+            return get_now() < self.focused_mode_expires_at
+        return True
+
     @property
     def is_active(self) -> bool:
         """Check if agent is considered active (heartbeat within 15 minutes)."""
@@ -123,6 +159,7 @@ class Agent(BaseModel):
         result = super().to_dict()
         if include_active_status:
             result['is_active'] = self.is_active
+            result['is_focused'] = self.is_focused
 
         # Expand model and persona to full objects for UI
         if expand_relations:

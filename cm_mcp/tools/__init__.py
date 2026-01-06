@@ -47,6 +47,7 @@ from .model import (
     list_models,
     list_clients,
     update_focus,
+    set_focused_mode,
 )
 
 from .github import (
@@ -93,6 +94,7 @@ __all__ = [
     'list_models',
     'list_clients',
     'update_focus',
+    'set_focused_mode',
     # GitHub integration tools
     'sync_repository',
     'get_repo_issues',

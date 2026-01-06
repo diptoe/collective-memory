@@ -382,10 +382,11 @@ def register_agent_routes(api: Api):
                     autonomous_tasks=autonomous_count
                 )
 
-                # Build response with message notification
+                # Build response with message notification and focused mode info
                 agent_data = agent.to_dict()
                 agent_data['unread_messages'] = unread_count
                 agent_data['autonomous_tasks'] = autonomous_count
+                agent_data['recommended_heartbeat_seconds'] = 30 if agent.is_focused else 300
 
                 # Build notification message
                 if autonomous_count > 0:
@@ -394,6 +395,13 @@ def register_agent_routes(api: Api):
                     msg = f'Heartbeat updated. ACTION REQUIRED: You have {unread_count} unread message(s). Use get_messages to check them.'
                 else:
                     msg = 'Heartbeat updated'
+
+                # Add focused mode expiry warning
+                if agent.is_focused and agent.focused_mode_expires_at:
+                    from api.models.base import get_now
+                    remaining = (agent.focused_mode_expires_at - get_now()).total_seconds() / 60
+                    if remaining < 2:
+                        msg += f' ⏱️ Focused mode expires in {remaining:.0f} minute(s).'
 
                 return {
                     'success': True,
@@ -451,6 +459,79 @@ def register_agent_routes(api: Api):
                     'success': True,
                     'msg': 'Focus cleared' if not focus_value else 'Focus updated',
                     'data': agent.to_dict()
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    # Focused mode model
+    focused_mode_update = ns.model('FocusedModeUpdate', {
+        'enabled': fields.Boolean(required=True, description='Enable or disable focused mode'),
+        'duration_minutes': fields.Integer(description='Duration in minutes (default 10)', default=10),
+    })
+
+    @ns.route('/<string:agent_id>/focused-mode')
+    @ns.param('agent_id', 'Agent ID')
+    class AgentFocusedMode(Resource):
+        @ns.doc('get_focused_mode')
+        @ns.marshal_with(response_model)
+        def get(self, agent_id):
+            """Get agent's focused mode status."""
+            agent = Agent.get_by_agent_id(agent_id)
+            if not agent:
+                return {'success': False, 'msg': 'Agent not found'}, 404
+
+            return {
+                'success': True,
+                'msg': 'Focused mode status retrieved',
+                'data': {
+                    'agent_id': agent.agent_id,
+                    'focused_mode': agent.focused_mode,
+                    'is_focused': agent.is_focused,
+                    'focused_mode_expires_at': agent.focused_mode_expires_at.isoformat() if agent.focused_mode_expires_at else None,
+                    'recommended_heartbeat_seconds': 30 if agent.is_focused else 300
+                }
+            }
+
+        @ns.doc('set_focused_mode')
+        @ns.expect(focused_mode_update)
+        @ns.marshal_with(response_model)
+        def put(self, agent_id):
+            """
+            Set focused mode for fast heartbeats.
+
+            When enabled, the agent signals it's actively waiting for a response.
+            Heartbeat interval should be reduced (30 seconds vs 5 minutes).
+            Focused mode auto-expires after duration_minutes (default 10).
+            """
+            agent = Agent.get_by_agent_id(agent_id)
+            if not agent:
+                return {'success': False, 'msg': 'Agent not found'}, 404
+
+            data = request.json
+
+            if 'enabled' not in data:
+                return {'success': False, 'msg': 'enabled field is required'}, 400
+
+            try:
+                enabled = data['enabled']
+                duration = data.get('duration_minutes', 10)
+                agent.set_focused_mode(enabled, duration)
+
+                if enabled:
+                    msg = f'Focused mode enabled for {duration} minutes. Use 30-second heartbeat interval.'
+                else:
+                    msg = 'Focused mode disabled. Resume normal 5-minute heartbeat interval.'
+
+                return {
+                    'success': True,
+                    'msg': msg,
+                    'data': {
+                        'agent_id': agent.agent_id,
+                        'focused_mode': agent.focused_mode,
+                        'is_focused': agent.is_focused,
+                        'focused_mode_expires_at': agent.focused_mode_expires_at.isoformat() if agent.focused_mode_expires_at else None,
+                        'recommended_heartbeat_seconds': 30 if agent.is_focused else 300
+                    }
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500

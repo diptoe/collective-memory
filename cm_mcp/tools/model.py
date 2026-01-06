@@ -178,3 +178,77 @@ async def update_focus(
             type="text",
             text=f"❌ Error updating focus: {str(e)}"
         )]
+
+
+async def set_focused_mode(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Enable or disable focused mode for faster heartbeats.
+
+    When focused mode is enabled, the agent signals it's actively waiting
+    for a response and should use faster heartbeat intervals (30 seconds
+    instead of 5 minutes).
+
+    Args:
+        enabled: True to enable focused mode, False to disable
+        duration_minutes: How long focused mode should last (default 10)
+    """
+    enabled = arguments.get("enabled")
+    duration_minutes = arguments.get("duration_minutes", 10)
+
+    if enabled is None:
+        return [types.TextContent(
+            type="text",
+            text="❌ 'enabled' parameter is required (true or false)"
+        )]
+
+    agent_id = session_state.get("agent_id")
+    if not agent_id:
+        return [types.TextContent(
+            type="text",
+            text="❌ Cannot set focused mode: Not registered.\n\n"
+                 "Use get_my_identity to check registration status."
+        )]
+
+    try:
+        result = await _make_request(
+            config,
+            "PUT",
+            f"/agents/{agent_id}/focused-mode",
+            json={"enabled": enabled, "duration_minutes": duration_minutes}
+        )
+
+        if result.get("success"):
+            data = result.get("data", {})
+            is_focused = data.get("is_focused", False)
+            recommended_interval = data.get("recommended_heartbeat_seconds", 300)
+            expires_at = data.get("focused_mode_expires_at")
+
+            output = "## Focused Mode Updated\n\n"
+
+            if is_focused:
+                output += "🎯 **Focused Mode: ENABLED**\n\n"
+                output += f"- Heartbeat interval: **{recommended_interval} seconds**\n"
+                if expires_at:
+                    output += f"- Expires at: {expires_at}\n"
+                output += "\nYou'll receive messages faster while focused mode is active."
+            else:
+                output += "💤 **Focused Mode: DISABLED**\n\n"
+                output += f"- Heartbeat interval: **{recommended_interval} seconds** (5 minutes)\n"
+                output += "\nReturned to normal polling interval."
+
+            return [types.TextContent(type="text", text=output)]
+        else:
+            return [types.TextContent(
+                type="text",
+                text=f"❌ Failed to set focused mode: {result.get('msg', 'Unknown error')}"
+            )]
+
+    except Exception as e:
+        return [types.TextContent(
+            type="text",
+            text=f"❌ Error setting focused mode: {str(e)}"
+        )]
