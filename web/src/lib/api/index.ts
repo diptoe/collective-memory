@@ -286,10 +286,12 @@ export const api = {
 
   // Messages (inter-agent)
   messages: {
-    list: (channel?: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean; since?: string }) =>
+    list: (channel?: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean; since?: string; entity_key?: string }) =>
       channel
         ? apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params: { ...params, include_readers: true, include_thread_info: true } })
         : apiClient.get<InterAgentMessagesResponse>('/messages', { params: { ...params, include_readers: true, include_thread_info: true } }),
+    byEntity: (entityKey: string, params?: { limit?: number }) =>
+      apiClient.get<InterAgentMessagesResponse>('/messages', { params: { ...params, entity_key: entityKey, include_readers: true, include_thread_info: true } }),
     post: (data: { channel: string; from_agent: string; to_agent?: string; reply_to_key?: string; message_type: string; content: unknown; priority?: string }) =>
       apiClient.post('/messages', data),
     getChannel: (channel: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean }) =>

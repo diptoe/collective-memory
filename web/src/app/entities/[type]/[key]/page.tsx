@@ -8,9 +8,10 @@ import { Entity } from '@/types';
 import { TYPE_COLORS } from '@/lib/graph/layout';
 import { EntityPropertiesPanel } from '@/components/entity/entity-properties-panel';
 import { EntityRelationshipsPanel } from '@/components/entity/entity-relationships-panel';
+import { EntityMessagesPanel } from '@/components/entity/entity-messages-panel';
 import { EntityJsonEditor } from '@/components/entity/entity-json-editor';
 
-type TabType = 'properties' | 'relationships' | 'json';
+type TabType = 'properties' | 'relationships' | 'messages' | 'json';
 
 export default function EntityDetailPage() {
   const params = useParams();
@@ -134,7 +135,7 @@ export default function EntityDetailPage() {
       {/* Tabs */}
       <div className="border-b border-cm-sand bg-cm-cream">
         <div className="flex overflow-x-auto">
-          {(['properties', 'relationships', 'json'] as TabType[]).map((tab) => (
+          {(['properties', 'relationships', 'messages', 'json'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -161,6 +162,12 @@ export default function EntityDetailPage() {
         {activeTab === 'relationships' && (
           <div className="max-w-4xl">
             <EntityRelationshipsPanel entity={entity} />
+          </div>
+        )}
+
+        {activeTab === 'messages' && (
+          <div className="max-w-4xl">
+            <EntityMessagesPanel entity={entity} />
           </div>
         )}
 

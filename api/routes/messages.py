@@ -67,6 +67,7 @@ def register_message_routes(api: Api):
         @ns.param('unread_only', 'Only return unread messages', type=bool, default=False)
         @ns.param('channel', 'Filter by channel name', type=str)
         @ns.param('since', 'Only return messages created after this ISO8601 timestamp', type=str)
+        @ns.param('entity_key', 'Filter messages linked to this entity', type=str)
         @ns.param('for_agent', 'Get messages for this agent (direct + broadcasts) with per-agent read status', type=str)
         @ns.param('from_agent', 'Filter by sender agent ID only', type=str)
         @ns.param('to_agent', 'Filter by recipient agent ID only', type=str)
@@ -91,6 +92,7 @@ def register_message_routes(api: Api):
             unread_only = request.args.get('unread_only', 'false').lower() == 'true'
             channel = request.args.get('channel')
             since = request.args.get('since')
+            entity_key = request.args.get('entity_key')
             for_agent = request.args.get('for_agent')
             from_agent = request.args.get('from_agent')
             to_agent = request.args.get('to_agent')
@@ -118,6 +120,10 @@ def register_message_routes(api: Api):
                 if since_dt:
                     messages = [m for m in messages if m.created_at and m.created_at >= since_dt]
 
+                # Apply entity_key filter (post-query filtering for per-agent mode)
+                if entity_key:
+                    messages = [m for m in messages if m.entity_keys and entity_key in m.entity_keys]
+
                 return {
                     'success': True,
                     'msg': f'Retrieved {len(messages)} messages for {for_agent}',
@@ -136,6 +142,11 @@ def register_message_routes(api: Api):
             # Filter by time
             if since_dt:
                 query = query.filter(Message.created_at >= since_dt)
+
+            # Filter by linked entity
+            if entity_key:
+                # JSONB array contains check
+                query = query.filter(Message.entity_keys.contains([entity_key]))
 
             # Specific filters
             if from_agent:
