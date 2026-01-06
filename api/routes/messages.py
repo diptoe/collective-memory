@@ -155,6 +155,7 @@ def register_message_routes(api: Api):
 
             # Validate reply_to_key if provided
             reply_to_key = data.get('reply_to_key')
+            parent = None
             if reply_to_key:
                 parent = Message.get_by_key(reply_to_key)
                 if not parent:
@@ -165,10 +166,15 @@ def register_message_routes(api: Api):
             if not from_agent and data.get('from_human'):
                 from_agent = f"human:{data['from_human']}"
 
+            # For replies, default to_agent to parent's from_agent (reply to sender)
+            to_agent = data.get('to_agent')
+            if not to_agent and parent:
+                to_agent = parent.from_agent
+
             message = Message(
                 channel=data['channel'],
                 from_agent=from_agent,
-                to_agent=data.get('to_agent'),
+                to_agent=to_agent,
                 reply_to_key=reply_to_key,
                 message_type=data['message_type'],
                 content=data['content'],
