@@ -70,25 +70,34 @@ function KnowledgeGraphInner({
   // Get unique entity types for legend
   const entityTypes = useMemo(() => getEntityTypes(entities), [entities]);
 
-  // Track which entity types are visible (all visible by default)
-  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => new Set(entityTypes));
+  // Types to hide by default (high-volume entity types that clutter the graph)
+  const HIDDEN_BY_DEFAULT = useMemo(() => new Set(['Commit', 'Issue']), []);
+
+  // Track which entity types are visible (hide Commits/Issues by default)
+  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => {
+    return new Set(entityTypes.filter(t => !HIDDEN_BY_DEFAULT.has(t)));
+  });
 
   // Update visible types when entity types change
   useMemo(() => {
     setVisibleTypes((prev) => {
       const newTypes = new Set(prev);
-      // Add any new types that weren't previously known
+      // Add any new types that weren't previously known (unless hidden by default)
       entityTypes.forEach((type) => {
-        if (!prev.has(type) && prev.size === 0) {
+        if (!prev.has(type) && prev.size === 0 && !HIDDEN_BY_DEFAULT.has(type)) {
           newTypes.add(type);
         } else if (prev.size > 0 && !Array.from(prev).some((t) => entityTypes.includes(t))) {
-          // If we have no visible types that exist, show all
-          entityTypes.forEach((t) => newTypes.add(t));
+          // If we have no visible types that exist, show all except hidden by default
+          entityTypes.forEach((t) => {
+            if (!HIDDEN_BY_DEFAULT.has(t)) {
+              newTypes.add(t);
+            }
+          });
         }
       });
       return newTypes;
     });
-  }, [entityTypes]);
+  }, [entityTypes, HIDDEN_BY_DEFAULT]);
 
   // Get entities connected to the focused entity
   const focusedConnectedKeys = useMemo(() => {

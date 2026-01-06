@@ -17,9 +17,10 @@ export default function GraphPage() {
   useEffect(() => {
     async function loadGraph() {
       try {
+        // Fetch more entities for the graph (default is 100)
         const [entRes, relRes] = await Promise.all([
-          api.entities.list(),
-          api.relationships.list(),
+          api.entities.list({ limit: '1000' }),
+          api.relationships.list({ limit: 5000 }),
         ]);
         setEntities(entRes.data?.entities || []);
         setRelationships(relRes.data?.relationships || []);
