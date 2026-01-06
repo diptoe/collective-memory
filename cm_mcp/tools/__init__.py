@@ -41,6 +41,7 @@ from .message import (
     get_messages,
     mark_message_read,
     mark_all_messages_read,
+    link_message_entities,
 )
 
 from .model import (
@@ -90,6 +91,7 @@ __all__ = [
     'get_messages',
     'mark_message_read',
     'mark_all_messages_read',
+    'link_message_entities',
     # Model and client tools
     'list_models',
     'list_clients',

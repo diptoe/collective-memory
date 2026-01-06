@@ -42,6 +42,7 @@ from .tools import (
     get_messages,
     mark_message_read,
     mark_all_messages_read,
+    link_message_entities,
     # Model and client tools
     list_models,
     list_clients,
@@ -115,7 +116,7 @@ To stay active during a long session:
 - Use `list_agents()` to see who else is collaborating
 - Use `update_focus()` when your task changes
 
-## Available Tools (31 total)
+## Available Tools (32 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
 - identify: FIRST tool to call - shows options or registers you with CM
@@ -150,11 +151,12 @@ To stay active during a long session:
 - update_focus: Update your current work focus
 - set_focused_mode: Enable fast heartbeats (30s) when waiting for replies
 
-### MESSAGE QUEUE (4 tools) - Inter-agent communication
+### MESSAGE QUEUE (5 tools) - Inter-agent communication
 - send_message: Send messages to other agents/humans (appears in Messages UI)
 - get_messages: Read messages from a channel
 - mark_message_read: Mark a single message as read
 - mark_all_messages_read: Clear all unread messages (with optional filters)
+- link_message_entities: Link entities to an existing message
 
 ### GITHUB INTEGRATION (4 tools) - Repository analysis
 - sync_repository: Sync Repository entity with live GitHub data (stars, forks, issues)
@@ -749,6 +751,33 @@ RETURNS: Number of messages marked as read.""",
                 }
             }
         ),
+        types.Tool(
+            name="link_message_entities",
+            description="""Link entities to an existing message.
+
+USE THIS WHEN: You want to connect a message to relevant entities in the knowledge graph after it was created.
+
+MODES:
+- add (default): Add entities to existing links
+- replace: Replace all entity links with the new ones
+- remove: Remove specified entities from links
+
+EXAMPLES:
+- {"message_key": "msg-abc123", "entity_keys": ["ent-xyz"]} → Add entity to message
+- {"message_key": "msg-abc123", "entity_keys": ["ent-a", "ent-b"], "mode": "replace"} → Replace all links
+- {"message_key": "msg-abc123", "entity_keys": ["ent-old"], "mode": "remove"} → Remove entity link
+
+RETURNS: Updated message with new entity links.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_key": {"type": "string", "description": "The message key to update"},
+                    "entity_keys": {"type": "array", "items": {"type": "string"}, "description": "Entity keys to link/unlink"},
+                    "mode": {"type": "string", "description": "Link mode: add (default), replace, or remove", "default": "add"}
+                },
+                "required": ["message_key", "entity_keys"]
+            }
+        ),
 
         # ============================================================
         # MODEL & CLIENT TOOLS - Manage AI models and client types
@@ -1025,7 +1054,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     # Skip for get_messages/mark_* since those are message-related
     unread_count = 0
     autonomous_count = 0
-    message_tools = ("get_messages", "mark_message_read", "mark_all_messages_read", "send_message")
+    message_tools = ("get_messages", "mark_message_read", "mark_all_messages_read", "send_message", "link_message_entities")
     if _session_state.get("registered") and name not in ("identify", "get_my_identity", *message_tools):
         try:
             unread_count, autonomous_count = await send_heartbeat()
@@ -1100,6 +1129,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = await mark_message_read(arguments, config, _session_state)
     elif name == "mark_all_messages_read":
         result = await mark_all_messages_read(arguments, config, _session_state)
+    elif name == "link_message_entities":
+        result = await link_message_entities(arguments, config, _session_state)
 
     # Model and client tools
     elif name == "list_models":

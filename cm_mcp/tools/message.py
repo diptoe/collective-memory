@@ -291,6 +291,60 @@ async def mark_message_read(
         return [types.TextContent(type="text", text=f"Error marking message read: {str(e)}")]
 
 
+async def link_message_entities(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Link entities to an existing message.
+
+    Use this to connect a message to relevant entities in the knowledge graph
+    after the message has been created.
+
+    Args:
+        message_key: The message key to update
+        entity_keys: List of entity keys to link
+        mode: How to update links - 'add' (default), 'replace', or 'remove'
+    """
+    message_key = arguments.get("message_key")
+    entity_keys = arguments.get("entity_keys", [])
+    mode = arguments.get("mode", "add")
+
+    if not message_key:
+        return [types.TextContent(type="text", text="Error: message_key is required")]
+
+    if not entity_keys and mode != "replace":
+        return [types.TextContent(type="text", text="Error: entity_keys is required")]
+
+    if mode not in ("add", "replace", "remove"):
+        return [types.TextContent(type="text", text="Error: mode must be add, replace, or remove")]
+
+    try:
+        result = await _make_request(
+            config,
+            "PUT",
+            f"/messages/detail/{message_key}/entities",
+            json={"entity_keys": entity_keys, "mode": mode},
+        )
+
+        if result.get("success"):
+            msg_data = result.get("data", {})
+            new_keys = msg_data.get("entity_keys") or []
+            output = f"## Entity Links Updated\n\n"
+            output += f"**Message:** {message_key}\n"
+            output += f"**Mode:** {mode}\n"
+            output += f"**Linked Entities:** {len(new_keys)}\n"
+            if new_keys:
+                output += f"**Keys:** {', '.join(new_keys)}\n"
+            return [types.TextContent(type="text", text=output)]
+        else:
+            return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to update entity links')}")]
+
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error updating entity links: {str(e)}")]
+
+
 async def mark_all_messages_read(
     arguments: dict,
     config: Any,

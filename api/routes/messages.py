@@ -423,6 +423,61 @@ def register_message_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
+    entity_links_model = ns.model('EntityLinks', {
+        'entity_keys': fields.List(fields.String(), required=True, description='Entity keys to link'),
+        'mode': fields.String(description='Link mode: add (default), replace, or remove'),
+    })
+
+    @ns.route('/detail/<string:message_key>/entities')
+    @ns.param('message_key', 'Message identifier')
+    class MessageEntityLinks(Resource):
+        @ns.doc('update_message_entity_links')
+        @ns.expect(entity_links_model)
+        @ns.marshal_with(response_model)
+        def put(self, message_key):
+            """
+            Update entity links on a message.
+
+            Modes:
+            - add (default): Add entities to existing links
+            - replace: Replace all entity links with new ones
+            - remove: Remove specified entities from links
+            """
+            message = Message.get_by_key(message_key)
+            if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            data = request.json
+            entity_keys = data.get('entity_keys', [])
+            mode = data.get('mode', 'add')
+
+            if not entity_keys and mode != 'replace':
+                return {'success': False, 'msg': 'entity_keys is required'}, 400
+
+            if mode not in ('add', 'replace', 'remove'):
+                return {'success': False, 'msg': 'mode must be add, replace, or remove'}, 400
+
+            try:
+                current_keys = set(message.entity_keys or [])
+
+                if mode == 'add':
+                    new_keys = current_keys | set(entity_keys)
+                elif mode == 'replace':
+                    new_keys = set(entity_keys)
+                elif mode == 'remove':
+                    new_keys = current_keys - set(entity_keys)
+
+                message.entity_keys = list(new_keys) if new_keys else None
+                message.save()
+
+                return {
+                    'success': True,
+                    'msg': f'Entity links updated ({mode})',
+                    'data': message.to_dict(include_thread_info=True)
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
     @ns.route('/detail/<string:message_key>')
     @ns.param('message_key', 'Message identifier')
     class MessageDetail(Resource):
