@@ -42,11 +42,12 @@ export default function RootLayout({
             </div>
 
             <div className="flex-1 py-4">
-              <NavLink href="/" icon="home">Dashboard</NavLink>
+              <NavLink href="/" icon="home">Activity</NavLink>
               <NavLink href="/chat" icon="message-circle">Chat</NavLink>
               <NavLink href="/personas" icon="users">Personas</NavLink>
               <NavLink href="/models" icon="brain">Models</NavLink>
               <NavLink href="/entities" icon="database">Entities</NavLink>
+              <NavLink href="/ideas" icon="lightbulb">Ideas</NavLink>
               <NavLink href="/graph" icon="git-branch">Graph</NavLink>
               <NavLink href="/messages" icon="inbox">Messages</NavLink>
               <NavLink href="/agents" icon="cpu">Agents</NavLink>
@@ -103,6 +104,7 @@ function NavIcon({ name }: { name: string }) {
     'users': '👥',
     'brain': '🧠',
     'database': '🗄️',
+    'lightbulb': '💡',
     'file-text': '📄',
     'layers': '📊',
     'git-branch': '🔀',
