@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Agent, ClientType } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
@@ -7,6 +8,7 @@ import { formatDateTime } from '@/lib/utils';
 interface AgentStatusProps {
   agent: Agent;
   onClick?: () => void;
+  href?: string;
 }
 
 const CLIENT_LABELS: Record<ClientType, string> = {
@@ -23,7 +25,7 @@ const CLIENT_COLORS: Record<ClientType, string> = {
   'gemini-cli': 'bg-blue-100 text-blue-800',
 };
 
-export function AgentStatus({ agent, onClick }: AgentStatusProps) {
+export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
   // Trust the API's is_active flag (15 minute heartbeat timeout)
   const isOnline = agent.is_active;
 
@@ -41,14 +43,13 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
   const personaColor = agent.persona?.color;
   const modelName = agent.model?.name;
 
-  return (
-    <div
-      onClick={onClick}
-      className={cn(
-        'p-4 rounded-xl border border-cm-sand bg-cm-ivory transition-all',
-        onClick && 'cursor-pointer hover:shadow-md hover:border-cm-terracotta/50'
-      )}
-    >
+  const cardClassName = cn(
+    'block p-4 rounded-xl border border-cm-sand bg-cm-ivory transition-all',
+    (onClick || href) && 'cursor-pointer hover:shadow-md hover:border-cm-terracotta/50'
+  );
+
+  const cardContent = (
+    <>
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -140,10 +141,31 @@ export function AgentStatus({ agent, onClick }: AgentStatusProps) {
 
       <div className="flex items-center justify-between text-xs text-cm-coffee/50">
         <span>Last heartbeat: {formatDateTime(agent.last_heartbeat)}</span>
-        <span className={cn(isOnline ? 'text-cm-success' : 'text-cm-coffee/50')}>
-          {isOnline ? 'Online' : 'Offline'}
-        </span>
+        <div className="flex items-center gap-2">
+          {agent.is_focused && (
+            <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full font-medium">
+              🎯 FOCUSED
+            </span>
+          )}
+          <span className={cn(isOnline ? 'text-cm-success' : 'text-cm-coffee/50')}>
+            {isOnline ? 'Online' : 'Offline'}
+          </span>
+        </div>
       </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className={cardClassName}>
+        {cardContent}
+      </Link>
+    );
+  }
+
+  return (
+    <div onClick={onClick} className={cardClassName}>
+      {cardContent}
     </div>
   );
 }

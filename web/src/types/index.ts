@@ -141,6 +141,9 @@ export interface Agent {
   role?: string;  // Legacy, prefer persona_key
   focus?: string;
   focus_updated_at?: string;
+  focused_mode?: boolean;
+  focused_mode_expires_at?: string;
+  is_focused?: boolean;
   capabilities: string[];
   status: {
     current_task?: string;

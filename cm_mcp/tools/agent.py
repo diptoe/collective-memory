@@ -456,8 +456,9 @@ async def list_agents(
                     is_me = a.get("agent_id") == current_id
                     marker = " ← (you)" if is_me else ""
                     status = "🟢" if a.get("is_active") else "⚪"
+                    focused = " 🎯" if a.get("is_focused") else ""
 
-                    output += f"{status} **{a.get('agent_id')}**{marker}\n"
+                    output += f"{status} **{a.get('agent_id')}**{focused}{marker}\n"
 
                     # Show client if available
                     if a.get("client"):
