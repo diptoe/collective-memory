@@ -93,6 +93,27 @@ async def get_entity(
 
             output += f"\n**Created:** {entity.get('created_at', 'Unknown')}\n"
 
+            # Fetch linked messages
+            try:
+                messages_result = await _make_request(
+                    config, "GET", "/messages",
+                    params={"entity_key": entity_key, "limit": 10},
+                    agent_id=agent_id,
+                )
+                if messages_result.get("success"):
+                    messages = messages_result.get("data", {}).get("messages", [])
+                    if messages:
+                        output += f"\n### Linked Messages ({len(messages)})\n"
+                        for msg in messages:
+                            from_agent = msg.get('from_agent', 'unknown')
+                            content = msg.get('content', '')
+                            if isinstance(content, dict):
+                                content = content.get('text', str(content))
+                            content = str(content)[:100] + "..." if len(str(content)) > 100 else str(content)
+                            output += f"- [{msg.get('message_key')}] {from_agent}: {content}\n"
+            except Exception:
+                pass  # Don't fail if messages can't be fetched
+
             return [types.TextContent(type="text", text=output)]
         else:
             return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Entity not found')}")]
