@@ -421,7 +421,9 @@ class GitHubService:
             Dict suitable for Entity.properties
         """
         return {
-            "number": issue.number,
+            "github_number": issue.number,
+            "github_id": f"I_{issue.number}",  # Synthetic ID since we don't have the real one
+            "title": issue.title,
             "state": issue.state,
             "url": issue.url,
             "author": issue.author,
@@ -433,6 +435,233 @@ class GitHubService:
             "created_at": issue.created_at.isoformat() if issue.created_at else None,
             "updated_at": issue.updated_at.isoformat() if issue.updated_at else None,
             "closed_at": issue.closed_at.isoformat() if issue.closed_at else None,
+        }
+
+    def to_commit_entity_properties(self, commit: CommitInfo) -> Dict[str, Any]:
+        """
+        Convert CommitInfo to properties dict for CM Entity.
+
+        Args:
+            commit: CommitInfo dataclass
+
+        Returns:
+            Dict suitable for Entity.properties
+        """
+        # Extract title (first line) and body from commit message
+        lines = commit.message.split('\n', 1)
+        title = lines[0].strip()
+        body = lines[1].strip() if len(lines) > 1 else ""
+
+        return {
+            "sha": commit.sha,
+            "title": title,
+            "message": commit.message,
+            "url": commit.url,
+            "author_name": commit.author_name,
+            "author_email": commit.author_email,
+            "additions": commit.additions,
+            "deletions": commit.deletions,
+            "files_changed": commit.files_changed,
+            "co_authors": commit.co_authors,
+            "committed_at": commit.date.isoformat() if commit.date else None,
+        }
+
+    def sync_commits_as_entities(
+        self,
+        owner: str,
+        repo: str,
+        repository_entity_key: str,
+        since: Optional[datetime] = None,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """
+        Sync commits from GitHub as Entity objects in the knowledge graph.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            repository_entity_key: Entity key of the Repository entity
+            since: Only fetch commits after this date
+            limit: Maximum number of commits to sync
+
+        Returns:
+            Dict with sync results (created, updated, skipped counts)
+        """
+        from api.models import db, Entity, Relationship
+
+        commits = self.get_commits(owner, repo, since=since, limit=limit)
+
+        created = 0
+        updated = 0
+        skipped = 0
+        commit_entities = []
+
+        for commit_info in commits:
+            # Check if Commit entity already exists by SHA
+            existing = Entity.query.filter(
+                Entity.entity_type == 'Commit',
+                Entity.properties['sha'].astext == commit_info.sha
+            ).first()
+
+            properties = self.to_commit_entity_properties(commit_info)
+
+            if existing:
+                # Update existing commit entity
+                existing.properties = {**existing.properties, **properties}
+                updated += 1
+                commit_entities.append(existing)
+            else:
+                # Create new Commit entity
+                title = properties['title'][:80] if properties['title'] else commit_info.sha[:7]
+                new_entity = Entity(
+                    name=title,
+                    entity_type='Commit',
+                    properties=properties,
+                    source=f"github:{owner}/{repo}",
+                )
+                db.session.add(new_entity)
+                db.session.flush()  # Get entity_key
+
+                # Create BELONGS_TO relationship to Repository
+                rel = Relationship(
+                    from_entity_key=new_entity.entity_key,
+                    to_entity_key=repository_entity_key,
+                    relationship_type='BELONGS_TO',
+                )
+                db.session.add(rel)
+
+                # Detect AI co-authors and create relationships
+                for coauthor in commit_info.co_authors:
+                    coauthor_lower = coauthor.lower()
+                    ai_type = None
+                    if 'claude' in coauthor_lower:
+                        ai_type = 'Claude'
+                    elif 'copilot' in coauthor_lower or 'github' in coauthor_lower:
+                        ai_type = 'GitHub Copilot'
+                    elif 'gpt' in coauthor_lower or 'openai' in coauthor_lower:
+                        ai_type = 'GPT'
+                    elif 'gemini' in coauthor_lower or 'google' in coauthor_lower:
+                        ai_type = 'Gemini'
+
+                    if ai_type:
+                        # Find or create an Agent entity for this AI
+                        agent_entity = Entity.query.filter(
+                            Entity.entity_type == 'Agent',
+                            Entity.name == ai_type
+                        ).first()
+
+                        if not agent_entity:
+                            agent_entity = Entity(
+                                name=ai_type,
+                                entity_type='Agent',
+                                properties={'type': 'ai', 'provider': ai_type.lower()},
+                                source='system',
+                            )
+                            db.session.add(agent_entity)
+                            db.session.flush()
+
+                        # Create CO_AUTHORED_BY relationship
+                        coauthor_rel = Relationship(
+                            from_entity_key=new_entity.entity_key,
+                            to_entity_key=agent_entity.entity_key,
+                            relationship_type='CO_AUTHORED_BY',
+                        )
+                        db.session.add(coauthor_rel)
+
+                created += 1
+                commit_entities.append(new_entity)
+
+        db.session.commit()
+
+        return {
+            'created': created,
+            'updated': updated,
+            'skipped': skipped,
+            'total': len(commits),
+            'commit_keys': [e.entity_key for e in commit_entities],
+        }
+
+    def sync_issues_as_entities(
+        self,
+        owner: str,
+        repo: str,
+        repository_entity_key: str,
+        state: str = "all",
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """
+        Sync issues from GitHub as Entity objects in the knowledge graph.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            repository_entity_key: Entity key of the Repository entity
+            state: Issue state filter ('open', 'closed', 'all')
+            limit: Maximum number of issues to sync
+
+        Returns:
+            Dict with sync results (created, updated, skipped counts)
+        """
+        from api.models import db, Entity, Relationship
+
+        issues = self.get_issues(owner, repo, state=state, limit=limit)
+
+        created = 0
+        updated = 0
+        skipped = 0
+        issue_entities = []
+
+        for issue_info in issues:
+            # Skip pull requests - they're not issues
+            if issue_info.is_pull_request:
+                skipped += 1
+                continue
+
+            # Check if Issue entity already exists by number
+            existing = Entity.query.filter(
+                Entity.entity_type == 'Issue',
+                Entity.properties['github_number'].astext == str(issue_info.number),
+                Entity.properties['url'].astext.contains(f"{owner}/{repo}")
+            ).first()
+
+            properties = self.to_issue_entity_properties(issue_info)
+
+            if existing:
+                # Update existing issue entity (state may have changed)
+                existing.properties = {**existing.properties, **properties}
+                existing.name = f"#{issue_info.number}: {issue_info.title[:60]}"
+                updated += 1
+                issue_entities.append(existing)
+            else:
+                # Create new Issue entity
+                new_entity = Entity(
+                    name=f"#{issue_info.number}: {issue_info.title[:60]}",
+                    entity_type='Issue',
+                    properties=properties,
+                    source=f"github:{owner}/{repo}",
+                )
+                db.session.add(new_entity)
+                db.session.flush()
+
+                # Create BELONGS_TO relationship to Repository
+                rel = Relationship(
+                    from_entity_key=new_entity.entity_key,
+                    to_entity_key=repository_entity_key,
+                    relationship_type='BELONGS_TO',
+                )
+                db.session.add(rel)
+
+                created += 1
+                issue_entities.append(new_entity)
+
+        db.session.commit()
+
+        return {
+            'created': created,
+            'updated': updated,
+            'skipped': skipped,
+            'total': len(issues),
+            'issue_keys': [e.entity_key for e in issue_entities],
         }
 
 

@@ -56,6 +56,11 @@ from .github import (
     get_repo_issues,
     get_repo_commits,
     get_repo_contributors,
+    sync_repository_history,
+    sync_repository_updates,
+    create_commit_entity,
+    create_issue_entity,
+    link_work_item,
 )
 
 from .activity import (
@@ -102,6 +107,11 @@ __all__ = [
     'get_repo_issues',
     'get_repo_commits',
     'get_repo_contributors',
+    'sync_repository_history',
+    'sync_repository_updates',
+    'create_commit_entity',
+    'create_issue_entity',
+    'link_work_item',
     # Activity tools
     'list_activities',
     'get_activity_summary',

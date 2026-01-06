@@ -53,6 +53,11 @@ from .tools import (
     get_repo_issues,
     get_repo_commits,
     get_repo_contributors,
+    sync_repository_history,
+    sync_repository_updates,
+    create_commit_entity,
+    create_issue_entity,
+    link_work_item,
     # Activity tools
     list_activities,
     get_activity_summary,
@@ -116,7 +121,7 @@ To stay active during a long session:
 - Use `list_agents()` to see who else is collaborating
 - Use `update_focus()` when your task changes
 
-## Available Tools (32 total)
+## Available Tools (37 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
 - identify: FIRST tool to call - shows options or registers you with CM
@@ -158,11 +163,16 @@ To stay active during a long session:
 - mark_all_messages_read: Clear all unread messages (with optional filters)
 - link_message_entities: Link entities to an existing message
 
-### GITHUB INTEGRATION (4 tools) - Repository analysis
+### GITHUB INTEGRATION (9 tools) - Repository analysis & work tracking
 - sync_repository: Sync Repository entity with live GitHub data (stars, forks, issues)
 - get_repo_issues: Fetch open/closed issues from a repository
 - get_repo_commits: Get recent commits with co-author detection
 - get_repo_contributors: List contributors with commit counts
+- sync_repository_history: Full backfill of commits/issues as entities
+- sync_repository_updates: Incremental sync since last sync (CALL AFTER COMMITS!)
+- create_commit_entity: Create entity for a specific commit SHA
+- create_issue_entity: Create entity for a specific issue number
+- link_work_item: Link commits/issues to Ideas (IMPLEMENTS, TRACKS, RESOLVES)
 
 ### ACTIVITY MONITORING (2 tools) - Track system activity
 - list_activities: View recent activities with filtering (by type, actor, time)
@@ -969,6 +979,138 @@ RETURNS: Contributors ranked by commit count with percentages.""",
                 "required": ["repository_url"]
             }
         ),
+        types.Tool(
+            name="sync_repository_history",
+            description="""Sync full repository history (commits and issues) as entities.
+
+USE THIS WHEN: You want to do a complete backfill of a repository's commits and issues into the knowledge graph.
+
+This performs a full historical sync, creating Commit and Issue entities with:
+- BELONGS_TO relationships to the Repository
+- CO_AUTHORED_BY relationships for AI co-authors (Claude, Copilot, etc.)
+
+WORKFLOW: After you make commits to a tracked repository:
+1. git add / git commit / git push
+2. sync_repository_updates() to capture your work
+3. link_work_item(commit_key, idea_key, "IMPLEMENTS") to connect to Ideas
+4. Update Idea status if work is complete
+
+EXAMPLES:
+- {"repository_url": "owner/repo"} → Sync both commits and issues
+- {"repository_url": "owner/repo", "entity_types": ["commits"], "commits_limit": 1000}
+
+RETURNS: Summary of created/updated entities.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL or owner/repo format"},
+                    "entity_types": {"type": "array", "items": {"type": "string"}, "description": "Types to sync: ['commits', 'issues']. Defaults to both."},
+                    "commits_limit": {"type": "integer", "description": "Maximum commits to sync (default 500)", "default": 500},
+                    "issues_limit": {"type": "integer", "description": "Maximum issues to sync (default 200)", "default": 200}
+                },
+                "required": ["repository_url"]
+            }
+        ),
+        types.Tool(
+            name="sync_repository_updates",
+            description="""Sync recent repository updates (incremental sync).
+
+USE THIS WHEN: You want to capture recent commits and issues since the last sync.
+
+IMPORTANT: Call this after making commits to capture your work in the knowledge graph!
+
+WORKFLOW REMINDER:
+1. git add / git commit / git push
+2. sync_repository_updates(repo, ["commits"])
+3. link_work_item(commit_key, idea_key, "IMPLEMENTS") if implementing an Idea
+4. Update Idea status if work is complete
+
+EXAMPLES:
+- {"repository_url": "owner/repo"} → Sync all updates
+- {"repository_url": "owner/repo", "entity_types": ["commits"]} → Just commits
+
+RETURNS: Summary of new/updated entities with commit keys for linking.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL or owner/repo format"},
+                    "entity_types": {"type": "array", "items": {"type": "string"}, "description": "Types to sync: ['commits', 'issues']. Defaults to both."}
+                },
+                "required": ["repository_url"]
+            }
+        ),
+        types.Tool(
+            name="create_commit_entity",
+            description="""Create a Commit entity for a specific commit SHA.
+
+USE THIS WHEN: You need to manually create a Commit entity and optionally link it to an Idea.
+
+EXAMPLES:
+- {"repository_url": "owner/repo", "sha": "abc1234"}
+- {"repository_url": "owner/repo", "sha": "abc1234", "implements": "ent-idea-key"}
+
+RETURNS: Created entity info with entity_key for further linking.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL or owner/repo format"},
+                    "sha": {"type": "string", "description": "Commit SHA (full or abbreviated)"},
+                    "implements": {"type": "string", "description": "Optional entity_key of an Idea or Issue this commit implements"}
+                },
+                "required": ["repository_url", "sha"]
+            }
+        ),
+        types.Tool(
+            name="create_issue_entity",
+            description="""Create an Issue entity for a specific GitHub issue number.
+
+USE THIS WHEN: You need to manually create an Issue entity and optionally link it to an Idea.
+
+EXAMPLES:
+- {"repository_url": "owner/repo", "issue_number": 42}
+- {"repository_url": "owner/repo", "issue_number": 42, "tracks_idea": "ent-idea-key"}
+
+RETURNS: Created entity info with entity_key for further linking.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repository_url": {"type": "string", "description": "GitHub repository URL or owner/repo format"},
+                    "issue_number": {"type": "integer", "description": "GitHub issue number"},
+                    "tracks_idea": {"type": "string", "description": "Optional entity_key of an Idea this issue tracks"}
+                },
+                "required": ["repository_url", "issue_number"]
+            }
+        ),
+        types.Tool(
+            name="link_work_item",
+            description="""Link a Commit or Issue to an Idea, Issue, or Project.
+
+USE THIS WHEN: You want to create an audit trail connecting work items.
+
+RELATIONSHIP TYPES:
+- IMPLEMENTS: Commit implements an Idea or Issue
+- TRACKS: Issue tracks an Idea
+- RESOLVES: Commit or Issue resolves another Issue
+- BELONGS_TO: Entity belongs to a Project
+
+WORKFLOW: After syncing commits, link them to Ideas:
+  link_work_item(commit_key, idea_key, "IMPLEMENTS")
+
+EXAMPLES:
+- {"source_key": "ent-commit", "target_key": "ent-idea", "relationship": "IMPLEMENTS"}
+- {"source_key": "ent-issue", "target_key": "ent-idea", "relationship": "TRACKS"}
+
+RETURNS: Confirmation with relationship details.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source_key": {"type": "string", "description": "Entity key of the source (Commit or Issue)"},
+                    "target_key": {"type": "string", "description": "Entity key of the target (Idea, Issue, or Project)"},
+                    "relationship": {"type": "string", "description": "IMPLEMENTS, TRACKS, RESOLVES, or BELONGS_TO", "default": "IMPLEMENTS"}
+                },
+                "required": ["source_key", "target_key"]
+            }
+        ),
 
         # ============================================================
         # ACTIVITY MONITORING TOOLS - Track system activity
@@ -1171,6 +1313,41 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         text = await get_repo_contributors(
             arguments.get("repository_url"),
             arguments.get("limit", 20)
+        )
+        result = [types.TextContent(type="text", text=text)]
+    elif name == "sync_repository_history":
+        text = await sync_repository_history(
+            arguments.get("repository_url"),
+            arguments.get("entity_types"),
+            arguments.get("commits_limit", 500),
+            arguments.get("issues_limit", 200)
+        )
+        result = [types.TextContent(type="text", text=text)]
+    elif name == "sync_repository_updates":
+        text = await sync_repository_updates(
+            arguments.get("repository_url"),
+            arguments.get("entity_types")
+        )
+        result = [types.TextContent(type="text", text=text)]
+    elif name == "create_commit_entity":
+        text = await create_commit_entity(
+            arguments.get("repository_url"),
+            arguments.get("sha"),
+            arguments.get("implements")
+        )
+        result = [types.TextContent(type="text", text=text)]
+    elif name == "create_issue_entity":
+        text = await create_issue_entity(
+            arguments.get("repository_url"),
+            arguments.get("issue_number"),
+            arguments.get("tracks_idea")
+        )
+        result = [types.TextContent(type="text", text=text)]
+    elif name == "link_work_item":
+        text = await link_work_item(
+            arguments.get("source_key"),
+            arguments.get("target_key"),
+            arguments.get("relationship", "IMPLEMENTS")
         )
         result = [types.TextContent(type="text", text=text)]
 

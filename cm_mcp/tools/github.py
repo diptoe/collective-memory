@@ -317,3 +317,523 @@ async def get_repo_contributors(
         return f"GitHub integration not available: {e}"
     except Exception as e:
         return f"Error fetching contributors: {e}"
+
+
+async def sync_repository_history(
+    repository_url: str,
+    entity_types: list[str] = None,
+    commits_limit: int = 500,
+    issues_limit: int = 200,
+) -> str:
+    """
+    Sync full repository history (commits and issues) as entities.
+
+    This performs a full historical backfill, creating Commit and Issue entities
+    for all items in the repository. Use sync_repository_updates for incremental syncs.
+
+    IMPORTANT: When you commit code to a repository tracked in CM, always follow up with
+    sync_repository_updates() to capture your work in the knowledge graph.
+
+    Args:
+        repository_url: GitHub repository URL
+        entity_types: List of types to sync - ["commits", "issues"]. Defaults to both.
+        commits_limit: Maximum commits to sync (default 500)
+        issues_limit: Maximum issues to sync (default 200)
+
+    Returns:
+        Formatted string with sync results
+    """
+    if entity_types is None:
+        entity_types = ["commits", "issues"]
+
+    try:
+        from api.services.github import GitHubService
+
+        gh = GitHubService()
+        owner, repo_name = gh.parse_repo_url(repository_url)
+
+        # First, ensure Repository entity exists
+        search_result = await _make_request(
+            config,
+            "GET",
+            "/entities",
+            params={"type": "Repository", "search": repo_name}
+        )
+
+        repository_entity_key = None
+        if search_result.get("success"):
+            entities = search_result.get("data", {}).get("entities", [])
+            for entity in entities:
+                entity_url = entity.get("properties", {}).get("url", "")
+                if f"{owner}/{repo_name}" in entity_url or entity.get("name") == repo_name:
+                    repository_entity_key = entity.get("entity_key")
+                    break
+
+        if not repository_entity_key:
+            return f"Repository entity not found for {owner}/{repo_name}. Run sync_repository first to create it."
+
+        output = f"## Repository History Sync: {owner}/{repo_name}\n\n"
+        results = {}
+
+        # Sync commits
+        if "commits" in entity_types:
+            commit_result = gh.sync_commits_as_entities(
+                owner, repo_name,
+                repository_entity_key,
+                since=None,  # All time
+                limit=commits_limit
+            )
+            results["commits"] = commit_result
+            output += f"### Commits\n"
+            output += f"- **Created:** {commit_result['created']}\n"
+            output += f"- **Updated:** {commit_result['updated']}\n"
+            output += f"- **Total fetched:** {commit_result['total']}\n\n"
+
+        # Sync issues
+        if "issues" in entity_types:
+            issue_result = gh.sync_issues_as_entities(
+                owner, repo_name,
+                repository_entity_key,
+                state="all",
+                limit=issues_limit
+            )
+            results["issues"] = issue_result
+            output += f"### Issues\n"
+            output += f"- **Created:** {issue_result['created']}\n"
+            output += f"- **Updated:** {issue_result['updated']}\n"
+            output += f"- **Skipped (PRs):** {issue_result['skipped']}\n"
+            output += f"- **Total fetched:** {issue_result['total']}\n\n"
+
+        # Update Repository entity with sync tracking
+        now = datetime.now(timezone.utc).isoformat()
+        sync_props = {"last_synced_at": now}
+        if "commits" in entity_types:
+            sync_props["commits_synced_until"] = now
+        if "issues" in entity_types:
+            sync_props["issues_synced_until"] = now
+
+        await _make_request(
+            config,
+            "PUT",
+            f"/entities/{repository_entity_key}",
+            json={"properties": sync_props}
+        )
+
+        output += f"**Repository Entity:** {repository_entity_key}\n"
+        output += f"**Synced At:** {now}\n"
+
+        return output
+
+    except ImportError as e:
+        return f"GitHub integration not available: {e}"
+    except Exception as e:
+        return f"Error syncing repository history: {e}"
+
+
+async def sync_repository_updates(
+    repository_url: str,
+    entity_types: list[str] = None,
+) -> str:
+    """
+    Sync recent repository updates (incremental sync).
+
+    Only fetches commits and issues since the last sync. Use this after making
+    commits to capture your work in the knowledge graph.
+
+    WORKFLOW REMINDER: When you commit code to a tracked repository:
+    1. git add / git commit / git push
+    2. sync_repository_updates(repo, ["commits"])
+    3. link_work_item(commit_key, idea_key, "IMPLEMENTS") if applicable
+    4. Update Idea status if work is complete
+
+    Args:
+        repository_url: GitHub repository URL
+        entity_types: List of types to sync - ["commits", "issues"]. Defaults to both.
+
+    Returns:
+        Formatted string with sync results
+    """
+    if entity_types is None:
+        entity_types = ["commits", "issues"]
+
+    try:
+        from api.services.github import GitHubService
+
+        gh = GitHubService()
+        owner, repo_name = gh.parse_repo_url(repository_url)
+
+        # Find Repository entity
+        search_result = await _make_request(
+            config,
+            "GET",
+            "/entities",
+            params={"type": "Repository", "search": repo_name}
+        )
+
+        repository_entity = None
+        if search_result.get("success"):
+            entities = search_result.get("data", {}).get("entities", [])
+            for entity in entities:
+                entity_url = entity.get("properties", {}).get("url", "")
+                if f"{owner}/{repo_name}" in entity_url or entity.get("name") == repo_name:
+                    repository_entity = entity
+                    break
+
+        if not repository_entity:
+            return f"Repository entity not found for {owner}/{repo_name}. Run sync_repository first."
+
+        repository_entity_key = repository_entity.get("entity_key")
+        props = repository_entity.get("properties", {})
+
+        output = f"## Repository Updates Sync: {owner}/{repo_name}\n\n"
+        results = {}
+
+        # Sync commits (incremental)
+        if "commits" in entity_types:
+            commits_since = props.get("commits_synced_until")
+            since_dt = None
+            if commits_since:
+                since_dt = datetime.fromisoformat(commits_since.replace('Z', '+00:00'))
+                output += f"**Commits since:** {commits_since}\n"
+            else:
+                # Default to last 7 days if never synced
+                since_dt = datetime.now(timezone.utc) - timedelta(days=7)
+                output += f"**Commits since:** Last 7 days (first sync)\n"
+
+            commit_result = gh.sync_commits_as_entities(
+                owner, repo_name,
+                repository_entity_key,
+                since=since_dt,
+                limit=100
+            )
+            results["commits"] = commit_result
+            output += f"\n### Commits\n"
+            output += f"- **Created:** {commit_result['created']}\n"
+            output += f"- **Updated:** {commit_result['updated']}\n"
+            output += f"- **Total fetched:** {commit_result['total']}\n"
+
+            # Show commit keys for linking
+            if commit_result['commit_keys']:
+                output += f"- **New commit keys:** {', '.join(commit_result['commit_keys'][:5])}"
+                if len(commit_result['commit_keys']) > 5:
+                    output += f" (+{len(commit_result['commit_keys']) - 5} more)"
+                output += "\n"
+
+        # Sync issues (incremental - updates states)
+        if "issues" in entity_types:
+            output += f"\n### Issues\n"
+            issue_result = gh.sync_issues_as_entities(
+                owner, repo_name,
+                repository_entity_key,
+                state="all",
+                limit=50
+            )
+            results["issues"] = issue_result
+            output += f"- **Created:** {issue_result['created']}\n"
+            output += f"- **Updated:** {issue_result['updated']}\n"
+            output += f"- **Skipped (PRs):** {issue_result['skipped']}\n"
+
+        # Update Repository entity with sync tracking
+        now = datetime.now(timezone.utc).isoformat()
+        sync_props = {"last_synced_at": now}
+        if "commits" in entity_types:
+            sync_props["commits_synced_until"] = now
+        if "issues" in entity_types:
+            sync_props["issues_synced_until"] = now
+
+        await _make_request(
+            config,
+            "PUT",
+            f"/entities/{repository_entity_key}",
+            json={"properties": sync_props}
+        )
+
+        output += f"\n**Synced At:** {now}\n"
+
+        return output
+
+    except ImportError as e:
+        return f"GitHub integration not available: {e}"
+    except Exception as e:
+        return f"Error syncing repository updates: {e}"
+
+
+async def create_commit_entity(
+    repository_url: str,
+    sha: str,
+    implements: Optional[str] = None,
+) -> str:
+    """
+    Create a Commit entity for a specific commit.
+
+    Use this to manually create a Commit entity and optionally link it to an
+    Idea or Issue that it implements.
+
+    Args:
+        repository_url: GitHub repository URL
+        sha: The commit SHA (full or abbreviated)
+        implements: Optional entity_key of an Idea or Issue this commit implements
+
+    Returns:
+        Formatted string with created entity info
+    """
+    try:
+        from api.services.github import GitHubService
+
+        gh = GitHubService()
+        owner, repo_name = gh.parse_repo_url(repository_url)
+
+        # Fetch the specific commit
+        commits = gh.get_commits(owner, repo_name, limit=100)
+        commit_info = None
+        for c in commits:
+            if c.sha.startswith(sha) or sha.startswith(c.sha[:7]):
+                commit_info = c
+                break
+
+        if not commit_info:
+            return f"Commit {sha} not found in recent history of {owner}/{repo_name}"
+
+        # Find Repository entity
+        search_result = await _make_request(
+            config,
+            "GET",
+            "/entities",
+            params={"type": "Repository", "search": repo_name}
+        )
+
+        repository_entity_key = None
+        if search_result.get("success"):
+            entities = search_result.get("data", {}).get("entities", [])
+            for entity in entities:
+                entity_url = entity.get("properties", {}).get("url", "")
+                if f"{owner}/{repo_name}" in entity_url or entity.get("name") == repo_name:
+                    repository_entity_key = entity.get("entity_key")
+                    break
+
+        if not repository_entity_key:
+            return f"Repository entity not found for {owner}/{repo_name}. Run sync_repository first."
+
+        # Create commit entity
+        result = gh.sync_commits_as_entities(
+            owner, repo_name,
+            repository_entity_key,
+            since=commit_info.date - timedelta(minutes=1),
+            limit=1
+        )
+
+        if result['created'] == 0 and result['updated'] == 0:
+            return f"Commit entity already exists or could not be created"
+
+        commit_key = result['commit_keys'][0] if result['commit_keys'] else None
+
+        output = f"## Commit Entity Created\n\n"
+        output += f"**SHA:** {commit_info.sha[:7]}\n"
+        output += f"**Title:** {commit_info.message.split(chr(10))[0][:60]}\n"
+        output += f"**Author:** {commit_info.author_name}\n"
+        output += f"**Entity Key:** {commit_key}\n\n"
+
+        # Link to implements target if provided
+        if implements and commit_key:
+            link_result = await _make_request(
+                config,
+                "POST",
+                "/relationships",
+                json={
+                    "from_entity_key": commit_key,
+                    "to_entity_key": implements,
+                    "relationship_type": "IMPLEMENTS"
+                }
+            )
+            if link_result.get("success"):
+                output += f"**Linked:** IMPLEMENTS → {implements}\n"
+            else:
+                output += f"**Link failed:** {link_result.get('msg')}\n"
+
+        return output
+
+    except ImportError as e:
+        return f"GitHub integration not available: {e}"
+    except Exception as e:
+        return f"Error creating commit entity: {e}"
+
+
+async def create_issue_entity(
+    repository_url: str,
+    issue_number: int,
+    tracks_idea: Optional[str] = None,
+) -> str:
+    """
+    Create an Issue entity for a specific GitHub issue.
+
+    Use this to manually create an Issue entity and optionally link it to an
+    Idea that it tracks.
+
+    Args:
+        repository_url: GitHub repository URL
+        issue_number: The GitHub issue number
+        tracks_idea: Optional entity_key of an Idea this issue tracks
+
+    Returns:
+        Formatted string with created entity info
+    """
+    try:
+        from api.services.github import GitHubService
+
+        gh = GitHubService()
+        owner, repo_name = gh.parse_repo_url(repository_url)
+
+        # Fetch the specific issue
+        issues = gh.get_issues(owner, repo_name, state="all", limit=200)
+        issue_info = None
+        for i in issues:
+            if i.number == issue_number:
+                issue_info = i
+                break
+
+        if not issue_info:
+            return f"Issue #{issue_number} not found in {owner}/{repo_name}"
+
+        if issue_info.is_pull_request:
+            return f"#{issue_number} is a Pull Request, not an Issue"
+
+        # Find Repository entity
+        search_result = await _make_request(
+            config,
+            "GET",
+            "/entities",
+            params={"type": "Repository", "search": repo_name}
+        )
+
+        repository_entity_key = None
+        if search_result.get("success"):
+            entities = search_result.get("data", {}).get("entities", [])
+            for entity in entities:
+                entity_url = entity.get("properties", {}).get("url", "")
+                if f"{owner}/{repo_name}" in entity_url or entity.get("name") == repo_name:
+                    repository_entity_key = entity.get("entity_key")
+                    break
+
+        if not repository_entity_key:
+            return f"Repository entity not found for {owner}/{repo_name}. Run sync_repository first."
+
+        # Create/update issue entity
+        result = gh.sync_issues_as_entities(
+            owner, repo_name,
+            repository_entity_key,
+            state="all",
+            limit=200
+        )
+
+        # Find the issue entity key
+        from api.models import Entity
+        issue_entity = Entity.query.filter(
+            Entity.entity_type == 'Issue',
+            Entity.properties['github_number'].astext == str(issue_number)
+        ).first()
+
+        if not issue_entity:
+            return f"Failed to create Issue entity for #{issue_number}"
+
+        output = f"## Issue Entity Created\n\n"
+        output += f"**Number:** #{issue_info.number}\n"
+        output += f"**Title:** {issue_info.title[:60]}\n"
+        output += f"**State:** {issue_info.state}\n"
+        output += f"**Entity Key:** {issue_entity.entity_key}\n\n"
+
+        # Link to idea if provided
+        if tracks_idea:
+            link_result = await _make_request(
+                config,
+                "POST",
+                "/relationships",
+                json={
+                    "from_entity_key": issue_entity.entity_key,
+                    "to_entity_key": tracks_idea,
+                    "relationship_type": "TRACKS"
+                }
+            )
+            if link_result.get("success"):
+                output += f"**Linked:** TRACKS → {tracks_idea}\n"
+            else:
+                output += f"**Link failed:** {link_result.get('msg')}\n"
+
+        return output
+
+    except ImportError as e:
+        return f"GitHub integration not available: {e}"
+    except Exception as e:
+        return f"Error creating issue entity: {e}"
+
+
+async def link_work_item(
+    source_key: str,
+    target_key: str,
+    relationship: str = "IMPLEMENTS",
+) -> str:
+    """
+    Link a Commit or Issue to an Idea, Issue, or Project.
+
+    Creates a relationship between work items to build the paper trail from
+    idea → issue → commit.
+
+    Common relationships:
+    - IMPLEMENTS: Commit implements an Idea or Issue
+    - TRACKS: Issue tracks an Idea
+    - RESOLVES: Commit or Issue resolves another Issue
+    - BELONGS_TO: Entity belongs to a Project
+
+    Args:
+        source_key: Entity key of the source (Commit or Issue)
+        target_key: Entity key of the target (Idea, Issue, or Project)
+        relationship: Relationship type (IMPLEMENTS, TRACKS, RESOLVES, BELONGS_TO)
+
+    Returns:
+        Formatted string confirming the link
+    """
+    valid_relationships = ["IMPLEMENTS", "TRACKS", "RESOLVES", "BELONGS_TO", "RELATED_TO"]
+    if relationship not in valid_relationships:
+        return f"Invalid relationship type. Use one of: {', '.join(valid_relationships)}"
+
+    try:
+        # Verify both entities exist
+        source_result = await _make_request(config, "GET", f"/entities/{source_key}")
+        target_result = await _make_request(config, "GET", f"/entities/{target_key}")
+
+        if not source_result.get("success"):
+            return f"Source entity not found: {source_key}"
+        if not target_result.get("success"):
+            return f"Target entity not found: {target_key}"
+
+        source_entity = source_result.get("data", {}).get("entity", {})
+        target_entity = target_result.get("data", {}).get("entity", {})
+
+        # Create relationship
+        link_result = await _make_request(
+            config,
+            "POST",
+            "/relationships",
+            json={
+                "from_entity_key": source_key,
+                "to_entity_key": target_key,
+                "relationship_type": relationship
+            }
+        )
+
+        if link_result.get("success"):
+            rel = link_result.get("data", {}).get("relationship", {})
+            return f"""## Work Item Linked
+
+**{source_entity.get('name')}** ({source_entity.get('entity_type')})
+  ↓ {relationship}
+**{target_entity.get('name')}** ({target_entity.get('entity_type')})
+
+**Relationship Key:** {rel.get('relationship_key')}
+
+This creates an audit trail connecting work items to ideas and projects.
+"""
+        else:
+            return f"Failed to create link: {link_result.get('msg')}"
+
+    except Exception as e:
+        return f"Error linking work items: {e}"
