@@ -319,6 +319,213 @@ async def get_repo_contributors(
         return f"Error fetching contributors: {e}"
 
 
+async def _sync_commits_via_api(
+    gh,
+    owner: str,
+    repo_name: str,
+    repository_entity_key: str,
+    since: Optional[datetime] = None,
+    limit: int = 100,
+) -> dict:
+    """
+    Sync commits as entities using HTTP API calls (no Flask context needed).
+    """
+    commits = gh.get_commits(owner, repo_name, since=since, limit=limit)
+
+    created = 0
+    updated = 0
+    commit_keys = []
+
+    for commit_info in commits:
+        # Check if Commit entity already exists by SHA
+        search_result = await _make_request(
+            config, "GET", "/entities",
+            params={"type": "Commit", "search": commit_info.sha[:12]}
+        )
+
+        existing_entity = None
+        if search_result.get("success"):
+            for e in search_result.get("data", {}).get("entities", []):
+                if e.get("properties", {}).get("sha") == commit_info.sha:
+                    existing_entity = e
+                    break
+
+        properties = gh.to_commit_entity_properties(commit_info)
+
+        if existing_entity:
+            # Update existing
+            await _make_request(
+                config, "PUT", f"/entities/{existing_entity['entity_key']}",
+                json={"properties": properties}
+            )
+            updated += 1
+            commit_keys.append(existing_entity['entity_key'])
+        else:
+            # Create new Commit entity
+            title = properties['title'][:80] if properties.get('title') else commit_info.sha[:7]
+            create_result = await _make_request(
+                config, "POST", "/entities",
+                json={
+                    "name": title,
+                    "entity_type": "Commit",
+                    "properties": properties,
+                    "source": f"github:{owner}/{repo_name}",
+                }
+            )
+
+            if create_result.get("success"):
+                new_entity = create_result.get("data", {}).get("entity", {})
+                entity_key = new_entity.get("entity_key")
+                commit_keys.append(entity_key)
+
+                # Create BELONGS_TO relationship to Repository
+                await _make_request(
+                    config, "POST", "/relationships",
+                    json={
+                        "from_entity_key": entity_key,
+                        "to_entity_key": repository_entity_key,
+                        "relationship_type": "BELONGS_TO",
+                    }
+                )
+
+                # Detect AI co-authors and create relationships
+                for coauthor in commit_info.co_authors:
+                    coauthor_lower = coauthor.lower()
+                    ai_type = None
+                    if 'claude' in coauthor_lower:
+                        ai_type = 'Claude'
+                    elif 'copilot' in coauthor_lower or 'github' in coauthor_lower:
+                        ai_type = 'GitHub Copilot'
+                    elif 'gpt' in coauthor_lower or 'openai' in coauthor_lower:
+                        ai_type = 'GPT'
+                    elif 'gemini' in coauthor_lower or 'google' in coauthor_lower:
+                        ai_type = 'Gemini'
+
+                    if ai_type:
+                        # Find or create Agent entity
+                        agent_search = await _make_request(
+                            config, "GET", "/entities",
+                            params={"type": "Agent", "search": ai_type}
+                        )
+                        agent_key = None
+                        if agent_search.get("success"):
+                            for a in agent_search.get("data", {}).get("entities", []):
+                                if a.get("name") == ai_type:
+                                    agent_key = a.get("entity_key")
+                                    break
+
+                        if not agent_key:
+                            agent_result = await _make_request(
+                                config, "POST", "/entities",
+                                json={
+                                    "name": ai_type,
+                                    "entity_type": "Agent",
+                                    "properties": {"type": "ai", "provider": ai_type.lower()},
+                                    "source": "system",
+                                }
+                            )
+                            if agent_result.get("success"):
+                                agent_key = agent_result.get("data", {}).get("entity", {}).get("entity_key")
+
+                        if agent_key:
+                            await _make_request(
+                                config, "POST", "/relationships",
+                                json={
+                                    "from_entity_key": entity_key,
+                                    "to_entity_key": agent_key,
+                                    "relationship_type": "CO_AUTHORED_BY",
+                                }
+                            )
+
+                created += 1
+
+    return {
+        'created': created,
+        'updated': updated,
+        'total': len(commits),
+        'commit_keys': commit_keys,
+    }
+
+
+async def _sync_issues_via_api(
+    gh,
+    owner: str,
+    repo_name: str,
+    repository_entity_key: str,
+    state: str = "all",
+    limit: int = 100,
+) -> dict:
+    """
+    Sync issues as entities using HTTP API calls (no Flask context needed).
+    """
+    issues = gh.get_issues(owner, repo_name, state=state, limit=limit)
+
+    created = 0
+    updated = 0
+    skipped = 0
+
+    for issue_info in issues:
+        # Skip pull requests
+        if issue_info.is_pull_request:
+            skipped += 1
+            continue
+
+        # Check if Issue entity already exists
+        search_result = await _make_request(
+            config, "GET", "/entities",
+            params={"type": "Issue", "search": f"#{issue_info.number}"}
+        )
+
+        existing_entity = None
+        if search_result.get("success"):
+            for e in search_result.get("data", {}).get("entities", []):
+                if e.get("properties", {}).get("github_number") == issue_info.number:
+                    existing_entity = e
+                    break
+
+        properties = gh.to_issue_entity_properties(issue_info)
+
+        if existing_entity:
+            # Update existing
+            await _make_request(
+                config, "PUT", f"/entities/{existing_entity['entity_key']}",
+                json={"properties": properties}
+            )
+            updated += 1
+        else:
+            # Create new Issue entity
+            create_result = await _make_request(
+                config, "POST", "/entities",
+                json={
+                    "name": f"#{issue_info.number}: {issue_info.title[:60]}",
+                    "entity_type": "Issue",
+                    "properties": properties,
+                    "source": f"github:{owner}/{repo_name}",
+                }
+            )
+
+            if create_result.get("success"):
+                entity_key = create_result.get("data", {}).get("entity", {}).get("entity_key")
+
+                # Create BELONGS_TO relationship
+                await _make_request(
+                    config, "POST", "/relationships",
+                    json={
+                        "from_entity_key": entity_key,
+                        "to_entity_key": repository_entity_key,
+                        "relationship_type": "BELONGS_TO",
+                    }
+                )
+                created += 1
+
+    return {
+        'created': created,
+        'updated': updated,
+        'skipped': skipped,
+        'total': len(issues),
+    }
+
+
 async def sync_repository_history(
     repository_url: str,
     entity_types: list[str] = None,
@@ -375,12 +582,12 @@ async def sync_repository_history(
         output = f"## Repository History Sync: {owner}/{repo_name}\n\n"
         results = {}
 
-        # Sync commits
+        # Sync commits via API
         if "commits" in entity_types:
-            commit_result = gh.sync_commits_as_entities(
-                owner, repo_name,
+            commit_result = await _sync_commits_via_api(
+                gh, owner, repo_name,
                 repository_entity_key,
-                since=None,  # All time
+                since=None,
                 limit=commits_limit
             )
             results["commits"] = commit_result
@@ -389,10 +596,10 @@ async def sync_repository_history(
             output += f"- **Updated:** {commit_result['updated']}\n"
             output += f"- **Total fetched:** {commit_result['total']}\n\n"
 
-        # Sync issues
+        # Sync issues via API
         if "issues" in entity_types:
-            issue_result = gh.sync_issues_as_entities(
-                owner, repo_name,
+            issue_result = await _sync_issues_via_api(
+                gh, owner, repo_name,
                 repository_entity_key,
                 state="all",
                 limit=issues_limit
@@ -488,7 +695,7 @@ async def sync_repository_updates(
         output = f"## Repository Updates Sync: {owner}/{repo_name}\n\n"
         results = {}
 
-        # Sync commits (incremental)
+        # Sync commits (incremental) via API
         if "commits" in entity_types:
             commits_since = props.get("commits_synced_until")
             since_dt = None
@@ -500,8 +707,8 @@ async def sync_repository_updates(
                 since_dt = datetime.now(timezone.utc) - timedelta(days=7)
                 output += f"**Commits since:** Last 7 days (first sync)\n"
 
-            commit_result = gh.sync_commits_as_entities(
-                owner, repo_name,
+            commit_result = await _sync_commits_via_api(
+                gh, owner, repo_name,
                 repository_entity_key,
                 since=since_dt,
                 limit=100
@@ -519,11 +726,11 @@ async def sync_repository_updates(
                     output += f" (+{len(commit_result['commit_keys']) - 5} more)"
                 output += "\n"
 
-        # Sync issues (incremental - updates states)
+        # Sync issues (incremental) via API
         if "issues" in entity_types:
             output += f"\n### Issues\n"
-            issue_result = gh.sync_issues_as_entities(
-                owner, repo_name,
+            issue_result = await _sync_issues_via_api(
+                gh, owner, repo_name,
                 repository_entity_key,
                 state="all",
                 limit=50
@@ -614,20 +821,53 @@ async def create_commit_entity(
         if not repository_entity_key:
             return f"Repository entity not found for {owner}/{repo_name}. Run sync_repository first."
 
-        # Create commit entity
-        result = gh.sync_commits_as_entities(
-            owner, repo_name,
-            repository_entity_key,
-            since=commit_info.date - timedelta(minutes=1),
-            limit=1
+        # Check if Commit entity already exists
+        existing_search = await _make_request(
+            config, "GET", "/entities",
+            params={"type": "Commit", "search": commit_info.sha[:12]}
         )
 
-        if result['created'] == 0 and result['updated'] == 0:
-            return f"Commit entity already exists or could not be created"
+        commit_key = None
+        existing = False
+        if existing_search.get("success"):
+            for e in existing_search.get("data", {}).get("entities", []):
+                if e.get("properties", {}).get("sha") == commit_info.sha:
+                    commit_key = e.get("entity_key")
+                    existing = True
+                    break
 
-        commit_key = result['commit_keys'][0] if result['commit_keys'] else None
+        # Create commit entity if it doesn't exist
+        if not commit_key:
+            properties = gh.to_commit_entity_properties(commit_info)
+            title = properties.get('title', '')[:80] if properties.get('title') else commit_info.sha[:7]
 
-        output = f"## Commit Entity Created\n\n"
+            create_result = await _make_request(
+                config, "POST", "/entities",
+                json={
+                    "name": title,
+                    "entity_type": "Commit",
+                    "properties": properties,
+                    "source": f"github:{owner}/{repo_name}",
+                }
+            )
+
+            if create_result.get("success"):
+                new_entity = create_result.get("data", {}).get("entity", {})
+                commit_key = new_entity.get("entity_key")
+
+                # Create BELONGS_TO relationship
+                await _make_request(
+                    config, "POST", "/relationships",
+                    json={
+                        "from_entity_key": commit_key,
+                        "to_entity_key": repository_entity_key,
+                        "relationship_type": "BELONGS_TO",
+                    }
+                )
+            else:
+                return f"Failed to create Commit entity: {create_result.get('msg')}"
+
+        output = f"## Commit Entity {'Found' if existing else 'Created'}\n\n"
         output += f"**SHA:** {commit_info.sha[:7]}\n"
         output += f"**Title:** {commit_info.message.split(chr(10))[0][:60]}\n"
         output += f"**Author:** {commit_info.author_name}\n"
@@ -717,38 +957,65 @@ async def create_issue_entity(
         if not repository_entity_key:
             return f"Repository entity not found for {owner}/{repo_name}. Run sync_repository first."
 
-        # Create/update issue entity
-        result = gh.sync_issues_as_entities(
-            owner, repo_name,
-            repository_entity_key,
-            state="all",
-            limit=200
+        # Check if Issue entity already exists
+        existing_search = await _make_request(
+            config, "GET", "/entities",
+            params={"type": "Issue", "search": f"#{issue_number}"}
         )
 
-        # Find the issue entity key
-        from api.models import Entity
-        issue_entity = Entity.query.filter(
-            Entity.entity_type == 'Issue',
-            Entity.properties['github_number'].astext == str(issue_number)
-        ).first()
+        issue_key = None
+        existing = False
+        if existing_search.get("success"):
+            for e in existing_search.get("data", {}).get("entities", []):
+                if e.get("properties", {}).get("github_number") == issue_number:
+                    issue_key = e.get("entity_key")
+                    existing = True
+                    break
 
-        if not issue_entity:
-            return f"Failed to create Issue entity for #{issue_number}"
+        # Create issue entity if it doesn't exist
+        if not issue_key:
+            properties = gh.to_issue_entity_properties(issue_info)
 
-        output = f"## Issue Entity Created\n\n"
+            create_result = await _make_request(
+                config, "POST", "/entities",
+                json={
+                    "name": f"#{issue_info.number}: {issue_info.title[:60]}",
+                    "entity_type": "Issue",
+                    "properties": properties,
+                    "source": f"github:{owner}/{repo_name}",
+                }
+            )
+
+            if create_result.get("success"):
+                new_entity = create_result.get("data", {}).get("entity", {})
+                issue_key = new_entity.get("entity_key")
+
+                # Create BELONGS_TO relationship
+                await _make_request(
+                    config, "POST", "/relationships",
+                    json={
+                        "from_entity_key": issue_key,
+                        "to_entity_key": repository_entity_key,
+                        "relationship_type": "BELONGS_TO",
+                    }
+                )
+            else:
+                return f"Failed to create Issue entity: {create_result.get('msg')}"
+
+        output = f"## Issue Entity {'Found' if existing else 'Created'}\n\n"
         output += f"**Number:** #{issue_info.number}\n"
         output += f"**Title:** {issue_info.title[:60]}\n"
         output += f"**State:** {issue_info.state}\n"
-        output += f"**Entity Key:** {issue_entity.entity_key}\n\n"
+        output += f"**Entity Key:** {issue_key}\n\n"
 
         # Link to idea if provided
-        if tracks_idea:
+        if tracks_idea and issue_key:
             link_result = await _make_request(
                 config,
                 "POST",
                 "/relationships",
                 json={
-                    "from_entity_key": issue_entity.entity_key,
+                    "from_entity_key": issue_key,
                     "to_entity_key": tracks_idea,
                     "relationship_type": "TRACKS"
                 }
