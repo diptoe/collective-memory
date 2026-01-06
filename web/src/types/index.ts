@@ -161,7 +161,7 @@ export interface Agent {
 }
 
 // Message types (inter-agent)
-export type MessageType = 'status' | 'announcement' | 'request' | 'task' | 'message';
+export type MessageType = 'status' | 'announcement' | 'request' | 'task' | 'message' | 'acknowledged' | 'waiting' | 'resumed';
 export type Priority = 'normal' | 'high' | 'urgent';
 
 export interface MessageReader {

@@ -633,17 +633,25 @@ The `autonomous` flag enables structured agent-to-agent collaboration:
    - The receiver will see this prominently highlighted as requiring their attention
 
 2. **Acknowledge task**: When you RECEIVE an autonomous task, IMMEDIATELY reply with:
-   - Acknowledgment that you've seen and understood the task
-   - Brief plan of what you'll do
-   - Expected completion time (e.g., "~10 minutes", "~1 hour")
-   - Example: "Acknowledged! I'll implement the auth API with JWT. Starting now, ETA ~15 minutes."
-   - This keeps the requester informed and sets expectations
+   - Use `message_type: "acknowledged"` to signal you've received the task
+   - Include brief plan and ETA in the content
+   - Example: `{"reply_to": "msg-abc", "message_type": "acknowledged", "content": "Starting auth API with JWT. ETA ~15 min."}`
 
-3. **Complete work**: Reply with `autonomous=false` (default) when you believe the task is done
+3. **Signal waiting**: If you need input/clarification, send a waiting signal:
+   - Use `message_type: "waiting"` to pause and request input
+   - Include WHY you're waiting and WHAT you need
+   - Example: `{"reply_to": "msg-abc", "message_type": "waiting", "content": "Blocked: need auth strategy decision. Options: OAuth (more secure) or JWT (simpler). Which approach?"}`
+
+4. **Signal resumed**: When you get input and continue, send a resumed signal:
+   - Use `message_type: "resumed"` to indicate you're back to work
+   - Include WHAT you received that unblocked you
+   - Example: `{"reply_to": "msg-abc", "message_type": "resumed", "content": "Received: use JWT with refresh tokens. Continuing implementation..."}`
+
+5. **Complete work**: Reply with `autonomous=false` (default) when you believe the task is done
    - "I've implemented X, here's what I did..."
    - This signals you believe the task is complete and are handing back control
 
-4. **Operator confirmation**: Human operators can "Confirm" completion in the Messages UI
+6. **Operator confirmation**: Human operators can "Confirm" completion in the Messages UI
    - Shows a green "Confirmed" badge on the message
    - Operators can also "Undo" confirmation if more work is needed
    - This provides a human-in-the-loop verification step
@@ -668,7 +676,7 @@ RETURNS: Confirmation with message key.""",
                 "properties": {
                     "channel": {"type": "string", "description": "Channel name: general, backend, frontend, urgent, or custom", "default": "general"},
                     "content": {"type": "string", "description": "Message content"},
-                    "message_type": {"type": "string", "description": "Type: announcement, question, handoff, status, update", "default": "announcement"},
+                    "message_type": {"type": "string", "description": "Type: status, announcement, request, task, message, acknowledged (task received), waiting (blocked/need input), resumed (continuing after input)", "default": "status"},
                     "to_agent": {"type": "string", "description": "Optional: specific agent ID (null for broadcast)"},
                     "reply_to": {"type": "string", "description": "Optional: message_key to reply to (creates threaded conversation)"},
                     "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"},

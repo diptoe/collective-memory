@@ -18,7 +18,7 @@ function personIdToName(personId: string): string {
     .join(' ');
 }
 
-const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message'] as const;
+const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message', 'acknowledged', 'waiting', 'resumed'] as const;
 const PRIORITIES = ['normal', 'high', 'urgent'] as const;
 
 const priorityColors: Record<string, string> = {
@@ -33,6 +33,9 @@ const typeIcons: Record<string, string> = {
   request: '?',
   task: '→',
   message: '✉',
+  acknowledged: '👍',
+  waiting: '⏸️',
+  resumed: '▶️',
 };
 
 export default function MessagesPage() {
