@@ -47,7 +47,6 @@ export default function RootLayout({
               <NavLink href="/personas" icon="users">Personas</NavLink>
               <NavLink href="/models" icon="brain">Models</NavLink>
               <NavLink href="/entities" icon="database">Entities</NavLink>
-              <NavLink href="/ideas" icon="lightbulb">Ideas</NavLink>
               <NavLink href="/graph" icon="git-branch">Graph</NavLink>
               <NavLink href="/messages" icon="inbox">Messages</NavLink>
               <NavLink href="/agents" icon="cpu">Agents</NavLink>
@@ -104,7 +103,6 @@ function NavIcon({ name }: { name: string }) {
     'users': '👥',
     'brain': '🧠',
     'database': '🗄️',
-    'lightbulb': '💡',
     'file-text': '📄',
     'layers': '📊',
     'git-branch': '🔀',
