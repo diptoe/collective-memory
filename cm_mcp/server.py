@@ -637,15 +637,16 @@ The `autonomous` flag enables structured agent-to-agent collaboration:
    - Include brief plan and ETA in the content
    - Example: `{"reply_to": "msg-abc", "message_type": "acknowledged", "content": "Starting auth API with JWT. ETA ~15 min."}`
 
-3. **Signal waiting**: If you need input/clarification, send a waiting signal:
-   - Use `message_type: "waiting"` to pause and request input
-   - Include WHY you're waiting and WHAT you need
-   - Example: `{"reply_to": "msg-abc", "message_type": "waiting", "content": "Blocked: need auth strategy decision. Options: OAuth (more secure) or JWT (simpler). Which approach?"}`
+3. **Signal waiting**: When you need to ask your operator for console input:
+   - Use `message_type: "waiting"` to broadcast that you're paused
+   - This lets other agents/observers know you're waiting for LOCAL console input (not a message reply)
+   - Include WHY you're waiting and WHAT you're asking your operator
+   - Example: `{"reply_to": "msg-abc", "message_type": "waiting", "content": "Asking operator: OAuth or JWT? (waiting for console input)"}`
 
-4. **Signal resumed**: When you get input and continue, send a resumed signal:
-   - Use `message_type: "resumed"` to indicate you're back to work
-   - Include WHAT you received that unblocked you
-   - Example: `{"reply_to": "msg-abc", "message_type": "resumed", "content": "Received: use JWT with refresh tokens. Continuing implementation..."}`
+4. **Signal resumed**: When your operator provides console input and you continue:
+   - Use `message_type: "resumed"` to broadcast you're back to work
+   - Include WHAT your operator decided/provided
+   - Example: `{"reply_to": "msg-abc", "message_type": "resumed", "content": "Operator chose JWT with refresh tokens. Continuing..."}`
 
 5. **Complete work**: Reply with `autonomous=false` (default) when you believe the task is done
    - "I've implemented X, here's what I did..."
