@@ -421,6 +421,21 @@ export default function RepositoryDetailPage() {
               <div>
                 <h3 className="text-sm font-medium text-cm-coffee mb-2">Details</h3>
                 <dl className="space-y-2 text-sm">
+                  {props.url && (
+                    <div className="flex justify-between">
+                      <dt className="text-cm-coffee/70">Git URL</dt>
+                      <dd>
+                        <a
+                          href={props.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-cm-terracotta hover:underline font-mono text-xs"
+                        >
+                          {props.url}
+                        </a>
+                      </dd>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <dt className="text-cm-coffee/70">Owner</dt>
                     <dd className="text-cm-charcoal">{props.owner || '-'}</dd>
