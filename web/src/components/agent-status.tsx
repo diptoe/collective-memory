@@ -16,6 +16,7 @@ const CLIENT_LABELS: Record<ClientType, string> = {
   'claude-desktop': 'Claude Desktop',
   'codex': 'Codex',
   'gemini-cli': 'Gemini CLI',
+  'cursor': 'Cursor',
 };
 
 const CLIENT_COLORS: Record<ClientType, string> = {
@@ -23,6 +24,7 @@ const CLIENT_COLORS: Record<ClientType, string> = {
   'claude-desktop': 'bg-purple-100 text-purple-800',
   'codex': 'bg-green-100 text-green-800',
   'gemini-cli': 'bg-blue-100 text-blue-800',
+  'cursor': 'bg-cyan-100 text-cyan-800',
 };
 
 export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {

@@ -2,6 +2,7 @@
 
 import { ChatMessage as ChatMessageType } from '@/types';
 import { cn } from '@/lib/utils';
+import ReactMarkdown from 'react-markdown';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -55,8 +56,76 @@ export function ChatMessage({ message }: ChatMessageProps) {
         )}
 
         {/* Message content */}
-        <div className="text-sm whitespace-pre-wrap break-words">
-          {message.content}
+        <div className="text-sm break-words">
+          <ReactMarkdown
+            // Do not allow raw HTML in messages
+            skipHtml
+            components={{
+              h1: ({ children }) => <h1 className="text-base font-semibold mt-2 mb-2">{children}</h1>,
+              h2: ({ children }) => <h2 className="text-sm font-semibold mt-2 mb-2">{children}</h2>,
+              h3: ({ children }) => <h3 className="text-sm font-medium mt-2 mb-2">{children}</h3>,
+              p: ({ children }) => (
+                <p className="leading-relaxed whitespace-pre-wrap mb-2 last:mb-0">{children}</p>
+              ),
+              a: ({ href, children }) => (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(
+                    'underline underline-offset-2',
+                    isUser ? 'text-cm-ivory' : 'text-cm-coffee'
+                  )}
+                >
+                  {children}
+                </a>
+              ),
+              ul: ({ children }) => <ul className="list-disc pl-5 mb-2 last:mb-0">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 last:mb-0">{children}</ol>,
+              li: ({ children }) => <li className="mb-1 last:mb-0">{children}</li>,
+              blockquote: ({ children }) => (
+                <blockquote
+                  className={cn(
+                    'border-l-2 pl-3 italic my-2',
+                    isUser ? 'border-cm-ivory/40' : 'border-cm-coffee/40'
+                  )}
+                >
+                  {children}
+                </blockquote>
+              ),
+              pre: ({ children }) => (
+                <pre
+                  className={cn(
+                    'my-2 overflow-x-auto rounded-md p-3 text-xs',
+                    isUser ? 'bg-black/20' : 'bg-black/5'
+                  )}
+                >
+                  {children}
+                </pre>
+              ),
+              code: ({ className, children }) => {
+                const isBlock = typeof className === 'string' && className.includes('language-');
+                const text = String(children).replace(/\n$/, '');
+                return (
+                  <code
+                    className={cn(
+                      'font-mono',
+                      isBlock
+                        ? 'text-xs'
+                        : cn(
+                            'rounded px-1 py-0.5',
+                            isUser ? 'bg-black/20' : 'bg-black/5'
+                          )
+                    )}
+                  >
+                    {text}
+                  </code>
+                );
+              },
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
         </div>
 
         {/* Timestamp */}

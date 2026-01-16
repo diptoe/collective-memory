@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Model, ModelProvider } from '@/types';
 import { cn } from '@/lib/utils';
@@ -20,7 +21,6 @@ const PROVIDER_LABELS: Record<ModelProvider, string> = {
 export default function ModelsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [filterProvider, setFilterProvider] = useState<string>('all');
   const [includeDeprecated, setIncludeDeprecated] = useState(false);
 
@@ -145,11 +145,7 @@ export default function ModelsPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {providerModels.map((model) => (
-                  <ModelCard
-                    key={model.model_key}
-                    model={model}
-                    onClick={() => setSelectedModel(model)}
-                  />
+                  <ModelCard key={model.model_key} model={model} />
                 ))}
               </div>
             </div>
@@ -159,129 +155,20 @@ export default function ModelsPage() {
         // Show flat list for single provider
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {models.map((model) => (
-            <ModelCard
-              key={model.model_key}
-              model={model}
-              onClick={() => setSelectedModel(model)}
-            />
+            <ModelCard key={model.model_key} model={model} />
           ))}
         </div>
       )}
 
-      {/* Detail modal */}
-      {selectedModel && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-40"
-          onClick={() => setSelectedModel(null)}
-        >
-          <div
-            className="bg-cm-ivory rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-cm-sand flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-cm-charcoal flex items-center gap-2">
-                  {selectedModel.name}
-                  <span className={cn('px-2 py-0.5 rounded text-xs', PROVIDER_COLORS[selectedModel.provider])}>
-                    {PROVIDER_LABELS[selectedModel.provider]}
-                  </span>
-                </h3>
-                <p className="text-sm text-cm-coffee font-mono">{selectedModel.model_id}</p>
-              </div>
-              <button
-                onClick={() => setSelectedModel(null)}
-                className="text-cm-coffee hover:text-cm-charcoal transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Model Key</h4>
-                  <p className="font-mono text-sm text-cm-charcoal">
-                    {selectedModel.model_key}
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-cm-coffee mb-1">Status</h4>
-                  <span className={cn(
-                    'px-2 py-1 rounded text-xs',
-                    selectedModel.status === 'active' ? 'bg-green-100 text-green-800' :
-                    selectedModel.status === 'deprecated' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  )}>
-                    {selectedModel.status}
-                  </span>
-                </div>
-
-                {selectedModel.description && (
-                  <div>
-                    <h4 className="text-sm font-medium text-cm-coffee mb-1">Description</h4>
-                    <p className="text-sm text-cm-charcoal">
-                      {selectedModel.description}
-                    </p>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  {selectedModel.context_window && (
-                    <div>
-                      <h4 className="text-sm font-medium text-cm-coffee mb-1">Context Window</h4>
-                      <p className="text-sm text-cm-charcoal">
-                        {selectedModel.context_window.toLocaleString()} tokens
-                      </p>
-                    </div>
-                  )}
-                  {selectedModel.max_output_tokens && (
-                    <div>
-                      <h4 className="text-sm font-medium text-cm-coffee mb-1">Max Output</h4>
-                      <p className="text-sm text-cm-charcoal">
-                        {selectedModel.max_output_tokens.toLocaleString()} tokens
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {selectedModel.capabilities && selectedModel.capabilities.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-cm-coffee mb-2">Capabilities</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedModel.capabilities.map((cap) => (
-                        <span
-                          key={cap}
-                          className="px-2 py-1 bg-cm-sand text-cm-coffee rounded text-xs"
-                        >
-                          {cap}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-4 border-t border-cm-sand">
-                  <p className="text-xs text-cm-coffee">
-                    Created: {new Date(selectedModel.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function ModelCard({ model, onClick }: { model: Model; onClick: () => void }) {
+function ModelCard({ model }: { model: Model }) {
   return (
-    <div
-      onClick={onClick}
-      className="p-4 bg-cm-cream border border-cm-sand rounded-lg hover:border-cm-terracotta/50 hover:shadow-md transition-all cursor-pointer"
+    <Link
+      href={`/models/${model.model_key}`}
+      className="block p-4 bg-cm-cream border border-cm-sand rounded-lg hover:border-cm-terracotta/50 hover:shadow-md transition-all"
     >
       <div className="flex items-start justify-between mb-2">
         <div>
@@ -321,6 +208,6 @@ function ModelCard({ model, onClick }: { model: Model; onClick: () => void }) {
           {(model.context_window / 1000).toFixed(0)}K context
         </p>
       )}
-    </div>
+    </Link>
   );
 }

@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { Message, Agent } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
+import { Markdown } from '@/components/markdown/markdown';
 
 // Get person ID from environment
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'unknown-user';
@@ -385,11 +386,13 @@ export default function MessagesPage() {
                     </p>
 
                     <div className="text-sm text-cm-charcoal">
-                      {typeof message.content === 'object' && message.content !== null ? (
-                        (message.content as { text?: string }).text || JSON.stringify(message.content)
-                      ) : (
-                        String(message.content)
-                      )}
+                      <Markdown
+                        content={
+                          typeof message.content === 'object' && message.content !== null
+                            ? (message.content as { text?: string }).text || JSON.stringify(message.content)
+                            : String(message.content)
+                        }
+                      />
                     </div>
 
                     <div className="flex items-center justify-between mt-2 text-xs text-cm-coffee/50">

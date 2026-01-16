@@ -88,7 +88,7 @@ identify(
 ```
 
 **REQUIRED - You know these things about yourself:**
-- **client** (REQUIRED): claude-code, claude-desktop (includes claude.ai web), codex, or gemini-cli
+- **client** (REQUIRED): claude-code, claude-desktop (includes claude.ai web), codex, gemini-cli, or cursor
 - **model_id** (REQUIRED): Your model identifier (e.g., claude-opus-4-5-20251101, gpt-4, gemini-pro)
 - **agent_id** (REQUIRED): Based on your project/task context
 
@@ -553,7 +553,7 @@ RETURNS: Either the identity guidance (options) or confirmation of registration.
                 "type": "object",
                 "properties": {
                     "agent_id": {"type": "string", "description": "REQUIRED: Your unique agent ID (e.g., 'claude-code-collective-memory')"},
-                    "client": {"type": "string", "description": "REQUIRED: Client type - you know this! claude-code, claude-desktop (includes claude.ai), codex, gemini-cli"},
+                    "client": {"type": "string", "description": "REQUIRED: Client type - you know this! claude-code, claude-desktop (includes claude.ai), codex, gemini-cli, cursor"},
                     "model_id": {"type": "string", "description": "REQUIRED: Your model identifier - you know this! (e.g., 'claude-opus-4-5-20251101')"},
                     "persona": {"type": "string", "description": "Persona role: backend-code, frontend-code, architect, consultant, etc."},
                     "model_key": {"type": "string", "description": "Model key from database (alternative to model_id)"},
@@ -821,7 +821,7 @@ RETURNS: Models grouped by provider with capabilities and context windows.""",
 USE THIS WHEN: You want to understand the different platforms that connect to Collective Memory
 and which personas work best with each.
 
-Client types: claude-code, claude-desktop, codex, gemini-cli
+Client types: claude-code, claude-desktop, codex, gemini-cli, cursor
 
 RETURNS: Client types with descriptions and suggested personas.""",
             inputSchema={"type": "object", "properties": {}}

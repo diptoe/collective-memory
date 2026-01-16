@@ -24,7 +24,7 @@ def register_agent_routes(api: Api):
     agent_model = ns.model('Agent', {
         'agent_key': fields.String(readonly=True, description='Unique agent identifier'),
         'agent_id': fields.String(required=True, description='Agent ID (e.g., claude-code-wayne-project)'),
-        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini-cli'),
+        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini-cli, cursor'),
         'model_key': fields.String(description='Foreign key to model'),
         'persona_key': fields.String(description='Foreign key to persona'),
         'focus': fields.String(description='Current work focus'),
@@ -40,7 +40,7 @@ def register_agent_routes(api: Api):
 
     agent_register = ns.model('AgentRegister', {
         'agent_id': fields.String(required=True, description='Agent ID'),
-        'client': fields.String(required=True, description='Client type: claude-code, claude-desktop, codex, gemini-cli'),
+        'client': fields.String(required=True, description='Client type: claude-code, claude-desktop, codex, gemini-cli, cursor'),
         'model_key': fields.String(description='Model key (optional)'),
         'persona_key': fields.String(description='Persona key (optional)'),
         'focus': fields.String(description='Current work focus'),
@@ -106,7 +106,7 @@ def register_agent_routes(api: Api):
 
             New registration protocol accepts:
             - agent_id (required): Unique agent identifier
-            - client (required): Client type (claude-code, claude-desktop, codex, gemini-cli)
+            - client (required): Client type (claude-code, claude-desktop, codex, gemini-cli, cursor)
             - model_key: Reference to AI model being used
             - persona_key: Reference to behavioral persona
             - focus: Current work focus/description
@@ -123,12 +123,12 @@ def register_agent_routes(api: Api):
             if not client:
                 return {
                     'success': False,
-                    'msg': 'client is required. Valid options: claude-code, claude-desktop, codex, gemini-cli'
+                    'msg': 'client is required. Valid options: claude-code, claude-desktop, codex, gemini-cli, cursor'
                 }, 400
             if not is_valid_client(client):
                 return {
                     'success': False,
-                    'msg': f"Invalid client type: '{client}'. Valid options: claude-code, claude-desktop, codex, gemini-cli"
+                    'msg': f"Invalid client type: '{client}'. Valid options: claude-code, claude-desktop, codex, gemini-cli, cursor"
                 }, 400
 
             # Validate model_key if provided

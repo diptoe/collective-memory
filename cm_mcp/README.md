@@ -32,7 +32,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
       "command": "python",
       "args": ["-m", "cm_mcp"],
       "env": {
-        "CM_API_URL": "http://localhost:5001",
+        "CM_API_URL": "http://localhost:5002",
         "CM_AGENT_ID": "claude-desktop-backend",
         "CM_PERSONA": "backend-code"
       }
@@ -48,7 +48,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 **Option A: CLI with JSON (recommended)**
 
 ```bash
-claude mcp add-json collective-memory '{"command": "python3", "args": ["-m", "cm_mcp"], "env": {"PYTHONPATH": "/path/to/collective-memory", "CM_API_URL": "http://localhost:5001", "CM_AGENT_ID": "claude-code-backend", "CM_PERSONA": "backend-code"}}'
+claude mcp add-json collective-memory '{"command": "python3", "args": ["-m", "cm_mcp"], "env": {"PYTHONPATH": "/path/to/collective-memory", "CM_API_URL": "http://localhost:5002", "CM_AGENT_ID": "claude-code-backend", "CM_PERSONA": "backend-code"}}'
 ```
 
 **Option B: CLI with flags**
@@ -56,7 +56,7 @@ claude mcp add-json collective-memory '{"command": "python3", "args": ["-m", "cm
 ```bash
 claude mcp add collective-memory \
   -e PYTHONPATH=/path/to/collective-memory \
-  -e CM_API_URL=http://localhost:5001 \
+  -e CM_API_URL=http://localhost:5002 \
   -e CM_AGENT_ID=claude-code-backend \
   -e CM_PERSONA=backend-code \
   -- python3 -m cm_mcp
@@ -74,7 +74,7 @@ Add to your project's `.mcp.json`:
       "args": ["-m", "cm_mcp"],
       "env": {
         "PYTHONPATH": "/path/to/collective-memory",
-        "CM_API_URL": "http://localhost:5001",
+        "CM_API_URL": "http://localhost:5002",
         "CM_AGENT_ID": "claude-code-backend",
         "CM_PERSONA": "backend-code"
       }
@@ -116,7 +116,7 @@ Each AI connecting to Collective Memory **must** have a unique identity and shou
 | `CM_AGENT_ID` | **Yes** | - | Unique identifier for this AI instance |
 | `CM_PERSONA` | **Yes** | - | Persona role: `backend-code`, `frontend-code`, `architect`, `consultant` |
 | `CM_AGENT_CAPABILITIES` | No | `search,create,update` | Comma-separated capabilities |
-| `CM_API_URL` | No | `http://localhost:5001` | Collective Memory API URL |
+| `CM_API_URL` | No | `http://localhost:5002` | Collective Memory API URL |
 | `CM_MCP_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `CM_MCP_DEBUG` | No | `false` | Enable debug logging |
 
@@ -280,7 +280,7 @@ Set both `CM_AGENT_ID` and `CM_PERSONA` in your MCP config:
 
 ```bash
 # Test API is running
-curl http://localhost:5001/api/health
+curl http://localhost:5002/api/health
 
 # Run server manually to see errors
 CM_AGENT_ID=test CM_PERSONA=backend-code python -m cm_mcp

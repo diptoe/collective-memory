@@ -102,6 +102,20 @@ export default function EntityDetailPage() {
           </button>
 
           <div className="flex items-center gap-2">
+            <Link
+              href={`/graph?focus=${entity.entity_key}`}
+              className="px-3 py-1.5 text-sm bg-cm-terracotta/10 text-cm-terracotta border border-cm-terracotta/30 rounded-lg hover:bg-cm-terracotta/20 transition-colors flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" strokeWidth={2} />
+                <circle cx="5" cy="6" r="2" strokeWidth={2} />
+                <circle cx="19" cy="6" r="2" strokeWidth={2} />
+                <circle cx="5" cy="18" r="2" strokeWidth={2} />
+                <circle cx="19" cy="18" r="2" strokeWidth={2} />
+                <path strokeWidth={2} d="M12 9V7M12 15v2M9.5 10.5l-3-3M14.5 10.5l3-3M9.5 13.5l-3 3M14.5 13.5l3 3" />
+              </svg>
+              View Network
+            </Link>
             <button
               onClick={handleDelete}
               disabled={deleting}

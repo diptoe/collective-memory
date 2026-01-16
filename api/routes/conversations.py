@@ -7,7 +7,7 @@ from flask import request, Response
 from flask_restx import Api, Resource, Namespace, fields
 import json
 
-from api.models import Conversation, ChatMessage, Persona
+from api.models import Conversation, ChatMessage, Persona, db
 
 
 def register_conversation_routes(api: Api):
@@ -315,10 +315,12 @@ def register_conversation_routes(api: Api):
                             system_prompt=persona.system_prompt or f"You are {persona.name}. {persona.role or ''}",
                             history=history,
                             inject_context=True,
-                            max_tokens=data.get('max_tokens', 4096),
-                            temperature=data.get('temperature', 0.7),
-                        )
+                            max_tokens=4086,
+                            temperature=0.7,
+                        )   
                     )
+                except Exception as e:
+                    return {'success': False, 'msg': f'AI response failed: {str(e)}'}, 500
                 finally:
                     loop.close()
 
@@ -402,7 +404,7 @@ def register_conversation_routes(api: Api):
                             system_prompt=persona.system_prompt or f"You are {persona.name}. {persona.role or ''}",
                             history=history,
                             inject_context=True,
-                            max_tokens=data.get('max_tokens', 4096),
+                            max_tokens=4086,
                             temperature=data.get('temperature', 0.7),
                             app=app,
                         ):
@@ -428,3 +430,36 @@ def register_conversation_routes(api: Api):
                 mimetype='text/event-stream',
                 headers=headers
             )
+
+    @ns.route('/<string:conversation_key>/clear')
+    @ns.param('conversation_key', 'Conversation identifier')
+    class ConversationClear(Resource):
+        @ns.doc('clear_conversation')
+        @ns.marshal_with(response_model)
+        def delete(self, conversation_key):
+            """Remove all messages from a conversation (conversation remains)."""
+            conversation = Conversation.get_by_key(conversation_key)
+            if not conversation:
+                return {'success': False, 'msg': 'Conversation not found'}, 404
+
+            try:
+                # Delete all messages for this conversation
+                deleted = ChatMessage.query.filter_by(conversation_key=conversation_key).delete()
+                db.session.commit()
+
+                # Touch conversation updated_at (and clear summary if present)
+                conversation.summary = None
+                conversation.save()
+
+                return {
+                    'success': True,
+                    'msg': f'Cleared {deleted} messages',
+                    'data': {
+                        'conversation_key': conversation_key,
+                        'deleted': deleted,
+                        'message_count': 0,
+                    }
+                }
+            except Exception as e:
+                db.session.rollback()
+                return {'success': False, 'msg': str(e)}, 500

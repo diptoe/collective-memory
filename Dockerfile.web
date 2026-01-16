@@ -1,0 +1,38 @@
+# Multi-stage Next.js build (Next config uses output: 'standalone')
+
+FROM node:20-alpine AS deps
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+FROM node:20-alpine AS builder
+WORKDIR /app/web
+COPY --from=deps /app/web/node_modules ./node_modules
+COPY web/ ./
+
+# The client bundle inlines NEXT_PUBLIC_* env vars at build time.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+# Some repos don’t include `web/public/`. Next standalone can still run without it,
+# but our runner stage copies it, so ensure it always exists.
+RUN mkdir -p public
+
+RUN npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app/web
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+# Standalone output
+COPY --from=builder /app/web/.next/standalone ./
+COPY --from=builder /app/web/.next/static ./.next/static
+COPY --from=builder /app/web/public ./public
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
+

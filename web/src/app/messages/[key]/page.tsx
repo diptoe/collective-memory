@@ -8,6 +8,7 @@ import { Message, Agent, Entity } from '@/types';
 import { cn } from '@/lib/utils';
 import { TYPE_COLORS } from '@/lib/graph/layout';
 import { formatDateTime } from '@/lib/utils';
+import { Markdown } from '@/components/markdown/markdown';
 
 // Get person ID from environment
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'unknown-user';
@@ -104,9 +105,7 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
             #{message.channel} · {formatDateTime(message.created_at)}
           </p>
 
-          <div className="text-sm text-cm-charcoal whitespace-pre-wrap">
-            {messageText}
-          </div>
+          <Markdown content={messageText} />
 
           <div className="flex items-center justify-between mt-3">
             <div className="flex items-center gap-3 text-xs text-cm-coffee/70">

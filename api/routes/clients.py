@@ -49,7 +49,7 @@ def register_client_routes(api: Api):
             }
 
     @ns.route('/<string:client>')
-    @ns.param('client', 'Client type (claude-code, claude-desktop, codex, gemini-cli)')
+    @ns.param('client', 'Client type (claude-code, claude-desktop, codex, gemini-cli, cursor)')
     class ClientDetail(Resource):
         @ns.doc('get_client')
         @ns.marshal_with(response_model)

@@ -322,6 +322,41 @@ class TestMessages:
         data = response.get_json()
         assert len(data['data']['messages']) <= 5
 
+    @pytest.mark.conversation
+    def test_clear_conversation_deletes_all_messages(self, api_client, factory):
+        """DELETE /conversations/<key>/clear removes all messages but keeps the conversation."""
+        conv = factory.conversation
+
+        # Add some messages
+        for i in range(3):
+            factory.create_chat_message(conv, role='user', content=f'Message {i}')
+
+        # Sanity check: messages exist
+        before = api_client.get(f'/api/conversations/{conv.conversation_key}')
+        assert before.status_code == 200
+        assert len(before.get_json()['data']['messages']) >= 3
+
+        # Clear messages
+        clear_resp = api_client.delete(f'/api/conversations/{conv.conversation_key}/clear')
+        assert clear_resp.status_code == 200
+        clear_data = clear_resp.get_json()
+        assert clear_data['success'] is True
+        assert clear_data['data']['conversation_key'] == conv.conversation_key
+        assert clear_data['data']['deleted'] == 3
+        assert clear_data['data']['message_count'] == 0
+
+        # Conversation still exists and messages are gone
+        after = api_client.get(f'/api/conversations/{conv.conversation_key}')
+        assert after.status_code == 200
+        assert len(after.get_json()['data']['messages']) == 0
+
+        # Messages endpoint also returns 0
+        after_messages = api_client.get(f'/api/conversations/{conv.conversation_key}/messages')
+        assert after_messages.status_code == 200
+        after_messages_data = after_messages.get_json()
+        assert after_messages_data['success'] is True
+        assert after_messages_data['data']['total'] == 0
+
 
 class TestConversationScenarios:
     """Tests for complete conversation scenarios."""

@@ -88,7 +88,7 @@ async def identify(
     Args:
         agent_id: Your unique agent identifier (e.g., "claude-code-wayne-auth-task")
         persona: Persona role to adopt (e.g., "backend-code", "architect", "consultant")
-        client: Client type - you know this! (claude-code, claude-desktop, codex, gemini-cli)
+        client: Client type - you know this! (claude-code, claude-desktop, codex, gemini-cli, cursor)
         model_id: Your model identifier - you know this! (e.g., "claude-opus-4-5-20251101")
         model_key: Model key from database (alternative to model_id)
         focus: What you're currently working on - describe your task
@@ -165,7 +165,7 @@ async def identify(
             for c in options["clients"]:
                 output += f"- **{c['client']}**: {c['description']}\n"
         else:
-            output += "- claude-code, claude-desktop, codex, gemini-cli\n"
+            output += "- claude-code, claude-desktop, codex, gemini-cli, cursor\n"
         output += "\n"
 
         # Available models
@@ -534,7 +534,7 @@ async def get_my_identity(
         output += "\n"
 
         output += "**3. Provide what you KNOW about yourself (REQUIRED):**\n"
-        output += "   - `client` (REQUIRED): claude-code, claude-desktop (includes claude.ai), codex, or gemini-cli\n"
+        output += "   - `client` (REQUIRED): claude-code, claude-desktop (includes claude.ai), codex, or gemini-cli, cursor\n"
         output += "   - `model_id` (REQUIRED): Your model (e.g., `claude-opus-4-5-20251101`)\n"
         output += "   - `focus`: What task are you currently helping with?\n\n"
 

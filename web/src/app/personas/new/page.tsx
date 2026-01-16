@@ -22,7 +22,7 @@ export default function NewPersonaPage() {
   
   const [selectedClients, setSelectedClients] = useState<ClientType[]>([]);
 
-  const availableClients: ClientType[] = ['claude-code', 'claude-desktop', 'codex', 'gemini-cli'];
+  const availableClients: ClientType[] = ['claude-code', 'claude-desktop', 'codex', 'gemini-cli', 'cursor'];
 
   const handleClientToggle = (client: ClientType) => {
     if (selectedClients.includes(client)) {

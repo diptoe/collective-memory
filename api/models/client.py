@@ -19,6 +19,7 @@ class ClientType(str, Enum):
     CLAUDE_DESKTOP = "claude-desktop"  # Claude Desktop app
     CODEX = "codex"                    # OpenAI Codex
     GEMINI_CLI = "gemini-cli"          # Google Gemini CLI
+    CURSOR = "cursor"                  # Cursor IDE
 
 
 # Client → Persona Affinities
@@ -45,6 +46,12 @@ CLIENT_PERSONA_AFFINITIES: Dict[str, List[str]] = {
         'cloud-expert',
         'data-scientist',
         'architect',
+        'cm-developer',
+    ],
+    ClientType.CURSOR.value: [
+        'frontend-code',
+        'backend-code',
+        'full-stack',
         'cm-developer',
     ],
 }
@@ -86,5 +93,6 @@ def _get_client_description(client_type: ClientType) -> str:
         ClientType.CLAUDE_DESKTOP: "Anthropic's Claude Desktop app and claude.ai web client for general AI assistance",
         ClientType.CODEX: "OpenAI's Codex platform for code generation and assistance",
         ClientType.GEMINI_CLI: "Google's Gemini CLI tool for terminal-based development",
+        ClientType.CURSOR: "Cursor AI-powered IDE",
     }
     return descriptions.get(client_type, "Unknown client type")

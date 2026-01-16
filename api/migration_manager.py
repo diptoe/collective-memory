@@ -270,11 +270,19 @@ class MigrationManager:
                     logger.debug(f"Column {table_name}.{col_name} is protected, skipping removal")
                     continue
 
-                changes['removed_columns'].append({
-                    'name': col_name,
-                    'info': existing_columns[col_name]
-                })
-                changes['total_changes'] += 1
+                # Only treat "extra columns" as actionable changes when removal is enabled.
+                # Otherwise this creates noisy warnings on every startup for legacy columns.
+                if self.allow_column_removal:
+                    changes['removed_columns'].append({
+                        'name': col_name,
+                        'info': existing_columns[col_name]
+                    })
+                    changes['total_changes'] += 1
+                else:
+                    logger.debug(
+                        f"Column {table_name}.{col_name} exists in database but not in model "
+                        f"(allow_column_removal=False; keeping column)"
+                    )
 
         # Check indexes
         existing_indexes = {idx['name']: idx for idx in self.get_existing_indexes(table_name)}
@@ -418,6 +426,24 @@ class MigrationManager:
         for idx_config in hnsw_indexes:
             table_name = idx_config['table']
             if table_name not in existing_tables:
+                continue
+
+            # Only attempt HNSW indexes when the column is actually a VECTOR type.
+            # If the schema still has TEXT embeddings, pgvector ops will fail.
+            try:
+                existing_cols = self.get_existing_columns(table_name)
+                col_info = existing_cols.get(idx_config['column'])
+                col_type = (col_info or {}).get('type', '')
+                if 'vector' not in str(col_type).lower():
+                    logger.debug(
+                        f"Skipping HNSW index {idx_config['index_name']} because "
+                        f"{table_name}.{idx_config['column']} is not VECTOR (type={col_type})"
+                    )
+                    continue
+            except Exception as e:
+                logger.warning(
+                    f"Could not inspect column type for HNSW index {idx_config['index_name']}: {e}"
+                )
                 continue
 
             # Check if index already exists

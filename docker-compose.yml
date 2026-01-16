@@ -1,0 +1,55 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    profiles: ["localdb"]
+    environment:
+      POSTGRES_DB: collective_memory
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - cm_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d collective_memory"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      CM_ENV: prod
+      API_HOST: 0.0.0.0
+      API_PORT: 5002
+      API_USE_RELOADER: "false"
+      # Point to your existing Postgres by setting DATABASE_URL in `.env` (docker compose loads it automatically).
+      # Default below works when you enable the bundled DB via: `docker compose --profile localdb up --build`
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/collective_memory}
+      # Set to true only when your target DB has the pgvector extension + VECTOR columns
+      CM_ENABLE_PGVECTOR: ${CM_ENABLE_PGVECTOR:-false}
+    # For Linux Docker setups where host.docker.internal isn't defined by default.
+    # Safe on macOS/Windows too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "5002:5002"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        # IMPORTANT: this is inlined into the browser bundle at build time.
+        # For local docker usage, "localhost" is correct.
+        NEXT_PUBLIC_API_URL: http://localhost:5002/api
+    depends_on:
+      - api
+    ports:
+      - "3002:3000"
+
+volumes:
+  cm_db_data:
+

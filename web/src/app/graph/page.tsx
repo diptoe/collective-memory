@@ -1,18 +1,31 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { X, Search, Focus } from 'lucide-react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { X, Search, Focus, ChevronDown } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Entity, Relationship } from '@/types';
 import { KnowledgeGraph } from '@/components/graph';
 
-export default function GraphPage() {
+// Entity types that can be used as project/scope filters
+const SCOPE_ENTITY_TYPES = ['Project', 'Repository'];
+
+function GraphPageContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [entities, setEntities] = useState<Entity[]>([]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [focusedEntityKey, setFocusedEntityKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Read focus from URL on mount
+  const urlFocus = searchParams.get('focus');
+  const [focusedEntityKey, setFocusedEntityKey] = useState<string | null>(urlFocus);
+
+  // Get scope entities (Projects, Repositories) for dropdown
+  const scopeEntities = entities.filter(e => SCOPE_ENTITY_TYPES.includes(e.entity_type));
 
   useEffect(() => {
     async function loadGraph() {
@@ -48,7 +61,15 @@ export default function GraphPage() {
     if (entityKey) {
       setSearchQuery('');
     }
-  }, []);
+    // Update URL to enable deep-linking
+    const params = new URLSearchParams(searchParams.toString());
+    if (entityKey) {
+      params.set('focus', entityKey);
+    } else {
+      params.delete('focus');
+    }
+    router.replace(`/graph?${params.toString()}`, { scroll: false });
+  }, [searchParams, router]);
 
   // Get focused entity name for display
   const focusedEntity = focusedEntityKey
@@ -92,15 +113,39 @@ export default function GraphPage() {
           </p>
         </div>
 
-        {/* Focus indicator */}
-        {focusedEntity && (
+        {/* Project/Repository scope dropdown */}
+        {scopeEntities.length > 0 && (
+          <div className="relative flex-shrink-0">
+            <select
+              value={focusedEntityKey || ''}
+              onChange={(e) => handleFocusEntity(e.target.value || null)}
+              className="appearance-none pl-3 pr-8 py-2 text-sm border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta bg-white cursor-pointer min-w-[180px]"
+            >
+              <option value="">All entities</option>
+              <optgroup label="Projects">
+                {scopeEntities.filter(e => e.entity_type === 'Project').map(e => (
+                  <option key={e.entity_key} value={e.entity_key}>{e.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Repositories">
+                {scopeEntities.filter(e => e.entity_type === 'Repository').map(e => (
+                  <option key={e.entity_key} value={e.entity_key}>{e.name}</option>
+                ))}
+              </optgroup>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50 pointer-events-none" />
+          </div>
+        )}
+
+        {/* Focus indicator (for non-scope entities) */}
+        {focusedEntity && !SCOPE_ENTITY_TYPES.includes(focusedEntity.entity_type) && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-cm-terracotta/10 border border-cm-terracotta/30 rounded-lg">
             <Focus className="w-4 h-4 text-cm-terracotta" />
             <span className="text-sm text-cm-charcoal">
               Focused: <strong>{focusedEntity.name}</strong>
             </span>
             <button
-              onClick={() => setFocusedEntityKey(null)}
+              onClick={() => handleFocusEntity(null)}
               className="p-0.5 text-cm-terracotta hover:text-cm-sienna transition-colors"
               title="Clear focus"
             >
@@ -169,5 +214,18 @@ export default function GraphPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams
+export default function GraphPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full">
+        <p className="text-cm-coffee">Loading graph...</p>
+      </div>
+    }>
+      <GraphPageContent />
+    </Suspense>
   );
 }

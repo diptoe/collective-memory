@@ -72,7 +72,7 @@ export interface Model {
 }
 
 // Client types
-export type ClientType = 'claude-code' | 'claude-desktop' | 'codex' | 'gemini-cli';
+export type ClientType = 'claude-code' | 'claude-desktop' | 'codex' | 'gemini-cli' | 'cursor';
 
 export interface Client {
   client: ClientType;

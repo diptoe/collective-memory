@@ -29,7 +29,7 @@ export default function PersonaDetailPage({ params }: { params: Promise<{ key: s
   });
   const [selectedClients, setSelectedClients] = useState<ClientType[]>([]);
 
-  const availableClients: ClientType[] = ['claude-code', 'claude-desktop', 'codex', 'gemini-cli'];
+  const availableClients: ClientType[] = ['claude-code', 'claude-desktop', 'codex', 'gemini-cli', 'cursor'];
 
   useEffect(() => {
     loadPersona();
