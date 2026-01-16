@@ -86,6 +86,11 @@ async def send_message(
         if entity_keys:
             payload["entity_keys"] = entity_keys
 
+        # Include domain context for multi-tenancy if available
+        context_domain = session_state.get("context_domain")
+        if context_domain:
+            payload["context_domain"] = context_domain
+
         result = await _make_request(
             config,
             "POST",
@@ -170,6 +175,11 @@ async def get_messages(
         # Add time filter if specified
         if since:
             params["since"] = since
+
+        # Add domain filter for multi-tenancy
+        context_domain = session_state.get("context_domain")
+        if context_domain:
+            params["context_domain"] = context_domain
 
         result = await _make_request(config, "GET", endpoint, params=params)
 

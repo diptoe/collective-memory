@@ -23,6 +23,9 @@ from api.models.repository_stats import RepositoryStats
 from api.models.commit import Commit
 from api.models.metric import Metric, MetricTypes
 from api.models.activity import Activity, ActivityType
+from api.models.user import User
+from api.models.session import Session
+from api.models.domain import Domain
 
 __all__ = [
     'db',
@@ -55,4 +58,7 @@ __all__ = [
     'MetricTypes',
     'Activity',
     'ActivityType',
+    'User',
+    'Session',
+    'Domain',
 ]

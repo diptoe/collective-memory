@@ -73,6 +73,7 @@ def register_message_routes(api: Api):
         @ns.param('to_agent', 'Filter by recipient agent ID only', type=str)
         @ns.param('include_readers', 'Include list of agents who have read each message', type=bool, default=False)
         @ns.param('include_thread_info', 'Include reply_count and has_parent for each message', type=bool, default=False)
+        @ns.param('context_domain', 'Filter by domain for multi-tenancy', type=str)
         @ns.marshal_with(response_model)
         def get(self):
             """
@@ -98,6 +99,7 @@ def register_message_routes(api: Api):
             to_agent = request.args.get('to_agent')
             include_readers = request.args.get('include_readers', 'false').lower() == 'true'
             include_thread_info = request.args.get('include_thread_info', 'false').lower() == 'true'
+            context_domain = request.args.get('context_domain')
 
             # Parse since timestamp if provided
             since_dt = None
@@ -123,6 +125,10 @@ def register_message_routes(api: Api):
                 # Apply entity_key filter (post-query filtering for per-agent mode)
                 if entity_key:
                     messages = [m for m in messages if m.entity_keys and entity_key in m.entity_keys]
+
+                # Apply domain filter for multi-tenancy
+                if context_domain:
+                    messages = [m for m in messages if m.context_domain == context_domain]
 
                 return {
                     'success': True,
@@ -153,6 +159,10 @@ def register_message_routes(api: Api):
                 query = query.filter(Message.from_agent == from_agent)
             if to_agent:
                 query = query.filter(Message.to_agent == to_agent)
+
+            # Domain filter for multi-tenancy
+            if context_domain:
+                query = query.filter(Message.context_domain == context_domain)
 
             if unread_only:
                 query = query.filter(Message.read_at.is_(None))
@@ -217,7 +227,8 @@ def register_message_routes(api: Api):
                 content=data['content'],
                 priority=data.get('priority', 'normal'),
                 autonomous=data.get('autonomous', False),
-                entity_keys=entity_keys if entity_keys else None
+                entity_keys=entity_keys if entity_keys else None,
+                context_domain=data.get('context_domain')
             )
 
             try:

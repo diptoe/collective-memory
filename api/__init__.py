@@ -68,4 +68,8 @@ def create_app() -> Flask:
         from api.services.seeding import seed_all
         seed_all()
 
+        # Ensure default domain exists and migrate existing data
+        from api.models.domain import ensure_default_domain
+        ensure_default_domain()
+
     return app

@@ -255,3 +255,58 @@ export interface ActivityTimelinePoint {
   total: number;
   [key: string]: number | string;  // Dynamic type counts
 }
+
+// User authentication types
+export type UserRole = 'admin' | 'user';
+export type UserStatus = 'active' | 'suspended' | 'pending';
+
+export interface User {
+  user_key: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  display_name: string;
+  initials: string;
+  role: UserRole;
+  status: UserStatus;
+  preferences: Record<string, unknown>;
+  entity_key?: string;
+  domain_key?: string;  // Domain for multi-tenancy
+  pat?: string;  // Only included when viewing own data
+  pat_created_at?: string;
+  last_login_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Session {
+  session_key: string;
+  user_key: string;
+  user_agent?: string;
+  ip_address?: string;
+  expires_at: string;
+  last_activity_at: string;
+  created_at: string;
+  is_current?: boolean;  // Set when viewing own sessions
+}
+
+// Domain types (multi-tenancy)
+export type DomainStatus = 'active' | 'suspended';
+
+export interface Domain {
+  domain_key: string;
+  name: string;
+  slug: string;
+  description?: string;
+  owner_key?: string;
+  status: DomainStatus;
+  created_at: string;
+  updated_at: string;
+  // Extended fields from API
+  user_count?: number;
+  owner?: {
+    user_key: string;
+    display_name: string;
+    email: string;
+  };
+}

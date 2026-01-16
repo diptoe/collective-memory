@@ -19,6 +19,9 @@ from api.routes.documents import register_document_routes
 from api.routes.ner import register_ner_routes
 from api.routes.github import register_github_routes
 from api.routes.activities import register_activity_routes
+from api.routes.auth import register_auth_routes
+from api.routes.users import register_user_routes
+from api.routes.domains import register_domain_routes
 
 
 def register_routes(api: Api):
@@ -37,3 +40,6 @@ def register_routes(api: Api):
     register_ner_routes(api)
     register_github_routes(api)
     register_activity_routes(api)
+    register_auth_routes(api)
+    register_user_routes(api)
+    register_domain_routes(api)

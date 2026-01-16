@@ -1,8 +1,8 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, Session, Domain } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
 
 // Response type wrappers
@@ -30,6 +30,20 @@ interface ActivitiesResponse { activities: Activity[]; count: number }
 interface ActivitySummaryResponse extends ActivitySummary { }
 interface ActivityTimelineResponse { timeline: ActivityTimelinePoint[]; hours: number; bucket_minutes: number }
 interface ActivityTypesResponse { types: string[] }
+
+// Auth response types
+interface AuthUserResponse { user: User; session?: Session; session_expires_at?: string }
+interface SessionsResponse { sessions: Session[] }
+interface PatResponse { pat: string; pat_created_at: string }
+interface UsersResponse { users: User[]; total: number; limit: number; offset: number }
+interface UserResponse { user: User; session_count?: number }
+interface UserStatsResponse { total: number; active: number; suspended: number; admins: number; users: number }
+
+// Domain response types
+interface DomainsResponse { domains: Domain[] }
+interface DomainResponse { domain: Domain }
+interface DomainUsersResponse { domain: Domain; users: User[] }
+interface DomainStatsResponse { total: number; active: number; suspended: number; with_owner: number; users_with_domain: number; users_without_domain: number }
 
 /**
  * API Response type from the backend
@@ -68,6 +82,7 @@ class BaseApiClient {
         'Content-Type': 'application/json',
         'X-Agent-Id': `human:${PERSON_ID}`,
       },
+      withCredentials: true,  // Enable cookie handling for auth
     });
 
     // Request interceptor - log outgoing requests
@@ -332,5 +347,67 @@ export const api = {
       apiClient.get<ActivityTypesResponse>('/activities/types'),
     purge: () =>
       apiClient.post<{ deleted: number; retention_days: number }>('/activities/purge'),
+  },
+
+  // Auth
+  auth: {
+    register: (data: { email: string; password: string; first_name: string; last_name: string }) =>
+      apiClient.post<AuthUserResponse>('/auth/register', data),
+    login: (email: string, password: string, rememberMe = false) =>
+      apiClient.post<AuthUserResponse>('/auth/login', { email, password, remember_me: rememberMe }),
+    logout: () =>
+      apiClient.post('/auth/logout'),
+    me: () =>
+      apiClient.get<AuthUserResponse>('/auth/me'),
+    updateProfile: (data: { first_name?: string; last_name?: string }) =>
+      apiClient.put<AuthUserResponse>('/auth/profile', data),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      apiClient.put('/auth/password', { current_password: currentPassword, new_password: newPassword }),
+    regeneratePat: () =>
+      apiClient.post<PatResponse>('/auth/pat/regenerate'),
+    sessions: () =>
+      apiClient.get<SessionsResponse>('/auth/sessions'),
+    revokeSession: (sessionKey: string) =>
+      apiClient.delete(`/auth/sessions/${sessionKey}`),
+    revokeAllSessions: () =>
+      apiClient.delete<{ revoked_count: number }>('/auth/sessions/all'),
+  },
+
+  // Users (admin only)
+  users: {
+    list: (params?: { role?: string; status?: string; limit?: number; offset?: number }) =>
+      apiClient.get<UsersResponse>('/users', { params }),
+    get: (userKey: string) =>
+      apiClient.get<UserResponse>(`/users/${userKey}`),
+    update: (userKey: string, data: { first_name?: string; last_name?: string; status?: string }) =>
+      apiClient.put<UserResponse>(`/users/${userKey}`, data),
+    delete: (userKey: string) =>
+      apiClient.delete<UserResponse>(`/users/${userKey}`),
+    changeRole: (userKey: string, role: 'admin' | 'user') =>
+      apiClient.post<UserResponse>(`/users/${userKey}/role`, { role }),
+    sessions: (userKey: string) =>
+      apiClient.get<SessionsResponse>(`/users/${userKey}/sessions`),
+    revokeSessions: (userKey: string) =>
+      apiClient.delete<{ revoked_count: number }>(`/users/${userKey}/sessions`),
+    stats: () =>
+      apiClient.get<UserStatsResponse>('/users/stats'),
+    changeDomain: (userKey: string, domainKey: string | null) =>
+      apiClient.put<UserResponse>(`/users/${userKey}/domain`, { domain_key: domainKey }),
+  },
+
+  // Domains (admin only)
+  domains: {
+    list: (params?: { status?: string }) =>
+      apiClient.get<DomainsResponse>('/domains', { params }),
+    get: (domainKey: string) =>
+      apiClient.get<DomainResponse>(`/domains/${domainKey}`),
+    create: (data: { name: string; slug: string; description?: string; owner_key?: string }) =>
+      apiClient.post<DomainResponse>('/domains', data),
+    update: (domainKey: string, data: { name?: string; description?: string; owner_key?: string | null; status?: string }) =>
+      apiClient.put<DomainResponse>(`/domains/${domainKey}`, data),
+    users: (domainKey: string) =>
+      apiClient.get<DomainUsersResponse>(`/domains/${domainKey}/users`),
+    stats: () =>
+      apiClient.get<DomainStatsResponse>('/domains/stats'),
   },
 };

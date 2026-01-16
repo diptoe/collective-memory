@@ -26,6 +26,9 @@ class Agent(BaseModel):
     agent_key = Column(String(36), primary_key=True, default=get_key)
     agent_id = Column(String(100), unique=True, nullable=False, index=True)
 
+    # Link to owning user (agents belong to users, users belong to domains)
+    user_key = Column(String(36), ForeignKey('users.user_key'), nullable=True, index=True)
+
     # Client type (claude-code, claude-desktop, codex, gemini-cli)
     client = Column(String(50), nullable=True, index=True)
 
@@ -51,7 +54,7 @@ class Agent(BaseModel):
     updated_at = Column(DateTime(timezone=True), default=get_now, onupdate=get_now)
 
     _default_fields = [
-        'agent_key', 'agent_id', 'client', 'model_key', 'persona_key',
+        'agent_key', 'agent_id', 'user_key', 'client', 'model_key', 'persona_key',
         'focus', 'focused_mode', 'role', 'capabilities', 'status'
     ]
     _readonly_fields = ['agent_key', 'created_at']
@@ -61,7 +64,41 @@ class Agent(BaseModel):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 3  # Bumped for focused_mode fields
+        return 4  # Bumped for user_key field
+
+    @classmethod
+    def migrate(cls) -> bool:
+        """
+        Migrate existing Agent records to link to a user.
+
+        All existing agents without a user_key are linked to the first admin user.
+        This allows domain-based access control to work retroactively.
+        """
+        from api.models.user import User
+
+        migrated = False
+        # Only migrate records that have NULL user_key
+        records = cls.query.filter(cls.user_key.is_(None)).all()
+
+        if not records:
+            return False
+
+        # Find the first admin user to assign orphaned agents to
+        admin_user = User.query.filter_by(is_admin=True).order_by(User.created_at.asc()).first()
+
+        if not admin_user:
+            # No admin user exists yet, can't migrate
+            return False
+
+        for r in records:
+            r.user_key = admin_user.user_key
+            db.session.add(r)
+            migrated = True
+
+        if migrated:
+            db.session.commit()
+
+        return migrated
 
     @classmethod
     def get_by_agent_id(cls, agent_id: str) -> 'Agent':
@@ -93,6 +130,21 @@ class Agent(BaseModel):
     def get_by_model_key(cls, model_key: str) -> list['Agent']:
         """Get agents by model."""
         return cls.query.filter_by(model_key=model_key).all()
+
+    @classmethod
+    def get_by_user_key(cls, user_key: str) -> list['Agent']:
+        """Get agents owned by a specific user."""
+        return cls.query.filter_by(user_key=user_key).all()
+
+    @classmethod
+    def get_active_by_user(cls, user_key: str, timeout_minutes: int = 15) -> list['Agent']:
+        """Get active agents for a specific user."""
+        from datetime import datetime, timezone, timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        return cls.query.filter(
+            cls.user_key == user_key,
+            cls.last_heartbeat > cutoff
+        ).all()
 
     def update_heartbeat(self) -> bool:
         """Update the agent's heartbeat timestamp."""

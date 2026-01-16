@@ -25,30 +25,67 @@ class Conversation(BaseModel):
     summary = Column(Text, nullable=True)
     extracted_entities = Column(JSONB, default=list)
     extra_data = Column(JSONB, default=dict)  # renamed from 'metadata' which is reserved
+    context_domain = Column(String(36), nullable=True, index=True)  # domain for multi-tenancy
     created_at = Column(DateTime(timezone=True), default=get_now)
     updated_at = Column(DateTime(timezone=True), default=get_now, onupdate=get_now)
 
     # Relationship to Persona
     persona = relationship('Persona', backref='conversations')
 
-    _default_fields = ['conversation_key', 'persona_key', 'title', 'summary', 'extracted_entities']
+    _default_fields = ['conversation_key', 'persona_key', 'title', 'summary', 'extracted_entities', 'context_domain']
     _readonly_fields = ['conversation_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
-    def get_by_persona(cls, persona_key: str, limit: int = 50) -> list['Conversation']:
+    def migrate(cls) -> bool:
+        """
+        Migrate existing Conversation records to include context_domain.
+
+        For conversations created before multi-tenancy, attempts to set context_domain
+        based on the agent's owning user's domain. User-initiated conversations without
+        an agent remain without a domain until manually assigned.
+        """
+        from api.models.agent import Agent
+        from api.models.user import User
+
+        migrated = False
+        # Only migrate records that have NULL context_domain
+        records = cls.query.filter(cls.context_domain.is_(None)).all()
+
+        for r in records:
+            # Try to get domain from the agent -> user -> domain
+            if r.agent_id:
+                agent = Agent.query.filter_by(agent_id=r.agent_id).first()
+                if agent and agent.user_key:
+                    user = User.query.get(agent.user_key)
+                    if user and user.domain_key:
+                        r.context_domain = user.domain_key
+                        db.session.add(r)
+                        migrated = True
+
+        if migrated:
+            db.session.commit()
+
+        return migrated
+
+    @classmethod
+    def get_by_persona(cls, persona_key: str, limit: int = 50, context_domain: str = None) -> list['Conversation']:
         """Get conversations for a specific persona."""
-        return cls.query.filter_by(persona_key=persona_key).order_by(
-            cls.updated_at.desc()
-        ).limit(limit).all()
+        query = cls.query.filter_by(persona_key=persona_key)
+        if context_domain:
+            query = query.filter(cls.context_domain == context_domain)
+        return query.order_by(cls.updated_at.desc()).limit(limit).all()
 
     @classmethod
-    def get_recent(cls, limit: int = 20) -> list['Conversation']:
+    def get_recent(cls, limit: int = 20, context_domain: str = None) -> list['Conversation']:
         """Get most recent conversations across all personas."""
-        return cls.query.order_by(cls.updated_at.desc()).limit(limit).all()
+        query = cls.query
+        if context_domain:
+            query = query.filter(cls.context_domain == context_domain)
+        return query.order_by(cls.updated_at.desc()).limit(limit).all()
 
     def get_messages(self, limit: int = 100, offset: int = 0) -> list:
         """Get messages for this conversation."""

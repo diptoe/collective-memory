@@ -38,6 +38,11 @@ async def search_entities(
         if entity_type:
             params["type"] = entity_type  # API expects "type" not "entity_type"
 
+        # Add domain filter for multi-tenancy
+        context_domain = session_state.get("context_domain")
+        if context_domain:
+            params["domain"] = context_domain
+
         result = await _make_request(config, "GET", "/entities", params=params, agent_id=agent_id)
 
         if result.get("success"):
@@ -95,9 +100,15 @@ async def get_entity(
 
             # Fetch linked messages
             try:
+                msg_params = {"entity_key": entity_key, "limit": 10}
+                # Add domain filter for multi-tenancy
+                context_domain = session_state.get("context_domain")
+                if context_domain:
+                    msg_params["context_domain"] = context_domain
+
                 messages_result = await _make_request(
                     config, "GET", "/messages",
-                    params={"entity_key": entity_key, "limit": 10},
+                    params=msg_params,
                     agent_id=agent_id,
                 )
                 if messages_result.get("success"):
@@ -146,18 +157,25 @@ async def create_entity(
 
     # Track which agent created this entity
     agent_id = session_state.get("agent_id") or "unknown"
+    context_domain = session_state.get("context_domain")
 
     try:
+        payload = {
+            "name": name,
+            "entity_type": entity_type,
+            "properties": properties,
+            "source": f"agent:{agent_id}",
+        }
+
+        # Include domain context for multi-tenancy if available
+        if context_domain:
+            payload["context_domain"] = context_domain
+
         result = await _make_request(
             config,
             "POST",
             "/entities",
-            json={
-                "name": name,
-                "entity_type": entity_type,
-                "properties": properties,
-                "source": f"agent:{agent_id}",
-            },
+            json=payload,
             agent_id=agent_id,
         )
 
@@ -259,6 +277,11 @@ async def search_entities_semantic(
         params = {"query": query, "limit": limit}
         if entity_type:
             params["type"] = entity_type
+
+        # Add domain filter for multi-tenancy
+        context_domain = session_state.get("context_domain")
+        if context_domain:
+            params["domain"] = context_domain
 
         result = await _make_request(config, "GET", "/search/semantic", params=params, agent_id=agent_id)
 

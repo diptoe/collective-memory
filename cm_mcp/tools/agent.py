@@ -256,6 +256,20 @@ async def identify(
         output += "```\n"
         return [types.TextContent(type="text", text=output)]
 
+    # Check if PAT is configured (required for agent registration)
+    if not hasattr(config, 'pat') or not config.pat:
+        output = "## Authentication Required\n\n"
+        output += "**Agent registration requires a Personal Access Token (PAT).**\n\n"
+        output += "To register agents with Collective Memory, you must:\n\n"
+        output += "1. **Create a PAT** in the CM web UI under Profile → Access Tokens\n"
+        output += "2. **Configure CM_PAT** environment variable:\n"
+        output += "   ```bash\n"
+        output += "   export CM_PAT=\"your-personal-access-token\"\n"
+        output += "   ```\n"
+        output += "3. **Restart your MCP session** to pick up the new config\n\n"
+        output += "Without a PAT, agents cannot be registered or updated.\n"
+        return [types.TextContent(type="text", text=output)]
+
     try:
         # Resolve model_id to model_key if provided
         resolved_model_key = model_key
@@ -366,6 +380,20 @@ async def identify(
             if agent_data.get("affinity_warning"):
                 session_state["affinity_warning"] = agent_data.get("affinity_warning")
 
+            # Fetch user info for multi-tenancy context
+            if hasattr(config, 'pat') and config.pat:
+                try:
+                    me_result = await _make_request(config, "GET", "/auth/me")
+                    if me_result.get("success"):
+                        user_data = me_result.get("data", {}).get("user", {})
+                        session_state["user_key"] = user_data.get("user_key")
+                        session_state["user_email"] = user_data.get("email")
+                        domain_key = user_data.get("domain_key")
+                        if domain_key:
+                            session_state["context_domain"] = domain_key
+                except Exception:
+                    pass  # If auth lookup fails, continue without domain
+
             # Try to resolve persona name
             if persona:
                 try:
@@ -405,6 +433,11 @@ async def identify(
 
             if agent_data.get("affinity_warning"):
                 output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"
+
+            # Show domain context if set
+            if session_state.get("context_domain"):
+                output += f"\n**Domain:** {session_state.get('context_domain')}\n"
+                output += f"*Data operations will be scoped to this domain*\n"
 
             output += "\nYou are now registered and can collaborate in CM.\n"
             output += "Use `update_focus` to let others know what you're working on.\n\n"

@@ -20,7 +20,7 @@ async def _make_request(
     Make HTTP request to the Collective Memory API.
 
     Args:
-        config: Configuration object with api_endpoint and timeout
+        config: Configuration object with api_endpoint, timeout, and optional pat
         method: HTTP method (GET, POST, PUT, DELETE)
         endpoint: API endpoint path (e.g., "/entities")
         json: JSON body data for POST/PUT requests
@@ -33,6 +33,10 @@ async def _make_request(
     headers = {}
     if agent_id:
         headers['X-Agent-Id'] = agent_id
+
+    # Include PAT authentication if configured
+    if hasattr(config, 'pat') and config.pat:
+        headers['Authorization'] = f'Bearer {config.pat}'
 
     try:
         async with httpx.AsyncClient(timeout=config.timeout) as client:

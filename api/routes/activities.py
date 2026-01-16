@@ -4,11 +4,12 @@ Collective Memory Platform - Activity Routes
 API endpoints for activity tracking and dashboard data.
 """
 from datetime import datetime, timedelta, timezone
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models.activity import Activity, ActivityType
 from api.services.activity import activity_service
+from api.services.auth import require_auth
 
 
 def register_activity_routes(api: Api):
@@ -46,6 +47,7 @@ def register_activity_routes(api: Api):
         @ns.param('until', 'Activities before this ISO timestamp')
         @ns.param('actor', 'Filter by actor (agent key)')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
             """List recent activities with optional filtering."""
             limit = request.args.get('limit', 50, type=int)
@@ -54,6 +56,11 @@ def register_activity_routes(api: Api):
             since_str = request.args.get('since')
             until_str = request.args.get('until')
             actor = request.args.get('actor')
+
+            # Get user's domain for filtering
+            context_domain = None
+            if g.current_user:
+                context_domain = g.current_user.domain_key
 
             # Parse timestamps
             since = None
@@ -77,7 +84,8 @@ def register_activity_routes(api: Api):
                 hours=hours,
                 since=since,
                 until=until,
-                actor=actor
+                actor=actor,
+                context_domain=context_domain
             )
 
             return {
@@ -96,11 +104,17 @@ def register_activity_routes(api: Api):
         @ns.param('since', 'Count activities after this ISO timestamp')
         @ns.param('until', 'Count activities before this ISO timestamp')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
             """Get aggregated activity counts by type."""
             hours = request.args.get('hours', 24, type=int)
             since_str = request.args.get('since')
             until_str = request.args.get('until')
+
+            # Get user's domain for filtering
+            context_domain = None
+            if g.current_user:
+                context_domain = g.current_user.domain_key
 
             since = None
             until = None
@@ -120,7 +134,8 @@ def register_activity_routes(api: Api):
             summary = activity_service.get_summary(
                 hours=hours if not since else None,
                 since=since,
-                until=until
+                until=until,
+                context_domain=context_domain
             )
 
             return {
@@ -136,11 +151,17 @@ def register_activity_routes(api: Api):
         @ns.param('bucket_minutes', 'Time bucket size in minutes', type=int, default=60)
         @ns.param('since', 'Start from this ISO timestamp')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
             """Get time-bucketed activity data for charts."""
             hours = request.args.get('hours', 24, type=int)
             bucket_minutes = request.args.get('bucket_minutes', 60, type=int)
             since_str = request.args.get('since')
+
+            # Get user's domain for filtering
+            context_domain = None
+            if g.current_user:
+                context_domain = g.current_user.domain_key
 
             since = None
             if since_str:
@@ -152,7 +173,8 @@ def register_activity_routes(api: Api):
             timeline = activity_service.get_timeline(
                 hours=hours,
                 bucket_minutes=bucket_minutes,
-                since=since
+                since=since,
+                context_domain=context_domain
             )
 
             return {

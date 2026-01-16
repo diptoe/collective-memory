@@ -49,6 +49,7 @@ class Message(BaseModel):
     confirmed_by = Column(String(100), nullable=True)  # Agent/human who confirmed
     confirmed_at = Column(DateTime(timezone=True), nullable=True)  # When confirmed
     entity_keys = Column(JSONB, default=list)  # Linked entity keys for knowledge graph connection
+    context_domain = Column(String(36), nullable=True, index=True)  # Domain for multi-tenancy isolation
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
@@ -59,12 +60,12 @@ class Message(BaseModel):
         Index('ix_messages_reply_to', 'reply_to_key'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys']
+    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys', 'context_domain']
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 6  # Bumped for entity_keys field
+        return 7  # Bumped for context_domain field
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:

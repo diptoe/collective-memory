@@ -1,0 +1,474 @@
+"""
+Collective Memory Platform - Auth Routes
+
+User authentication endpoints: register, login, logout, session management.
+"""
+from flask import request, make_response, g, jsonify
+from flask_restx import Api, Resource, Namespace, fields
+
+from api.models import User, Session, Domain
+from api.services.auth import (
+    hash_password, verify_password, is_admin_email,
+    set_session_cookie, clear_session_cookie,
+    require_auth_strict, get_user_from_request
+)
+from api.services.activity import activity_service
+
+
+def register_auth_routes(api: Api):
+    """Register auth routes with the API."""
+
+    ns = api.namespace(
+        'auth',
+        description='User authentication',
+        path='/auth'
+    )
+
+    # Define models for OpenAPI documentation
+    user_model = ns.model('User', {
+        'user_key': fields.String(readonly=True, description='Unique user identifier'),
+        'email': fields.String(description='User email'),
+        'first_name': fields.String(description='First name'),
+        'last_name': fields.String(description='Last name'),
+        'display_name': fields.String(readonly=True, description='Display name'),
+        'role': fields.String(description='User role: admin, user'),
+        'status': fields.String(description='User status: active, suspended'),
+        'created_at': fields.DateTime(readonly=True),
+    })
+
+    register_model = ns.model('RegisterRequest', {
+        'email': fields.String(required=True, description='User email'),
+        'password': fields.String(required=True, description='User password'),
+        'first_name': fields.String(required=True, description='First name'),
+        'last_name': fields.String(required=True, description='Last name'),
+    })
+
+    login_model = ns.model('LoginRequest', {
+        'email': fields.String(required=True, description='User email'),
+        'password': fields.String(required=True, description='User password'),
+        'remember_me': fields.Boolean(description='Remember me for 30 days', default=False),
+    })
+
+    response_model = ns.model('Response', {
+        'success': fields.Boolean(description='Operation success status'),
+        'msg': fields.String(description='Response message'),
+        'data': fields.Raw(description='Response data'),
+    })
+
+    @ns.route('/register')
+    class Register(Resource):
+        @ns.doc('register_user')
+        @ns.expect(register_model)
+        def post(self):
+            """Register a new user account."""
+            data = request.json or {}
+
+            # Validate required fields
+            if not data.get('email'):
+                return {'success': False, 'msg': 'email is required'}, 400
+            if not data.get('password'):
+                return {'success': False, 'msg': 'password is required'}, 400
+            if not data.get('first_name'):
+                return {'success': False, 'msg': 'first_name is required'}, 400
+            if not data.get('last_name'):
+                return {'success': False, 'msg': 'last_name is required'}, 400
+
+            # Validate password strength
+            if len(data['password']) < 8:
+                return {'success': False, 'msg': 'Password must be at least 8 characters'}, 400
+
+            email = data['email'].lower().strip()
+
+            # Check if email already exists
+            if User.get_by_email(email):
+                return {'success': False, 'msg': 'Email already registered'}, 409
+
+            try:
+                # Determine role based on admin email config
+                role = 'admin' if is_admin_email(email) else 'user'
+
+                # Get or create domain based on email (returns None for generic emails)
+                domain = Domain.get_or_create_for_email(email)
+
+                # Create user
+                user = User(
+                    email=email,
+                    password_hash=hash_password(data['password']),
+                    first_name=data['first_name'].strip(),
+                    last_name=data['last_name'].strip(),
+                    role=role,
+                    status='active',
+                    domain_key=domain.domain_key if domain else None,
+                )
+                user.save()
+
+                # Create session
+                session = Session.create_for_user(
+                    user_key=user.user_key,
+                    remember_me=False,
+                    user_agent=request.headers.get('User-Agent'),
+                    ip_address=request.remote_addr,
+                )
+
+                # Update last login
+                user.update_last_login()
+
+                # Record activity
+                activity_service.record_create(
+                    actor=user.user_key,
+                    entity_type='User',
+                    entity_key=user.user_key,
+                    entity_name=user.display_name,
+                    changes={'email': email, 'role': role}
+                )
+
+                # Build response with cookie
+                response_data = {
+                    'success': True,
+                    'msg': 'User registered successfully',
+                    'data': {
+                        'user': user.to_dict(include_pat=True),
+                        'session_expires_at': session.expires_at.isoformat(),
+                    }
+                }
+                response = make_response(jsonify(response_data), 201)
+                set_session_cookie(response, session)
+
+                return response
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/login')
+    class Login(Resource):
+        @ns.doc('login_user')
+        @ns.expect(login_model)
+        def post(self):
+            """Login with email and password."""
+            data = request.json or {}
+
+            if not data.get('email'):
+                return {'success': False, 'msg': 'email is required'}, 400
+            if not data.get('password'):
+                return {'success': False, 'msg': 'password is required'}, 400
+
+            email = data['email'].lower().strip()
+            remember_me = data.get('remember_me', False)
+
+            # Find user
+            user = User.get_by_email(email)
+            if not user:
+                return {'success': False, 'msg': 'Invalid email or password'}, 401
+
+            # Check status
+            if not user.is_active:
+                return {'success': False, 'msg': 'Account is suspended'}, 401
+
+            # Verify password
+            if not verify_password(data['password'], user.password_hash):
+                return {'success': False, 'msg': 'Invalid email or password'}, 401
+
+            try:
+                # Create session
+                session = Session.create_for_user(
+                    user_key=user.user_key,
+                    remember_me=remember_me,
+                    user_agent=request.headers.get('User-Agent'),
+                    ip_address=request.remote_addr,
+                )
+
+                # Update last login
+                user.update_last_login()
+
+                # Record activity
+                activity_service.record_read(
+                    actor=user.user_key,
+                    entity_type='User',
+                    entity_key=user.user_key,
+                    entity_name=user.display_name,
+                    query='login'
+                )
+
+                # Build response with cookie
+                response_data = {
+                    'success': True,
+                    'msg': 'Login successful',
+                    'data': {
+                        'user': user.to_dict(include_pat=True),
+                        'session_expires_at': session.expires_at.isoformat(),
+                    }
+                }
+                response = make_response(jsonify(response_data))
+                set_session_cookie(response, session)
+
+                return response
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/logout')
+    class Logout(Resource):
+        @ns.doc('logout_user')
+        def post(self):
+            """Logout and destroy session."""
+            user, session = get_user_from_request()
+
+            if session:
+                try:
+                    session.revoke()
+                except Exception:
+                    pass  # Session may already be deleted
+
+            response_data = {
+                'success': True,
+                'msg': 'Logged out successfully',
+            }
+            response = make_response(jsonify(response_data))
+            clear_session_cookie(response)
+
+            return response
+
+    @ns.route('/me')
+    class CurrentUser(Resource):
+        @ns.doc('get_current_user')
+        @ns.marshal_with(response_model)
+        def get(self):
+            """Get current authenticated user."""
+            user, session = get_user_from_request()
+
+            if not user:
+                return {'success': False, 'msg': 'Not authenticated'}, 401
+
+            return {
+                'success': True,
+                'msg': 'User retrieved',
+                'data': {
+                    'user': user.to_dict(include_pat=True),
+                    'session': session.to_dict() if session else None,
+                }
+            }
+
+    @ns.route('/pat/regenerate')
+    class RegeneratePAT(Resource):
+        @ns.doc('regenerate_pat')
+        @require_auth_strict
+        def post(self):
+            """Regenerate Personal Access Token."""
+            user = g.current_user
+
+            try:
+                new_pat = user.regenerate_pat()
+
+                # Record activity
+                activity_service.record_update(
+                    actor=user.user_key,
+                    entity_type='User',
+                    entity_key=user.user_key,
+                    entity_name=user.display_name,
+                    changes={'pat': 'regenerated'}
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'PAT regenerated successfully',
+                    'data': {
+                        'pat': new_pat,
+                        'pat_created_at': user.pat_created_at.isoformat(),
+                    }
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    profile_model = ns.model('ProfileUpdateRequest', {
+        'first_name': fields.String(description='First name'),
+        'last_name': fields.String(description='Last name'),
+    })
+
+    password_model = ns.model('PasswordChangeRequest', {
+        'current_password': fields.String(required=True, description='Current password'),
+        'new_password': fields.String(required=True, description='New password'),
+    })
+
+    @ns.route('/profile')
+    class Profile(Resource):
+        @ns.doc('update_profile')
+        @ns.expect(profile_model)
+        @require_auth_strict
+        def put(self):
+            """Update user profile (name)."""
+            user = g.current_user
+            data = request.json or {}
+
+            changes = {}
+
+            if 'first_name' in data:
+                first_name = data['first_name'].strip() if data['first_name'] else ''
+                if first_name:
+                    user.first_name = first_name
+                    changes['first_name'] = first_name
+
+            if 'last_name' in data:
+                last_name = data['last_name'].strip() if data['last_name'] else ''
+                if last_name:
+                    user.last_name = last_name
+                    changes['last_name'] = last_name
+
+            if not changes:
+                return {'success': False, 'msg': 'No valid changes provided'}, 400
+
+            try:
+                user.save()
+
+                # Record activity
+                activity_service.record_update(
+                    actor=user.user_key,
+                    entity_type='User',
+                    entity_key=user.user_key,
+                    entity_name=user.display_name,
+                    changes=changes
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'Profile updated successfully',
+                    'data': {
+                        'user': user.to_dict(include_pat=True)
+                    }
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/password')
+    class PasswordChange(Resource):
+        @ns.doc('change_password')
+        @ns.expect(password_model)
+        @require_auth_strict
+        def put(self):
+            """Change user password."""
+            user = g.current_user
+            data = request.json or {}
+
+            if not data.get('current_password'):
+                return {'success': False, 'msg': 'current_password is required'}, 400
+            if not data.get('new_password'):
+                return {'success': False, 'msg': 'new_password is required'}, 400
+
+            # Verify current password
+            if not verify_password(data['current_password'], user.password_hash):
+                return {'success': False, 'msg': 'Current password is incorrect'}, 401
+
+            # Validate new password strength
+            if len(data['new_password']) < 8:
+                return {'success': False, 'msg': 'New password must be at least 8 characters'}, 400
+
+            try:
+                user.password_hash = hash_password(data['new_password'])
+                user.save()
+
+                # Record activity
+                activity_service.record_update(
+                    actor=user.user_key,
+                    entity_type='User',
+                    entity_key=user.user_key,
+                    entity_name=user.display_name,
+                    changes={'password': 'changed'}
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'Password changed successfully',
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/sessions')
+    class SessionList(Resource):
+        @ns.doc('list_sessions')
+        @require_auth_strict
+        @ns.marshal_with(response_model)
+        def get(self):
+            """List all active sessions for current user."""
+            user = g.current_user
+            current_session = g.current_session
+
+            sessions = Session.get_user_sessions(user.user_key)
+
+            # Mark current session
+            session_list = []
+            for s in sessions:
+                session_dict = s.to_dict()
+                if current_session and s.session_key == current_session.session_key:
+                    session_dict['is_current'] = True
+                session_list.append(session_dict)
+
+            return {
+                'success': True,
+                'msg': f'Found {len(sessions)} active sessions',
+                'data': {
+                    'sessions': session_list
+                }
+            }
+
+    @ns.route('/sessions/<string:session_key>')
+    @ns.param('session_key', 'Session identifier')
+    class SessionDetail(Resource):
+        @ns.doc('revoke_session')
+        @require_auth_strict
+        def delete(self, session_key):
+            """Revoke a specific session."""
+            user = g.current_user
+            current_session = g.current_session
+
+            # Find session
+            session = Session.get_by_key(session_key)
+            if not session:
+                return {'success': False, 'msg': 'Session not found'}, 404
+
+            # Verify ownership
+            if session.user_key != user.user_key:
+                return {'success': False, 'msg': 'Session not found'}, 404
+
+            try:
+                is_current = current_session and session.session_key == current_session.session_key
+                session.revoke()
+
+                response_data = {
+                    'success': True,
+                    'msg': 'Session revoked',
+                    'data': {'was_current': is_current}
+                }
+
+                # If revoking current session, clear cookie
+                if is_current:
+                    response = make_response(jsonify(response_data))
+                    clear_session_cookie(response)
+                    return response
+
+                return response_data
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/sessions/all')
+    class RevokeAllSessions(Resource):
+        @ns.doc('revoke_all_sessions')
+        @require_auth_strict
+        def delete(self):
+            """Revoke all sessions for current user (logout everywhere)."""
+            user = g.current_user
+
+            try:
+                count = Session.revoke_all_for_user(user.user_key)
+
+                response_data = {
+                    'success': True,
+                    'msg': f'Revoked {count} sessions',
+                    'data': {'revoked_count': count}
+                }
+                response = make_response(jsonify(response_data))
+                clear_session_cookie(response)
+
+                return response
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500

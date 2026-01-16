@@ -27,8 +27,9 @@ SQLALCHEMY_ENGINE_OPTIONS = {
 }
 
 # API Settings
-API_HOST = os.getenv('API_HOST', '127.0.0.1')
-API_PORT = int(os.getenv('API_PORT', '5000'))
+# Use 'localhost' instead of '127.0.0.1' for better cookie compatibility with frontend
+API_HOST = os.getenv('API_HOST', 'localhost')
+API_PORT = int(os.getenv('API_PORT', '5001'))
 DEBUG = ENV_TYPE == 'dev'
 # When DEBUG is on, Flask will auto-restart via the reloader (watchfiles).
 # We keep this OFF by default so restarts are manual while debugging.
@@ -40,6 +41,13 @@ DEFAULT_USER = {
     'email': 'wayne@diptoe.com',
     'name': 'Wayne Houlden'
 }
+
+# Authentication Settings
+CM_ADMIN_EMAIL = os.getenv('CM_ADMIN_EMAIL', 'wayne@diptoe.com')  # This email gets admin role on registration
+CM_REQUIRE_AUTH = os.getenv('CM_REQUIRE_AUTH', 'false').lower() in ('1', 'true', 'yes')  # Set to true to enforce auth
+
+# Domain Settings
+CM_DEFAULT_DOMAIN = os.getenv('CM_DEFAULT_DOMAIN', 'janison.com.au')  # Default domain for existing data
 
 # AI Model API Keys
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')

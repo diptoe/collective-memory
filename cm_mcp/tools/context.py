@@ -35,6 +35,12 @@ async def get_context(
     try:
         # Search for relevant entities
         params = {"search": query, "limit": max_entities}
+
+        # Add domain filter for multi-tenancy
+        context_domain = session_state.get("context_domain")
+        if context_domain:
+            params["domain"] = context_domain
+
         result = await _make_request(config, "GET", "/entities", params=params, agent_id=agent_id)
 
         if result.get("success"):
@@ -212,9 +218,15 @@ async def get_entity_context(
 
         # Fetch linked messages
         try:
+            msg_params = {"entity_key": entity_key, "limit": 10}
+            # Add domain filter for multi-tenancy
+            context_domain = session_state.get("context_domain")
+            if context_domain:
+                msg_params["context_domain"] = context_domain
+
             messages_result = await _make_request(
                 config, "GET", "/messages",
-                params={"entity_key": entity_key, "limit": 10},
+                params=msg_params,
                 agent_id=agent_id,
             )
             if messages_result.get("success"):

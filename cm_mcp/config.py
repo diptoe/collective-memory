@@ -42,8 +42,11 @@ class MCPConfig:
     persona_name: str = os.getenv("CM_PERSONA_NAME", "")  # Display name, e.g., "Claude Consultant"
     persona_color: str = os.getenv("CM_PERSONA_COLOR", "#6b7280")  # UI color
 
+    # User authentication - Personal Access Token for linking to user account
+    pat: str = os.getenv("CM_PAT", "")  # Personal Access Token for user authentication
+
     # API configuration
-    api_url: str = os.getenv("CM_API_URL", "http://localhost:5002")
+    api_url: str = os.getenv("CM_API_URL", "http://localhost:5001")
     api_base_path: str = "/api"
 
     # Server settings

@@ -31,7 +31,8 @@ class ActivityService:
         actor: str,
         target_key: Optional[str] = None,
         target_type: Optional[str] = None,
-        extra_data: Optional[Dict[str, Any]] = None
+        extra_data: Optional[Dict[str, Any]] = None,
+        context_domain: Optional[str] = None
     ) -> Activity:
         """
         Record a new activity.
@@ -42,6 +43,7 @@ class ActivityService:
             target_key: Key of the target object
             target_type: Type of target ('entity', 'message', 'agent')
             extra_data: Additional data
+            context_domain: Domain key for multi-tenancy
 
         Returns:
             The created Activity record
@@ -53,6 +55,7 @@ class ActivityService:
             target_key=target_key,
             target_type=target_type,
             extra_data=extra_data or {},
+            context_domain=context_domain,
             created_at=get_now()
         )
 
@@ -271,6 +274,89 @@ class ActivityService:
             }
         )
 
+    # Generic CRUD activity methods (for User and other non-entity types)
+    def record_create(
+        self,
+        actor: str,
+        entity_type: str,
+        entity_key: str,
+        entity_name: str,
+        changes: Optional[Dict[str, Any]] = None
+    ) -> Activity:
+        """Record a generic create activity."""
+        return self.record(
+            activity_type=ActivityType.ENTITY_CREATED.value,
+            actor=actor,
+            target_key=entity_key,
+            target_type=entity_type.lower(),
+            extra_data={
+                'entity_type': entity_type,
+                'entity_name': entity_name,
+                'changes': changes
+            }
+        )
+
+    def record_update(
+        self,
+        actor: str,
+        entity_type: str,
+        entity_key: str,
+        entity_name: str,
+        changes: Optional[Dict[str, Any]] = None
+    ) -> Activity:
+        """Record a generic update activity."""
+        return self.record(
+            activity_type=ActivityType.ENTITY_UPDATED.value,
+            actor=actor,
+            target_key=entity_key,
+            target_type=entity_type.lower(),
+            extra_data={
+                'entity_type': entity_type,
+                'entity_name': entity_name,
+                'changes': changes
+            }
+        )
+
+    def record_delete(
+        self,
+        actor: str,
+        entity_type: str,
+        entity_key: str,
+        entity_name: str
+    ) -> Activity:
+        """Record a generic delete activity."""
+        return self.record(
+            activity_type=ActivityType.ENTITY_DELETED.value,
+            actor=actor,
+            target_key=entity_key,
+            target_type=entity_type.lower(),
+            extra_data={
+                'entity_type': entity_type,
+                'entity_name': entity_name
+            }
+        )
+
+    def record_read(
+        self,
+        actor: str,
+        entity_type: str,
+        entity_key: str,
+        entity_name: str,
+        query: Optional[str] = None
+    ) -> Activity:
+        """Record a generic read activity."""
+        return self.record(
+            activity_type=ActivityType.ENTITY_READ.value,
+            actor=actor,
+            target_key=entity_key,
+            target_type=entity_type.lower(),
+            extra_data={
+                'entity_type': entity_type,
+                'entity_name': entity_name,
+                'query': query
+            }
+        )
+
     def get_recent(
         self,
         limit: int = 50,
@@ -278,7 +364,8 @@ class ActivityService:
         hours: Optional[int] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
-        actor: Optional[str] = None
+        actor: Optional[str] = None,
+        context_domain: Optional[str] = None
     ) -> List[Activity]:
         """
         Get recent activities with filtering.
@@ -290,6 +377,7 @@ class ActivityService:
             since: Start time (overrides hours)
             until: End time
             actor: Filter by actor
+            context_domain: Filter by domain (for multi-tenancy)
 
         Returns:
             List of Activity objects
@@ -303,14 +391,16 @@ class ActivityService:
             activity_type=activity_type,
             since=since,
             until=until,
-            actor=actor
+            actor=actor,
+            context_domain=context_domain
         )
 
     def get_summary(
         self,
         hours: Optional[int] = None,
         since: Optional[datetime] = None,
-        until: Optional[datetime] = None
+        until: Optional[datetime] = None,
+        context_domain: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get activity summary by type.
@@ -319,6 +409,7 @@ class ActivityService:
             hours: Look back this many hours
             since: Start time (overrides hours)
             until: End time
+            context_domain: Filter by domain (for multi-tenancy)
 
         Returns:
             Dict with summary and total
@@ -327,13 +418,14 @@ class ActivityService:
             from datetime import timedelta
             since = get_now() - timedelta(hours=hours)
 
-        return Activity.get_summary(since=since, until=until)
+        return Activity.get_summary(since=since, until=until, context_domain=context_domain)
 
     def get_timeline(
         self,
         hours: int = 24,
         bucket_minutes: int = 60,
-        since: Optional[datetime] = None
+        since: Optional[datetime] = None,
+        context_domain: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Get time-bucketed activity data.
@@ -342,6 +434,7 @@ class ActivityService:
             hours: Number of hours to look back
             bucket_minutes: Bucket size in minutes
             since: Override start time
+            context_domain: Filter by domain (for multi-tenancy)
 
         Returns:
             List of timeline data points
@@ -349,7 +442,8 @@ class ActivityService:
         return Activity.get_timeline(
             hours=hours,
             bucket_minutes=bucket_minutes,
-            since=since
+            since=since,
+            context_domain=context_domain
         )
 
     def purge_old(self) -> int:

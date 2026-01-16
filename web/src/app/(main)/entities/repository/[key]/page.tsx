@@ -98,7 +98,7 @@ export default function RepositoryDetailPage() {
     setLoadingCommits(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/repo/${ownerRepo}/commits?limit=30`
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api'}/github/repo/${ownerRepo}/commits?limit=30`
       );
       if (response.ok) {
         const data = await response.json();
@@ -115,7 +115,7 @@ export default function RepositoryDetailPage() {
     setLoadingStats(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/stats/${encodeURIComponent(entityKey)}?days=90`
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api'}/github/stats/${encodeURIComponent(entityKey)}?days=90`
       );
       if (response.ok) {
         const data = await response.json();
@@ -133,7 +133,7 @@ export default function RepositoryDetailPage() {
 
     setSyncingStats(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/stats/sync`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api'}/github/stats/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repository_url: repository.properties.url, days: 90 }),
@@ -174,7 +174,7 @@ export default function RepositoryDetailPage() {
 
     setSyncing(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/github/sync`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api'}/github/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repository_url: repoUrl }),

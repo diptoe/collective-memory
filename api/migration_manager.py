@@ -87,15 +87,18 @@ class MigrationManager:
         """
         from api.models import (
             Entity, Relationship, Message, Agent,
-            Persona, Conversation, ChatMessage, Document
+            Persona, Conversation, ChatMessage, Document,
+            User, Session, Domain
         )
+        from api.models.activity import Activity
 
         models = {}
 
         # Core models
         model_classes = [
             Entity, Relationship, Message, Agent,
-            Persona, Conversation, ChatMessage, Document
+            Persona, Conversation, ChatMessage, Document,
+            User, Session, Domain, Activity
         ]
 
         for model_cls in model_classes:
@@ -570,6 +573,17 @@ class MigrationManager:
         # Refresh inspector cache after changes
         if result['action'] in ('created', 'migrated'):
             self.inspector = inspect(self.engine)
+
+        # Run data migrations if model has migrate() method
+        if hasattr(model_cls, 'migrate') and callable(getattr(model_cls, 'migrate')):
+            try:
+                migrated = model_cls.migrate()
+                if migrated:
+                    logger.info(f"Data migration completed for {table_name}")
+                    result['data_migrated'] = True
+            except Exception as e:
+                logger.error(f"Data migration failed for {table_name}: {e}")
+                result['data_migration_error'] = str(e)
 
         return result
 

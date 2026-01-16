@@ -3,12 +3,13 @@ Collective Memory Platform - Agent Routes
 
 Agent registration, status operations, and checkpointing.
 """
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Agent, AgentCheckpoint, Model, Persona, is_valid_client, get_client_affinities
 from api.services.checkpoint import checkpoint_service
 from api.services.activity import activity_service
+from api.services.auth import require_auth
 
 
 def register_agent_routes(api: Api):
@@ -69,17 +70,25 @@ def register_agent_routes(api: Api):
         @ns.param('persona_key', 'Filter by persona')
         @ns.param('role', 'Filter by role (legacy)')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
-            """List all registered agents."""
+            """List agents owned by the authenticated user."""
             active_only = request.args.get('active_only', 'false').lower() == 'true'
             client = request.args.get('client')
             persona_key = request.args.get('persona_key')
             role = request.args.get('role')
 
-            if active_only:
-                agents = Agent.get_active_agents()
+            # Filter by user's agents only
+            user_key = g.current_user.user_key if g.current_user else None
+
+            if user_key:
+                if active_only:
+                    agents = Agent.get_active_by_user(user_key)
+                else:
+                    agents = Agent.get_by_user_key(user_key)
             else:
-                agents = Agent.get_all()
+                # No user context (shouldn't happen with require_auth)
+                agents = []
 
             if client:
                 agents = [a for a in agents if a.client == client]
@@ -101,8 +110,12 @@ def register_agent_routes(api: Api):
         @ns.doc('register_agent')
         @ns.expect(agent_register)
         @ns.marshal_with(response_model, code=201)
+        @require_auth
         def post(self):
             """Register a new agent or update existing.
+
+            Authentication is required - agents are linked to the authenticated user.
+            Use a Personal Access Token (PAT) for authentication.
 
             New registration protocol accepts:
             - agent_id (required): Unique agent identifier
@@ -117,6 +130,11 @@ def register_agent_routes(api: Api):
 
             if not data.get('agent_id'):
                 return {'success': False, 'msg': 'agent_id is required'}, 400
+
+            # Get the authenticated user
+            user_key = g.current_user.user_key if g.current_user else None
+            if not user_key:
+                return {'success': False, 'msg': 'Authentication required to register agents'}, 401
 
             # Validate client - REQUIRED
             client = data.get('client')
@@ -159,6 +177,13 @@ def register_agent_routes(api: Api):
 
             if existing:
                 # Update existing agent (reconnection)
+                # Link to current user if not already linked
+                if not existing.user_key:
+                    existing.user_key = user_key
+                elif existing.user_key != user_key:
+                    # Agent belongs to different user - deny access
+                    return {'success': False, 'msg': 'Agent is registered to a different user'}, 403
+
                 if client:
                     existing.client = client
                 if model_key:
@@ -193,9 +218,10 @@ def register_agent_routes(api: Api):
                     result['data']['affinity_warning'] = affinity_warning
                 return result
 
-            # Create new agent
+            # Create new agent linked to the authenticated user
             agent = Agent(
                 agent_id=data['agent_id'],
+                user_key=user_key,
                 client=client,
                 model_key=model_key,
                 persona_key=persona_key,
@@ -231,19 +257,33 @@ def register_agent_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
+    def _check_agent_access(agent_key_or_id):
+        """Helper to check if user has access to an agent."""
+        # Try by key first, then by agent_id
+        agent = Agent.get_by_key(agent_key_or_id)
+        if not agent:
+            agent = Agent.get_by_agent_id(agent_key_or_id)
+        if not agent:
+            return None, {'success': False, 'msg': 'Agent not found'}, 404
+
+        # Check user access
+        if g.current_user:
+            if agent.user_key and agent.user_key != g.current_user.user_key:
+                return None, {'success': False, 'msg': 'Agent not found'}, 404
+
+        return agent, None, None
+
     @ns.route('/<string:agent_key>')
     @ns.param('agent_key', 'Agent Key or Agent ID')
     class AgentDetail(Resource):
         @ns.doc('get_agent')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, agent_key):
             """Get agent by key or agent_id."""
-            # Try by key first, then by agent_id
-            agent = Agent.get_by_key(agent_key)
-            if not agent:
-                agent = Agent.get_by_agent_id(agent_key)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_key)
+            if error:
+                return error, status
 
             return {
                 'success': True,
@@ -253,14 +293,12 @@ def register_agent_routes(api: Api):
 
         @ns.doc('delete_agent')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self, agent_key):
             """Delete an agent. Only inactive agents can be deleted."""
-            # Try by key first, then by agent_id
-            agent = Agent.get_by_key(agent_key)
-            if not agent:
-                agent = Agent.get_by_agent_id(agent_key)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_key)
+            if error:
+                return error, status
 
             # Check if agent is active
             if agent.is_active:
@@ -284,10 +322,16 @@ def register_agent_routes(api: Api):
     class InactiveAgents(Resource):
         @ns.doc('delete_inactive_agents')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self):
-            """Delete all inactive agents."""
-            all_agents = Agent.get_all()
-            inactive_agents = [a for a in all_agents if not a.is_active]
+            """Delete all inactive agents owned by the authenticated user."""
+            user_key = g.current_user.user_key if g.current_user else None
+            if not user_key:
+                return {'success': False, 'msg': 'Authentication required'}, 401
+
+            # Only get agents for this user
+            user_agents = Agent.get_by_user_key(user_key)
+            inactive_agents = [a for a in user_agents if not a.is_active]
 
             if not inactive_agents:
                 return {
@@ -320,11 +364,12 @@ def register_agent_routes(api: Api):
     class AgentStatus(Resource):
         @ns.doc('get_agent_status')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, agent_id):
             """Get agent status."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             return {
                 'success': True,
@@ -335,11 +380,12 @@ def register_agent_routes(api: Api):
         @ns.doc('update_agent_status')
         @ns.expect(status_update)
         @ns.marshal_with(response_model)
+        @require_auth
         def put(self, agent_id):
             """Update agent status."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             data = request.json
 
@@ -358,13 +404,14 @@ def register_agent_routes(api: Api):
     class AgentHeartbeat(Resource):
         @ns.doc('agent_heartbeat')
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self, agent_id):
             """Update agent heartbeat. Returns unread message count including autonomous tasks."""
             from api.models import Message
 
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             try:
                 agent.update_heartbeat()
@@ -421,11 +468,12 @@ def register_agent_routes(api: Api):
     class AgentFocus(Resource):
         @ns.doc('get_agent_focus')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, agent_id):
             """Get agent's current focus."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             return {
                 'success': True,
@@ -440,11 +488,12 @@ def register_agent_routes(api: Api):
         @ns.doc('update_agent_focus')
         @ns.expect(focus_update)
         @ns.marshal_with(response_model)
+        @require_auth
         def put(self, agent_id):
             """Update agent's current work focus. Send empty string to clear focus."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             data = request.json
 
@@ -474,11 +523,12 @@ def register_agent_routes(api: Api):
     class AgentFocusedMode(Resource):
         @ns.doc('get_focused_mode')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, agent_id):
             """Get agent's focused mode status."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             return {
                 'success': True,
@@ -495,6 +545,7 @@ def register_agent_routes(api: Api):
         @ns.doc('set_focused_mode')
         @ns.expect(focused_mode_update)
         @ns.marshal_with(response_model)
+        @require_auth
         def put(self, agent_id):
             """
             Set focused mode for fast heartbeats.
@@ -503,9 +554,9 @@ def register_agent_routes(api: Api):
             Heartbeat interval should be reduced (30 seconds vs 5 minutes).
             Focused mode auto-expires after duration_minutes (default 10).
             """
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             data = request.json
 
@@ -566,11 +617,12 @@ def register_agent_routes(api: Api):
         @ns.param('limit', 'Maximum number of checkpoints', type=int, default=10)
         @ns.param('checkpoint_type', 'Filter by checkpoint type')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, agent_id):
             """List checkpoints for an agent."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             limit = request.args.get('limit', 10, type=int)
             checkpoint_type = request.args.get('checkpoint_type')
@@ -592,11 +644,12 @@ def register_agent_routes(api: Api):
         @ns.doc('create_checkpoint')
         @ns.expect(checkpoint_create)
         @ns.marshal_with(response_model, code=201)
+        @require_auth
         def post(self, agent_id):
             """Create a new checkpoint for an agent."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             data = request.json or {}
 
@@ -627,11 +680,12 @@ def register_agent_routes(api: Api):
         @ns.doc('get_checkpoint')
         @ns.param('include_state', 'Include full state data', type=bool, default=False)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, agent_id, checkpoint_key):
             """Get a specific checkpoint."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             checkpoint = AgentCheckpoint.get_by_key(checkpoint_key)
             if not checkpoint or checkpoint.agent_key != agent.agent_key:
@@ -647,11 +701,12 @@ def register_agent_routes(api: Api):
 
         @ns.doc('delete_checkpoint')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self, agent_id, checkpoint_key):
             """Delete a checkpoint."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             checkpoint = AgentCheckpoint.get_by_key(checkpoint_key)
             if not checkpoint or checkpoint.agent_key != agent.agent_key:
@@ -674,11 +729,12 @@ def register_agent_routes(api: Api):
         @ns.doc('restore_checkpoint')
         @ns.expect(checkpoint_restore)
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self, agent_id, checkpoint_key):
             """Restore an agent to a checkpoint state."""
-            agent = Agent.get_by_agent_id(agent_id)
-            if not agent:
-                return {'success': False, 'msg': 'Agent not found'}, 404
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
 
             checkpoint = AgentCheckpoint.get_by_key(checkpoint_key)
             if not checkpoint or checkpoint.agent_key != agent.agent_key:

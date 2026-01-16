@@ -43,19 +43,53 @@ class Activity(BaseModel):
     target_key = Column(String(100), nullable=True)  # entity_key, message_key, etc.
     target_type = Column(String(50), nullable=True)  # 'entity', 'message', 'agent'
     extra_data = Column(JSONB, default=dict)  # extra info like entity_type, name, channel
+    context_domain = Column(String(36), nullable=True, index=True)  # domain for multi-tenancy
     created_at = Column(DateTime(timezone=True), default=get_now, index=True)
 
     __table_args__ = (
         Index('ix_activities_created_type', 'created_at', 'activity_type'),
         Index('ix_activities_actor_created', 'actor', 'created_at'),
+        Index('ix_activities_domain_created', 'context_domain', 'created_at'),
     )
 
-    _default_fields = ['activity_key', 'activity_type', 'actor', 'target_key', 'target_type', 'extra_data']
+    _default_fields = ['activity_key', 'activity_type', 'actor', 'target_key', 'target_type', 'extra_data', 'context_domain']
     _readonly_fields = ['activity_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 1
+        return 2
+
+    @classmethod
+    def migrate(cls) -> bool:
+        """
+        Migrate existing Activity records to include context_domain.
+
+        For activities created before multi-tenancy, attempts to set context_domain
+        based on the actor's (agent's) owning user's domain. Activities with
+        actor='system' or unrecognized actors remain without a domain.
+        """
+        from api.models.agent import Agent
+        from api.models.user import User
+
+        migrated = False
+        # Only migrate records that have NULL context_domain
+        records = cls.query.filter(cls.context_domain.is_(None)).all()
+
+        for r in records:
+            # Try to get domain from the actor (agent) -> user -> domain
+            if r.actor and r.actor != 'system':
+                agent = Agent.query.filter_by(agent_id=r.actor).first()
+                if agent and agent.user_key:
+                    user = User.query.get(agent.user_key)
+                    if user and user.domain_key:
+                        r.context_domain = user.domain_key
+                        db.session.add(r)
+                        migrated = True
+
+        if migrated:
+            db.session.commit()
+
+        return migrated
 
     @classmethod
     def get_recent(
@@ -64,7 +98,8 @@ class Activity(BaseModel):
         activity_type: Optional[str] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
-        actor: Optional[str] = None
+        actor: Optional[str] = None,
+        context_domain: Optional[str] = None
     ) -> List['Activity']:
         """
         Get recent activities with optional filtering.
@@ -75,6 +110,7 @@ class Activity(BaseModel):
             since: Only activities after this time
             until: Only activities before this time
             actor: Filter by actor (agent_key)
+            context_domain: Filter by domain (for multi-tenancy)
 
         Returns:
             List of Activity objects ordered by created_at desc
@@ -89,6 +125,8 @@ class Activity(BaseModel):
             query = query.filter(cls.created_at <= until)
         if actor:
             query = query.filter(cls.actor == actor)
+        if context_domain:
+            query = query.filter(cls.context_domain == context_domain)
 
         return query.order_by(cls.created_at.desc()).limit(limit).all()
 
@@ -96,7 +134,8 @@ class Activity(BaseModel):
     def get_summary(
         cls,
         since: Optional[datetime] = None,
-        until: Optional[datetime] = None
+        until: Optional[datetime] = None,
+        context_domain: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get aggregated activity counts by type.
@@ -104,6 +143,7 @@ class Activity(BaseModel):
         Args:
             since: Only count activities after this time
             until: Only count activities before this time
+            context_domain: Filter by domain (for multi-tenancy)
 
         Returns:
             Dict with 'summary' (type -> count) and 'total' count
@@ -117,6 +157,8 @@ class Activity(BaseModel):
             query = query.filter(cls.created_at >= since)
         if until:
             query = query.filter(cls.created_at <= until)
+        if context_domain:
+            query = query.filter(cls.context_domain == context_domain)
 
         results = query.group_by(cls.activity_type).all()
 
@@ -133,7 +175,8 @@ class Activity(BaseModel):
         cls,
         hours: int = 24,
         bucket_minutes: int = 60,
-        since: Optional[datetime] = None
+        since: Optional[datetime] = None,
+        context_domain: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Get time-bucketed activity data for charts.
@@ -142,6 +185,7 @@ class Activity(BaseModel):
             hours: Number of hours to look back
             bucket_minutes: Size of each time bucket in minutes
             since: Override start time (defaults to hours ago)
+            context_domain: Filter by domain (for multi-tenancy)
 
         Returns:
             List of dicts with timestamp, total, and per-type counts
@@ -164,7 +208,12 @@ class Activity(BaseModel):
             func.count(cls.activity_key).label('count')
         ).filter(
             cls.created_at >= since
-        ).group_by(
+        )
+
+        if context_domain:
+            query = query.filter(cls.context_domain == context_domain)
+
+        query = query.group_by(
             text("1"),  # bucket
             cls.activity_type
         ).order_by(
@@ -220,5 +269,6 @@ class Activity(BaseModel):
             'target_key': self.target_key,
             'target_type': self.target_type,
             'extra_data': self.extra_data or {},
+            'context_domain': self.context_domain,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

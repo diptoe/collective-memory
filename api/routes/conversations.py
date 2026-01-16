@@ -3,11 +3,12 @@ Collective Memory Platform - Conversation Routes
 
 Chat conversation and message operations.
 """
-from flask import request, Response
+from flask import request, Response, g
 from flask_restx import Api, Resource, Namespace, fields
 import json
 
 from api.models import Conversation, ChatMessage, Persona, db
+from api.services.auth import require_auth
 
 
 def register_conversation_routes(api: Api):
@@ -65,15 +66,21 @@ def register_conversation_routes(api: Api):
         @ns.param('persona_key', 'Filter by persona')
         @ns.param('limit', 'Maximum results', type=int, default=20)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
             """List conversations."""
             persona_key = request.args.get('persona_key')
             limit = request.args.get('limit', 20, type=int)
 
+            # Get user's domain for filtering
+            context_domain = None
+            if g.current_user:
+                context_domain = g.current_user.domain_key
+
             if persona_key:
-                conversations = Conversation.get_by_persona(persona_key, limit=limit)
+                conversations = Conversation.get_by_persona(persona_key, limit=limit, context_domain=context_domain)
             else:
-                conversations = Conversation.get_recent(limit=limit)
+                conversations = Conversation.get_recent(limit=limit, context_domain=context_domain)
 
             return {
                 'success': True,
@@ -86,6 +93,7 @@ def register_conversation_routes(api: Api):
         @ns.doc('create_conversation')
         @ns.expect(conversation_create)
         @ns.marshal_with(response_model, code=201)
+        @require_auth
         def post(self):
             """Create a new conversation."""
             data = request.json
@@ -98,10 +106,16 @@ def register_conversation_routes(api: Api):
             if not persona:
                 return {'success': False, 'msg': 'Persona not found'}, 404
 
+            # Get user's domain for the conversation
+            context_domain = None
+            if g.current_user:
+                context_domain = g.current_user.domain_key
+
             conversation = Conversation(
                 persona_key=data['persona_key'],
                 title=data.get('title', f'Chat with {persona.name}'),
-                agent_id=data.get('agent_id')
+                agent_id=data.get('agent_id'),
+                context_domain=context_domain
             )
 
             try:
@@ -124,19 +138,33 @@ def register_conversation_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
+    def _check_conversation_access(conversation_key):
+        """Helper to check if user has access to a conversation."""
+        conversation = Conversation.get_by_key(conversation_key)
+        if not conversation:
+            return None, {'success': False, 'msg': 'Conversation not found'}, 404
+
+        # Check domain access
+        if g.current_user and g.current_user.domain_key:
+            if conversation.context_domain and conversation.context_domain != g.current_user.domain_key:
+                return None, {'success': False, 'msg': 'Conversation not found'}, 404
+
+        return conversation, None, None
+
     @ns.route('/<string:conversation_key>')
     @ns.param('conversation_key', 'Conversation identifier')
     class ConversationDetail(Resource):
         @ns.doc('get_conversation')
         @ns.param('include_messages', 'Include messages', type=bool, default=True)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, conversation_key):
             """Get a conversation with messages."""
             include_messages = request.args.get('include_messages', 'true').lower() == 'true'
 
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             return {
                 'success': True,
@@ -149,11 +177,12 @@ def register_conversation_routes(api: Api):
 
         @ns.doc('update_conversation')
         @ns.marshal_with(response_model)
+        @require_auth
         def put(self, conversation_key):
             """Update conversation metadata."""
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             data = request.json
             conversation.update_from_dict(data)
@@ -170,11 +199,12 @@ def register_conversation_routes(api: Api):
 
         @ns.doc('delete_conversation')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self, conversation_key):
             """Delete a conversation and its messages."""
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             try:
                 # Delete all messages first
@@ -198,14 +228,15 @@ def register_conversation_routes(api: Api):
         @ns.param('limit', 'Maximum messages', type=int, default=100)
         @ns.param('offset', 'Offset for pagination', type=int, default=0)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, conversation_key):
             """Get messages for a conversation."""
             limit = request.args.get('limit', 100, type=int)
             offset = request.args.get('offset', 0, type=int)
 
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             messages = conversation.get_messages(limit=limit, offset=offset)
 
@@ -221,11 +252,12 @@ def register_conversation_routes(api: Api):
         @ns.doc('send_message')
         @ns.expect(message_create)
         @ns.marshal_with(response_model, code=201)
+        @require_auth
         def post(self, conversation_key):
             """Send a message to the conversation."""
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             data = request.json
 
@@ -262,6 +294,7 @@ def register_conversation_routes(api: Api):
         @ns.doc('chat_with_persona')
         @ns.expect(message_create)
         @ns.marshal_with(response_model, code=201)
+        @require_auth
         def post(self, conversation_key):
             """
             Send a message and get AI response (non-streaming).
@@ -273,9 +306,9 @@ def register_conversation_routes(api: Api):
             import asyncio
             from api.services.chat import chat_service
 
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             data = request.json
 
@@ -349,6 +382,7 @@ def register_conversation_routes(api: Api):
     class ConversationStream(Resource):
         @ns.doc('stream_response')
         @ns.expect(message_create)
+        @require_auth
         def post(self, conversation_key):
             """
             Send a message and stream the AI response.
@@ -359,9 +393,9 @@ def register_conversation_routes(api: Api):
             from api.services.chat import chat_service
             from api.utils.streaming import sse_format, sse_error, create_streaming_response
 
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             data = request.json
 
@@ -436,11 +470,12 @@ def register_conversation_routes(api: Api):
     class ConversationClear(Resource):
         @ns.doc('clear_conversation')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self, conversation_key):
             """Remove all messages from a conversation (conversation remains)."""
-            conversation = Conversation.get_by_key(conversation_key)
-            if not conversation:
-                return {'success': False, 'msg': 'Conversation not found'}, 404
+            conversation, error, status = _check_conversation_access(conversation_key)
+            if error:
+                return error, status
 
             try:
                 # Delete all messages for this conversation
