@@ -299,6 +299,12 @@ export default function SettingsPage() {
               <p className="text-cm-charcoal font-medium capitalize">{user.role}</p>
             </div>
             <div>
+              <p className="text-sm text-cm-coffee">Domain</p>
+              <p className="text-cm-charcoal font-medium">
+                {user.domain?.name || 'Personal'}
+              </p>
+            </div>
+            <div>
               <p className="text-sm text-cm-coffee">Member since</p>
               <p className="text-cm-charcoal font-medium">
                 {new Date(user.created_at).toLocaleDateString()}

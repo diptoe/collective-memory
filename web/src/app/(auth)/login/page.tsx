@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -8,12 +8,49 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setUser } = useAuthStore();
+  const { setUser, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  // Check if user has a valid session and redirect if so
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const response = await api.auth.me();
+        if (response.success && response.data?.user) {
+          // User has valid session, update store and redirect
+          setUser(response.data.user, response.data.session);
+          router.replace('/');
+          return;
+        }
+      } catch {
+        // No valid session, show login form
+      }
+      setIsCheckingSession(false);
+    };
+
+    checkSession();
+  }, [setUser, router]);
+
+  // If already authenticated (from store), redirect immediately
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.replace('/');
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  // Show loading while checking session
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-cm-cream">
+        <div className="text-cm-coffee">Checking session...</div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

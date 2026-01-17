@@ -73,14 +73,14 @@ def register_conversation_routes(api: Api):
             limit = request.args.get('limit', 20, type=int)
 
             # Get user's domain for filtering
-            context_domain = None
+            domain_key = None
             if g.current_user:
-                context_domain = g.current_user.domain_key
+                domain_key = g.current_user.domain_key
 
             if persona_key:
-                conversations = Conversation.get_by_persona(persona_key, limit=limit, context_domain=context_domain)
+                conversations = Conversation.get_by_persona(persona_key, limit=limit, domain_key=domain_key)
             else:
-                conversations = Conversation.get_recent(limit=limit, context_domain=context_domain)
+                conversations = Conversation.get_recent(limit=limit, domain_key=domain_key)
 
             return {
                 'success': True,
@@ -107,15 +107,15 @@ def register_conversation_routes(api: Api):
                 return {'success': False, 'msg': 'Persona not found'}, 404
 
             # Get user's domain for the conversation
-            context_domain = None
+            domain_key = None
             if g.current_user:
-                context_domain = g.current_user.domain_key
+                domain_key = g.current_user.domain_key
 
             conversation = Conversation(
                 persona_key=data['persona_key'],
                 title=data.get('title', f'Chat with {persona.name}'),
                 agent_id=data.get('agent_id'),
-                context_domain=context_domain
+                domain_key=domain_key
             )
 
             try:
@@ -146,7 +146,7 @@ def register_conversation_routes(api: Api):
 
         # Check domain access
         if g.current_user and g.current_user.domain_key:
-            if conversation.context_domain and conversation.context_domain != g.current_user.domain_key:
+            if conversation.domain_key and conversation.domain_key != g.current_user.domain_key:
                 return None, {'success': False, 'msg': 'Conversation not found'}, 404
 
         return conversation, None, None

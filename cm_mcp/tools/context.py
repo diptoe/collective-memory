@@ -37,9 +37,9 @@ async def get_context(
         params = {"search": query, "limit": max_entities}
 
         # Add domain filter for multi-tenancy
-        context_domain = session_state.get("context_domain")
-        if context_domain:
-            params["domain"] = context_domain
+        domain_key = session_state.get("domain_key")
+        if domain_key:
+            params["domain"] = domain_key
 
         result = await _make_request(config, "GET", "/entities", params=params, agent_id=agent_id)
 
@@ -220,9 +220,9 @@ async def get_entity_context(
         try:
             msg_params = {"entity_key": entity_key, "limit": 10}
             # Add domain filter for multi-tenancy
-            context_domain = session_state.get("context_domain")
-            if context_domain:
-                msg_params["context_domain"] = context_domain
+            domain_key = session_state.get("domain_key")
+            if domain_key:
+                msg_params["domain_key"] = domain_key
 
             messages_result = await _make_request(
                 config, "GET", "/messages",

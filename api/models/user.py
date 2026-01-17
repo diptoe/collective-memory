@@ -149,12 +149,13 @@ class User(BaseModel):
         self.role = role
         self.save()
 
-    def to_dict(self, include_pat: bool = False) -> dict:
+    def to_dict(self, include_pat: bool = False, include_domain: bool = False) -> dict:
         """
         Convert user to dictionary.
 
         Args:
             include_pat: Include PAT in response (only for authenticated user viewing their own data)
+            include_domain: Include domain details in response
         """
         result = {
             'user_key': self.user_key,
@@ -176,5 +177,12 @@ class User(BaseModel):
         if include_pat:
             result['pat'] = self.pat
             result['pat_created_at'] = self.pat_created_at.isoformat() if self.pat_created_at else None
+
+        if include_domain and self.domain:
+            result['domain'] = {
+                'domain_key': self.domain.domain_key,
+                'name': self.domain.name,
+                'slug': self.domain.slug,
+            }
 
         return result

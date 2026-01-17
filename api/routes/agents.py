@@ -6,7 +6,7 @@ Agent registration, status operations, and checkpointing.
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Agent, AgentCheckpoint, Model, Persona, is_valid_client, get_client_affinities
+from api.models import Agent, AgentCheckpoint, Model, Persona, Session, is_valid_client, get_client_affinities
 from api.services.checkpoint import checkpoint_service
 from api.services.activity import activity_service
 from api.services.auth import require_auth
@@ -209,11 +209,22 @@ def register_agent_routes(api: Api):
                     is_reconnect=True
                 )
 
+                # Create or update session for this agent connection
+                session = Session.create_for_user(
+                    user_key=user_key,
+                    remember_me=True,  # Agent sessions are long-lived
+                    user_agent=f"MCP/{client}" if client else "MCP/unknown",
+                    ip_address=request.remote_addr,
+                    agent_key=existing.agent_key,
+                    cleanup_old=False  # Don't cleanup - agents may have multiple sessions
+                )
+
                 result = {
                     'success': True,
                     'msg': 'Agent updated',
                     'data': existing.to_dict()
                 }
+                result['data']['session_key'] = session.session_key
                 if affinity_warning:
                     result['data']['affinity_warning'] = affinity_warning
                 return result
@@ -246,11 +257,23 @@ def register_agent_routes(api: Api):
                     persona=agent.persona_key,
                     model=agent.model_key
                 )
+
+                # Create session for this agent connection
+                session = Session.create_for_user(
+                    user_key=user_key,
+                    remember_me=True,  # Agent sessions are long-lived
+                    user_agent=f"MCP/{client}" if client else "MCP/unknown",
+                    ip_address=request.remote_addr,
+                    agent_key=agent.agent_key,
+                    cleanup_old=False  # Don't cleanup - agents may have multiple sessions
+                )
+
                 result = {
                     'success': True,
                     'msg': 'Agent registered',
                     'data': agent.to_dict()
                 }
+                result['data']['session_key'] = session.session_key
                 if affinity_warning:
                     result['data']['affinity_warning'] = affinity_warning
                 return result, 201

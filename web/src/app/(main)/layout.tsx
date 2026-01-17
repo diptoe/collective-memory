@@ -75,7 +75,7 @@ export default function MainLayout({
   return (
     <div className="flex min-h-screen">
       {/* Sidebar Navigation */}
-      <nav className="w-64 bg-cm-ivory border-r border-cm-sand flex flex-col">
+      <nav className="w-64 bg-cm-ivory border-r border-cm-sand flex flex-col h-screen sticky top-0">
         <div className="p-6 border-b border-cm-sand">
           <h1 className="font-serif text-xl font-semibold text-cm-charcoal">
             Collective Memory
@@ -83,7 +83,7 @@ export default function MainLayout({
           <p className="text-sm text-cm-coffee mt-1">by Diptoe</p>
         </div>
 
-        <div className="flex-1 py-4">
+        <div className="flex-1 py-4 overflow-y-auto">
           <NavLink href="/" icon="home" active={pathname === '/'}>Activity</NavLink>
           <NavLink href="/chat" icon="message-circle" active={pathname.startsWith('/chat')}>Chat</NavLink>
           <NavLink href="/personas" icon="users" active={pathname.startsWith('/personas')}>Personas</NavLink>
@@ -101,6 +101,7 @@ export default function MainLayout({
               </div>
               <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
               <NavLink href="/admin/domains" icon="globe" active={pathname.startsWith('/admin/domains')}>Domains</NavLink>
+              <NavLink href="/admin/sessions" icon="key" active={pathname.startsWith('/admin/sessions')}>Sessions</NavLink>
             </>
           )}
         </div>
@@ -191,6 +192,7 @@ function NavIcon({ name }: { name: string }) {
     'cpu': '⚙️',
     'shield': '🛡️',
     'globe': '🌐',
+    'key': '🔑',
     'settings': '⚙️',
   };
   return <span className="w-5 text-center">{icons[name] || '•'}</span>;

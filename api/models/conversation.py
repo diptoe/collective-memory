@@ -25,14 +25,14 @@ class Conversation(BaseModel):
     summary = Column(Text, nullable=True)
     extracted_entities = Column(JSONB, default=list)
     extra_data = Column(JSONB, default=dict)  # renamed from 'metadata' which is reserved
-    context_domain = Column(String(36), nullable=True, index=True)  # domain for multi-tenancy
+    domain_key = Column(String(36), nullable=True, index=True)  # domain for multi-tenancy
     created_at = Column(DateTime(timezone=True), default=get_now)
     updated_at = Column(DateTime(timezone=True), default=get_now, onupdate=get_now)
 
     # Relationship to Persona
     persona = relationship('Persona', backref='conversations')
 
-    _default_fields = ['conversation_key', 'persona_key', 'title', 'summary', 'extracted_entities', 'context_domain']
+    _default_fields = ['conversation_key', 'persona_key', 'title', 'summary', 'extracted_entities', 'domain_key']
     _readonly_fields = ['conversation_key', 'created_at']
 
     @classmethod
@@ -42,9 +42,9 @@ class Conversation(BaseModel):
     @classmethod
     def migrate(cls) -> bool:
         """
-        Migrate existing Conversation records to include context_domain.
+        Migrate existing Conversation records to include domain_key.
 
-        For conversations created before multi-tenancy, attempts to set context_domain
+        For conversations created before multi-tenancy, attempts to set domain_key
         based on the agent's owning user's domain. User-initiated conversations without
         an agent remain without a domain until manually assigned.
         """
@@ -52,8 +52,8 @@ class Conversation(BaseModel):
         from api.models.user import User
 
         migrated = False
-        # Only migrate records that have NULL context_domain
-        records = cls.query.filter(cls.context_domain.is_(None)).all()
+        # Only migrate records that have NULL domain_key
+        records = cls.query.filter(cls.domain_key.is_(None)).all()
 
         for r in records:
             # Try to get domain from the agent -> user -> domain
@@ -62,7 +62,7 @@ class Conversation(BaseModel):
                 if agent and agent.user_key:
                     user = User.query.get(agent.user_key)
                     if user and user.domain_key:
-                        r.context_domain = user.domain_key
+                        r.domain_key = user.domain_key
                         db.session.add(r)
                         migrated = True
 
@@ -72,19 +72,19 @@ class Conversation(BaseModel):
         return migrated
 
     @classmethod
-    def get_by_persona(cls, persona_key: str, limit: int = 50, context_domain: str = None) -> list['Conversation']:
+    def get_by_persona(cls, persona_key: str, limit: int = 50, domain_key: str = None) -> list['Conversation']:
         """Get conversations for a specific persona."""
         query = cls.query.filter_by(persona_key=persona_key)
-        if context_domain:
-            query = query.filter(cls.context_domain == context_domain)
+        if domain_key:
+            query = query.filter(cls.domain_key == domain_key)
         return query.order_by(cls.updated_at.desc()).limit(limit).all()
 
     @classmethod
-    def get_recent(cls, limit: int = 20, context_domain: str = None) -> list['Conversation']:
+    def get_recent(cls, limit: int = 20, domain_key: str = None) -> list['Conversation']:
         """Get most recent conversations across all personas."""
         query = cls.query
-        if context_domain:
-            query = query.filter(cls.context_domain == context_domain)
+        if domain_key:
+            query = query.filter(cls.domain_key == domain_key)
         return query.order_by(cls.updated_at.desc()).limit(limit).all()
 
     def get_messages(self, limit: int = 100, offset: int = 0) -> list:

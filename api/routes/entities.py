@@ -3,16 +3,24 @@ Collective Memory Platform - Entity Routes
 
 CRUD operations for knowledge graph entities.
 """
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Entity, db
 from api.services.activity import activity_service
+from api.services.auth import require_auth
 
 
 def get_actor() -> str:
     """Get actor from X-Agent-Id header or return 'system'."""
     return request.headers.get('X-Agent-Id', 'system')
+
+
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for multi-tenancy filtering."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
 
 
 def register_entity_routes(api: Api):
@@ -34,7 +42,7 @@ def register_entity_routes(api: Api):
         'entity_type': fields.String(required=True, description='Type: Person, Project, Technology, Document, Organization, Concept'),
         'name': fields.String(required=True, description='Entity name'),
         'properties': fields.Raw(description='Additional properties as JSON'),
-        'context_domain': fields.String(description='Context domain (e.g., work.jai-platform)'),
+        'domain_key': fields.String(description='Domain key for multi-tenancy'),
         'confidence': fields.Float(description='Confidence score 0.0-1.0'),
         'source': fields.String(description='Source of this entity'),
         'created_at': fields.DateTime(readonly=True),
@@ -45,7 +53,7 @@ def register_entity_routes(api: Api):
         'entity_type': fields.String(required=True, description='Type: Person, Project, Technology, Document, Organization, Concept'),
         'name': fields.String(required=True, description='Entity name'),
         'properties': fields.Raw(description='Additional properties as JSON'),
-        'context_domain': fields.String(description='Context domain'),
+        'domain_key': fields.String(description='Domain key for multi-tenancy'),
         'confidence': fields.Float(description='Confidence score 0.0-1.0', default=1.0),
         'source': fields.String(description='Source of this entity'),
     })
@@ -60,25 +68,27 @@ def register_entity_routes(api: Api):
     class EntityList(Resource):
         @ns.doc('list_entities')
         @ns.param('type', 'Filter by entity type')
-        @ns.param('domain', 'Filter by context domain')
         @ns.param('search', 'Search by name')
         @ns.param('limit', 'Maximum results', type=int, default=100)
         @ns.param('offset', 'Offset for pagination', type=int, default=0)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
-            """List entities with optional filtering."""
+            """List entities with optional filtering. Automatically filtered by user's domain."""
             entity_type = request.args.get('type')
-            domain = request.args.get('domain')
             search = request.args.get('search')
             limit = request.args.get('limit', 100, type=int)
             offset = request.args.get('offset', 0, type=int)
 
             query = Entity.query
 
+            # Multi-tenancy: automatically filter by user's domain
+            user_domain = get_user_domain_key()
+            if user_domain:
+                query = query.filter_by(domain_key=user_domain)
+
             if entity_type:
                 query = query.filter_by(entity_type=entity_type)
-            if domain:
-                query = query.filter_by(context_domain=domain)
             if search:
                 query = query.filter(Entity.name.ilike(f'%{search}%'))
 
@@ -109,8 +119,9 @@ def register_entity_routes(api: Api):
         @ns.doc('create_entity')
         @ns.expect(entity_create)
         @ns.marshal_with(response_model, code=201)
+        @require_auth
         def post(self):
-            """Create a new entity. Optionally specify entity_key for deterministic keys."""
+            """Create a new entity. Automatically assigned to user's domain."""
             data = request.json
 
             if not data.get('entity_type'):
@@ -125,11 +136,14 @@ def register_entity_routes(api: Api):
                 if existing:
                     return {'success': False, 'msg': f'Entity with key {custom_key} already exists'}, 409
 
+            # Multi-tenancy: automatically set domain from authenticated user
+            user_domain = get_user_domain_key()
+
             entity = Entity(
                 entity_type=data['entity_type'],
                 name=data['name'],
                 properties=data.get('properties', {}),
-                context_domain=data.get('context_domain'),
+                domain_key=user_domain,  # Auto-set from user's domain
                 confidence=data.get('confidence', 1.0),
                 source=data.get('source')
             )
@@ -159,14 +173,22 @@ def register_entity_routes(api: Api):
     class EntityTypes(Resource):
         @ns.doc('list_entity_types')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
-            """Get all distinct entity types with counts."""
+            """Get all distinct entity types with counts. Filtered by user's domain."""
             from sqlalchemy import func
 
-            results = db.session.query(
+            query = db.session.query(
                 Entity.entity_type,
                 func.count(Entity.entity_key).label('count')
-            ).group_by(Entity.entity_type).order_by(Entity.entity_type).all()
+            )
+
+            # Multi-tenancy: filter by user's domain
+            user_domain = get_user_domain_key()
+            if user_domain:
+                query = query.filter(Entity.domain_key == user_domain)
+
+            results = query.group_by(Entity.entity_type).order_by(Entity.entity_type).all()
 
             types = [
                 {'type': row.entity_type, 'count': row.count}
@@ -181,18 +203,30 @@ def register_entity_routes(api: Api):
                 }
             }
 
+    def _check_entity_domain_access(entity, user_domain):
+        """Check if user has access to entity based on domain."""
+        if user_domain and entity.domain_key != user_domain:
+            return False
+        return True
+
     @ns.route('/<string:entity_key>')
     @ns.param('entity_key', 'Entity identifier')
     class EntityDetail(Resource):
         @ns.doc('get_entity')
         @ns.param('include_relationships', 'Include relationships', type=bool, default=False)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, entity_key):
-            """Get an entity by key."""
+            """Get an entity by key. Must belong to user's domain."""
             include_rels = request.args.get('include_relationships', 'false').lower() == 'true'
 
             entity = Entity.get_by_key(entity_key)
             if not entity:
+                return {'success': False, 'msg': 'Entity not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_entity_domain_access(entity, user_domain):
                 return {'success': False, 'msg': 'Entity not found'}, 404
 
             # Record activity
@@ -212,10 +246,16 @@ def register_entity_routes(api: Api):
         @ns.doc('update_entity')
         @ns.expect(entity_create)
         @ns.marshal_with(response_model)
+        @require_auth
         def put(self, entity_key):
-            """Update an entity."""
+            """Update an entity. Must belong to user's domain."""
             entity = Entity.get_by_key(entity_key)
             if not entity:
+                return {'success': False, 'msg': 'Entity not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_entity_domain_access(entity, user_domain):
                 return {'success': False, 'msg': 'Entity not found'}, 404
 
             data = request.json
@@ -240,12 +280,18 @@ def register_entity_routes(api: Api):
 
         @ns.doc('delete_entity')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self, entity_key):
-            """Delete an entity and all its relationships."""
+            """Delete an entity and all its relationships. Must belong to user's domain."""
             from api.models.relationship import Relationship
 
             entity = Entity.get_by_key(entity_key)
             if not entity:
+                return {'success': False, 'msg': 'Entity not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_entity_domain_access(entity, user_domain):
                 return {'success': False, 'msg': 'Entity not found'}, 404
 
             try:
@@ -284,12 +330,18 @@ def register_entity_routes(api: Api):
     class EntityEmbed(Resource):
         @ns.doc('embed_entity')
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self, entity_key):
-            """Generate embedding for an entity."""
+            """Generate embedding for an entity. Must belong to user's domain."""
             from api.services import embedding_service
 
             entity = Entity.get_by_key(entity_key)
             if not entity:
+                return {'success': False, 'msg': 'Entity not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_entity_domain_access(entity, user_domain):
                 return {'success': False, 'msg': 'Entity not found'}, 404
 
             try:

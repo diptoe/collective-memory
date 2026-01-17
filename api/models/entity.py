@@ -37,7 +37,7 @@ class Entity(BaseModel):
     entity_type = Column(String(50), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     properties = Column(JSONB, default=dict)
-    context_domain = Column(String(100), nullable=True, index=True)
+    domain_key = Column(String(100), nullable=True, index=True)
     confidence = Column(Float, default=1.0)
     source = Column(String(100), nullable=True)
 
@@ -52,11 +52,11 @@ class Entity(BaseModel):
 
     # Indexes for common queries
     __table_args__ = (
-        Index('ix_entities_type_domain', 'entity_type', 'context_domain'),
+        Index('ix_entities_type_domain', 'entity_type', 'domain_key'),
         Index('ix_entities_name_search', 'name'),
     )
 
-    _default_fields = ['entity_key', 'entity_type', 'name', 'properties', 'context_domain']
+    _default_fields = ['entity_key', 'entity_type', 'name', 'properties', 'domain_key']
     _readonly_fields = ['entity_key', 'created_at']
 
     @classmethod
@@ -76,9 +76,9 @@ class Entity(BaseModel):
         ).limit(limit).all()
 
     @classmethod
-    def get_by_domain(cls, context_domain: str, limit: int = 100) -> list['Entity']:
-        """Get entities by context domain."""
-        return cls.query.filter_by(context_domain=context_domain).limit(limit).all()
+    def get_by_domain(cls, domain_key: str, limit: int = 100) -> list['Entity']:
+        """Get entities by domain."""
+        return cls.query.filter_by(domain_key=domain_key).limit(limit).all()
 
     @classmethod
     def search_semantic(

@@ -388,9 +388,10 @@ async def identify(
                         user_data = me_result.get("data", {}).get("user", {})
                         session_state["user_key"] = user_data.get("user_key")
                         session_state["user_email"] = user_data.get("email")
+                        session_state["user_display_name"] = user_data.get("display_name")
                         domain_key = user_data.get("domain_key")
                         if domain_key:
-                            session_state["context_domain"] = domain_key
+                            session_state["domain_key"] = domain_key
                 except Exception:
                     pass  # If auth lookup fails, continue without domain
 
@@ -412,6 +413,11 @@ async def identify(
 
             output = "# Identity Confirmed\n\n"
             output += f"Welcome to Collective Memory (CM)!\n\n"
+
+            # Show authenticated user if available
+            if session_state.get("user_display_name"):
+                output += f"**User:** {session_state.get('user_display_name')}\n"
+
             output += f"**Agent ID:** {agent_id}\n"
             output += f"**Agent Key:** {agent_data.get('agent_key')}\n"
             output += f"**Client:** {client_type}\n"
@@ -435,8 +441,8 @@ async def identify(
                 output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"
 
             # Show domain context if set
-            if session_state.get("context_domain"):
-                output += f"\n**Domain:** {session_state.get('context_domain')}\n"
+            if session_state.get("domain_key"):
+                output += f"\n**Domain:** {session_state.get('domain_key')}\n"
                 output += f"*Data operations will be scoped to this domain*\n"
 
             output += "\nYou are now registered and can collaborate in CM.\n"

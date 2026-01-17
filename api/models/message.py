@@ -39,6 +39,7 @@ class Message(BaseModel):
     message_key = Column(String(36), primary_key=True, default=get_key)
     channel = Column(String(100), nullable=False, index=True)
     from_agent = Column(String(100), nullable=False)
+    user_key = Column(String(36), nullable=True, index=True)  # user who sent the message
     to_agent = Column(String(100), nullable=True)  # null = broadcast to channel
     reply_to_key = Column(String(36), ForeignKey('messages.message_key'), nullable=True, index=True)
     message_type = Column(String(50), nullable=False, index=True)
@@ -49,7 +50,7 @@ class Message(BaseModel):
     confirmed_by = Column(String(100), nullable=True)  # Agent/human who confirmed
     confirmed_at = Column(DateTime(timezone=True), nullable=True)  # When confirmed
     entity_keys = Column(JSONB, default=list)  # Linked entity keys for knowledge graph connection
-    context_domain = Column(String(36), nullable=True, index=True)  # Domain for multi-tenancy isolation
+    domain_key = Column(String(36), nullable=True, index=True)  # Domain for multi-tenancy isolation
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
@@ -60,12 +61,12 @@ class Message(BaseModel):
         Index('ix_messages_reply_to', 'reply_to_key'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys', 'context_domain']
+    _default_fields = ['message_key', 'channel', 'from_agent', 'user_key', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys', 'domain_key']
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 7  # Bumped for context_domain field
+        return 8  # Bumped for domain_key rename
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:

@@ -10,7 +10,7 @@ from api.models import User, Session, Domain
 from api.services.auth import (
     hash_password, verify_password, is_admin_email,
     set_session_cookie, clear_session_cookie,
-    require_auth_strict, get_user_from_request
+    require_auth_strict, require_admin, get_user_from_request
 )
 from api.services.activity import activity_service
 
@@ -169,13 +169,30 @@ def register_auth_routes(api: Api):
                 return {'success': False, 'msg': 'Invalid email or password'}, 401
 
             try:
-                # Create session
-                session = Session.create_for_user(
-                    user_key=user.user_key,
-                    remember_me=remember_me,
-                    user_agent=request.headers.get('User-Agent'),
-                    ip_address=request.remote_addr,
-                )
+                # Check if there's already a valid session cookie for this user
+                session_token = request.cookies.get('cm_session')
+                existing_session = None
+                if session_token:
+                    existing_session = Session.get_by_token(session_token)
+                    # Only reuse if it belongs to the same user
+                    if existing_session and existing_session.user_key == user.user_key:
+                        # Extend the existing session instead of creating a new one
+                        existing_session.extend()
+                        session = existing_session
+                    else:
+                        # Different user or invalid session - revoke and create new
+                        if existing_session:
+                            existing_session.revoke()
+                        existing_session = None
+
+                if not existing_session:
+                    # Create new session
+                    session = Session.create_for_user(
+                        user_key=user.user_key,
+                        remember_me=remember_me,
+                        user_agent=request.headers.get('User-Agent'),
+                        ip_address=request.remote_addr,
+                    )
 
                 # Update last login
                 user.update_last_login()
@@ -243,7 +260,7 @@ def register_auth_routes(api: Api):
                 'success': True,
                 'msg': 'User retrieved',
                 'data': {
-                    'user': user.to_dict(include_pat=True),
+                    'user': user.to_dict(include_pat=True, include_domain=True),
                     'session': session.to_dict() if session else None,
                 }
             }
@@ -469,6 +486,87 @@ def register_auth_routes(api: Api):
                 clear_session_cookie(response)
 
                 return response
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    # ===================
+    # Admin Routes
+    # ===================
+
+    @ns.route('/admin/sessions')
+    class AdminSessionList(Resource):
+        @ns.doc('admin_list_sessions')
+        @require_admin
+        @ns.param('include_expired', 'Include expired sessions', type=bool, default=False)
+        @ns.param('limit', 'Maximum sessions to return', type=int, default=100)
+        @ns.marshal_with(response_model)
+        def get(self):
+            """[Admin] List all sessions with user and agent details."""
+            include_expired = request.args.get('include_expired', 'false').lower() == 'true'
+            limit = request.args.get('limit', 100, type=int)
+
+            sessions = Session.get_all_sessions(include_expired=include_expired, limit=limit)
+
+            session_list = []
+            for s in sessions:
+                session_list.append(s.to_dict(include_user=True, include_agent=True))
+
+            return {
+                'success': True,
+                'msg': f'Found {len(sessions)} sessions',
+                'data': {
+                    'sessions': session_list
+                }
+            }
+
+    @ns.route('/admin/sessions/<string:session_key>')
+    @ns.param('session_key', 'Session identifier')
+    class AdminSessionDetail(Resource):
+        @ns.doc('admin_revoke_session')
+        @require_admin
+        def delete(self, session_key):
+            """[Admin] Revoke any session."""
+            session = Session.get_by_key(session_key)
+            if not session:
+                return {'success': False, 'msg': 'Session not found'}, 404
+
+            try:
+                # Get user info before deletion
+                user_key = session.user_key
+                session.revoke()
+
+                # Record activity
+                activity_service.record_delete(
+                    actor=g.current_user.user_key,
+                    entity_type='Session',
+                    entity_key=session_key,
+                    entity_name=f'Session for user {user_key}'
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'Session revoked',
+                    'data': {'user_key': user_key}
+                }
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/admin/sessions/cleanup')
+    class AdminSessionCleanup(Resource):
+        @ns.doc('admin_cleanup_sessions')
+        @require_admin
+        def post(self):
+            """[Admin] Delete all expired sessions."""
+            try:
+                count = Session.cleanup_expired()
+
+                return {
+                    'success': True,
+                    'msg': f'Cleaned up {count} expired sessions',
+                    'data': {'deleted_count': count}
+                }
 
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500

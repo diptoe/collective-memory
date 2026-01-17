@@ -7,11 +7,19 @@ Read tracking modes:
 - Per-agent: Pass agent_id to track reads per agent (recommended)
 - Legacy: Uses global read_at field on Message (backward compatible)
 """
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Message, MessageRead
 from api.services.activity import activity_service
+from api.services.auth import require_auth
+
+
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for multi-tenancy filtering."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
 
 
 def register_message_routes(api: Api):
@@ -73,11 +81,12 @@ def register_message_routes(api: Api):
         @ns.param('to_agent', 'Filter by recipient agent ID only', type=str)
         @ns.param('include_readers', 'Include list of agents who have read each message', type=bool, default=False)
         @ns.param('include_thread_info', 'Include reply_count and has_parent for each message', type=bool, default=False)
-        @ns.param('context_domain', 'Filter by domain for multi-tenancy', type=str)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
             """
             Get all messages across all channels with optional filters.
+            Automatically filtered by user's domain.
 
             When for_agent is provided:
             - Returns messages TO this agent + all broadcasts
@@ -99,7 +108,9 @@ def register_message_routes(api: Api):
             to_agent = request.args.get('to_agent')
             include_readers = request.args.get('include_readers', 'false').lower() == 'true'
             include_thread_info = request.args.get('include_thread_info', 'false').lower() == 'true'
-            context_domain = request.args.get('context_domain')
+
+            # Multi-tenancy: automatically use user's domain
+            user_domain = get_user_domain_key()
 
             # Parse since timestamp if provided
             since_dt = None
@@ -126,9 +137,9 @@ def register_message_routes(api: Api):
                 if entity_key:
                     messages = [m for m in messages if m.entity_keys and entity_key in m.entity_keys]
 
-                # Apply domain filter for multi-tenancy
-                if context_domain:
-                    messages = [m for m in messages if m.context_domain == context_domain]
+                # Multi-tenancy: filter by user's domain
+                if user_domain:
+                    messages = [m for m in messages if m.domain_key == user_domain]
 
                 return {
                     'success': True,
@@ -140,6 +151,10 @@ def register_message_routes(api: Api):
 
             # Legacy mode: direct query with global read_at
             query = Message.query
+
+            # Multi-tenancy: filter by user's domain
+            if user_domain:
+                query = query.filter(Message.domain_key == user_domain)
 
             # Filter by channel
             if channel:
@@ -160,10 +175,6 @@ def register_message_routes(api: Api):
             if to_agent:
                 query = query.filter(Message.to_agent == to_agent)
 
-            # Domain filter for multi-tenancy
-            if context_domain:
-                query = query.filter(Message.context_domain == context_domain)
-
             if unread_only:
                 query = query.filter(Message.read_at.is_(None))
 
@@ -180,8 +191,9 @@ def register_message_routes(api: Api):
         @ns.doc('post_message')
         @ns.expect(message_create)
         @ns.marshal_with(response_model, code=201)
+        @require_auth
         def post(self):
-            """Post a new message to a channel. Can be from an agent or a human. Can be a reply to another message."""
+            """Post a new message to a channel. Automatically assigned to user's domain."""
             data = request.json
 
             # Validate required fields
@@ -194,12 +206,18 @@ def register_message_routes(api: Api):
             if not data.get('content'):
                 return {'success': False, 'msg': 'content is required'}, 400
 
+            # Multi-tenancy: automatically set domain from authenticated user
+            user_domain = get_user_domain_key()
+
             # Validate reply_to_key if provided
             reply_to_key = data.get('reply_to_key')
             parent = None
             if reply_to_key:
                 parent = Message.get_by_key(reply_to_key)
                 if not parent:
+                    return {'success': False, 'msg': f'Parent message {reply_to_key} not found'}, 404
+                # Verify parent belongs to same domain
+                if user_domain and parent.domain_key != user_domain:
                     return {'success': False, 'msg': f'Parent message {reply_to_key} not found'}, 404
 
             # Use from_human as from_agent if no agent specified (prefix with "human:")
@@ -228,7 +246,7 @@ def register_message_routes(api: Api):
                 priority=data.get('priority', 'normal'),
                 autonomous=data.get('autonomous', False),
                 entity_keys=entity_keys if entity_keys else None,
-                context_domain=data.get('context_domain')
+                domain_key=user_domain  # Auto-set from user's domain
             )
 
             try:
@@ -256,18 +274,29 @@ def register_message_routes(api: Api):
         @ns.param('unread_only', 'Only return unread messages', type=bool, default=False)
         @ns.param('for_agent', 'Get per-agent read status for this agent', type=str)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, channel):
-            """Get messages from a channel with optional per-agent read tracking."""
+            """Get messages from a channel. Filtered by user's domain."""
             limit = request.args.get('limit', 50, type=int)
             unread_only = request.args.get('unread_only', 'false').lower() == 'true'
             for_agent = request.args.get('for_agent')
 
+            # Multi-tenancy: get user's domain
+            user_domain = get_user_domain_key()
+
             if for_agent and unread_only:
                 # Per-agent unread filtering
                 messages = Message.get_unread_for_agent(for_agent, channel=channel, limit=limit)
+                # Filter by domain
+                if user_domain:
+                    messages = [m for m in messages if m.domain_key == user_domain]
                 unread_count = len(messages)
             else:
                 query = Message.query.filter_by(channel=channel)
+
+                # Filter by domain
+                if user_domain:
+                    query = query.filter(Message.domain_key == user_domain)
 
                 if unread_only:
                     query = query.filter(Message.read_at.is_(None))
@@ -291,11 +320,17 @@ def register_message_routes(api: Api):
         @ns.doc('get_channel_messages_since')
         @ns.param('limit', 'Maximum messages to return', type=int, default=50)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, channel, timestamp):
-            """Get messages from a channel since a timestamp."""
+            """Get messages from a channel since a timestamp. Filtered by user's domain."""
             limit = request.args.get('limit', 50, type=int)
 
             messages = Message.get_by_channel(channel, limit=limit, since=timestamp)
+
+            # Multi-tenancy: filter by user's domain
+            user_domain = get_user_domain_key()
+            if user_domain:
+                messages = [m for m in messages if m.domain_key == user_domain]
 
             return {
                 'success': True,
@@ -305,21 +340,30 @@ def register_message_routes(api: Api):
                 }
             }
 
+    def _check_message_domain_access(message, user_domain):
+        """Check if user has access to message based on domain."""
+        if user_domain and message.domain_key != user_domain:
+            return False
+        return True
+
     @ns.route('/mark-read/<string:message_key>')
     @ns.param('message_key', 'Message identifier')
     class MarkMessageRead(Resource):
         @ns.doc('mark_message_read')
         @ns.param('agent_id', 'Agent marking as read (for per-agent tracking)', type=str)
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self, message_key):
             """
-            Mark a message as read.
-
-            If agent_id is provided, creates a per-agent read record (MessageRead).
-            If agent_id is not provided, uses legacy global read_at field.
+            Mark a message as read. Must belong to user's domain.
             """
             message = Message.get_by_key(message_key)
             if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_message_domain_access(message, user_domain):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             agent_id = request.args.get('agent_id')
@@ -338,21 +382,33 @@ def register_message_routes(api: Api):
     class ClearAllMessages(Resource):
         @ns.doc('clear_all_messages')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self):
             """
-            Delete all messages from the queue.
-
-            This is a destructive operation that removes all messages
-            and their read tracking records.
+            Delete all messages from the queue for user's domain.
             """
             from api.models import db
 
-            try:
-                # Delete all read tracking records first
-                MessageRead.query.delete()
+            # Multi-tenancy: only delete messages in user's domain
+            user_domain = get_user_domain_key()
 
-                # Delete all messages
-                count = Message.query.delete()
+            try:
+                if user_domain:
+                    # Get message keys in this domain
+                    domain_messages = Message.query.filter_by(domain_key=user_domain).all()
+                    message_keys = [m.message_key for m in domain_messages]
+
+                    if message_keys:
+                        # Delete read tracking records for these messages
+                        MessageRead.query.filter(MessageRead.message_key.in_(message_keys)).delete(synchronize_session=False)
+                        # Delete messages
+                        count = Message.query.filter(Message.message_key.in_(message_keys)).delete(synchronize_session=False)
+                    else:
+                        count = 0
+                else:
+                    # No domain - delete all (for backwards compatibility)
+                    MessageRead.query.delete()
+                    count = Message.query.delete()
 
                 db.session.commit()
 
@@ -373,12 +429,10 @@ def register_message_routes(api: Api):
         @ns.param('agent_id', 'Agent marking as read (required for per-agent tracking)', type=str)
         @ns.param('channel', 'Filter by channel (optional)', type=str)
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self):
             """
-            Mark all unread messages as read for an agent.
-
-            Requires agent_id to use per-agent read tracking.
-            Marks all messages visible to this agent (direct + broadcasts) as read.
+            Mark all unread messages as read for an agent. Filtered by user's domain.
             """
             agent_id = request.args.get('agent_id')
             channel = request.args.get('channel')
@@ -386,9 +440,17 @@ def register_message_routes(api: Api):
             if not agent_id:
                 return {'success': False, 'msg': 'agent_id is required for per-agent read tracking'}, 400
 
+            # Multi-tenancy: get user's domain
+            user_domain = get_user_domain_key()
+
             try:
                 # Get unread messages for this agent
                 unread_messages = Message.get_unread_for_agent(agent_id, channel=channel, limit=1000)
+
+                # Filter by domain
+                if user_domain:
+                    unread_messages = [m for m in unread_messages if m.domain_key == user_domain]
+
                 count = len(unread_messages)
 
                 # Mark each as read by this agent
@@ -417,15 +479,18 @@ def register_message_routes(api: Api):
         @ns.doc('confirm_message')
         @ns.param('confirmed_by', 'Agent or human confirming the task', type=str, required=True)
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self, message_key):
             """
-            Confirm task completion on a message.
-
-            Used by operators to explicitly confirm that an autonomous task
-            has been completed satisfactorily. This marks the message as confirmed.
+            Confirm task completion on a message. Must belong to user's domain.
             """
             message = Message.get_by_key(message_key)
             if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_message_domain_access(message, user_domain):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             confirmed_by = request.args.get('confirmed_by')
@@ -444,14 +509,18 @@ def register_message_routes(api: Api):
 
         @ns.doc('unconfirm_message')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self, message_key):
             """
-            Remove confirmation from a message.
-
-            Used when an operator realizes more work is needed after confirming.
+            Remove confirmation from a message. Must belong to user's domain.
             """
             message = Message.get_by_key(message_key)
             if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_message_domain_access(message, user_domain):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             try:
@@ -475,17 +544,18 @@ def register_message_routes(api: Api):
         @ns.doc('update_message_entity_links')
         @ns.expect(entity_links_model)
         @ns.marshal_with(response_model)
+        @require_auth
         def put(self, message_key):
             """
-            Update entity links on a message.
-
-            Modes:
-            - add (default): Add entities to existing links
-            - replace: Replace all entity links with new ones
-            - remove: Remove specified entities from links
+            Update entity links on a message. Must belong to user's domain.
             """
             message = Message.get_by_key(message_key)
             if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_message_domain_access(message, user_domain):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             data = request.json
@@ -528,12 +598,10 @@ def register_message_routes(api: Api):
         @ns.param('include_entities', 'Include linked entities from knowledge graph', type=bool, default=False)
         @ns.param('for_agent', 'Get per-agent read status', type=str)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, message_key):
             """
-            Get a single message with full thread context.
-
-            Returns the message along with its parent (if reply) and direct replies.
-            When include_entities=true, also returns all entities linked across the thread.
+            Get a single message with full thread context. Must belong to user's domain.
             """
             include_thread = request.args.get('include_thread', 'true').lower() == 'true'
             include_readers = request.args.get('include_readers', 'true').lower() == 'true'
@@ -542,6 +610,11 @@ def register_message_routes(api: Api):
 
             message = Message.get_by_key(message_key)
             if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_message_domain_access(message, user_domain):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             result = message.to_dict(
@@ -589,17 +662,20 @@ def register_message_routes(api: Api):
 
         @ns.doc('delete_message_thread')
         @ns.marshal_with(response_model)
+        @require_auth
         def delete(self, message_key):
             """
-            Delete a message and all its replies (entire thread).
-
-            This recursively deletes all replies to the message, their read
-            tracking records, and the message itself.
+            Delete a message and all its replies. Must belong to user's domain.
             """
             from api.models import db
 
             message = Message.get_by_key(message_key)
             if not message:
+                return {'success': False, 'msg': 'Message not found'}, 404
+
+            # Multi-tenancy: verify domain access
+            user_domain = get_user_domain_key()
+            if not _check_message_domain_access(message, user_domain):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             def collect_thread_keys(msg_key: str, keys: set):

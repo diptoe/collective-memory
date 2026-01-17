@@ -272,6 +272,11 @@ export interface User {
   preferences: Record<string, unknown>;
   entity_key?: string;
   domain_key?: string;  // Domain for multi-tenancy
+  domain?: {  // Domain details (when include_domain=true)
+    domain_key: string;
+    name: string;
+    slug: string;
+  };
   pat?: string;  // Only included when viewing own data
   pat_created_at?: string;
   last_login_at?: string;
@@ -282,12 +287,23 @@ export interface User {
 export interface Session {
   session_key: string;
   user_key: string;
+  agent_key?: string;  // For MCP-initiated sessions
+  device_info?: string;
   user_agent?: string;
   ip_address?: string;
   expires_at: string;
   last_activity_at: string;
   created_at: string;
   is_current?: boolean;  // Set when viewing own sessions
+  // Extended fields for admin view
+  user?: {
+    email: string;
+    name: string;
+  };
+  agent?: {
+    agent_id: string;
+    client: string;
+  };
 }
 
 // Domain types (multi-tenancy)

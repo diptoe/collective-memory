@@ -32,18 +32,20 @@ class ActivityService:
         target_key: Optional[str] = None,
         target_type: Optional[str] = None,
         extra_data: Optional[Dict[str, Any]] = None,
-        context_domain: Optional[str] = None
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """
         Record a new activity.
 
         Args:
             activity_type: Type of activity (from ActivityType enum)
-            actor: Agent key or "system"
+            actor: Agent ID, user_key, or "system"
             target_key: Key of the target object
             target_type: Type of target ('entity', 'message', 'agent')
             extra_data: Additional data
-            context_domain: Domain key for multi-tenancy
+            domain_key: Domain key for multi-tenancy
+            user_key: User who performed the action
 
         Returns:
             The created Activity record
@@ -52,10 +54,11 @@ class ActivityService:
             activity_key=get_key(),
             activity_type=activity_type,
             actor=actor,
+            user_key=user_key,
             target_key=target_key,
             target_type=target_type,
             extra_data=extra_data or {},
-            context_domain=context_domain,
+            domain_key=domain_key,
             created_at=get_now()
         )
 
@@ -365,7 +368,8 @@ class ActivityService:
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
         actor: Optional[str] = None,
-        context_domain: Optional[str] = None
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> List[Activity]:
         """
         Get recent activities with filtering.
@@ -377,7 +381,8 @@ class ActivityService:
             since: Start time (overrides hours)
             until: End time
             actor: Filter by actor
-            context_domain: Filter by domain (for multi-tenancy)
+            domain_key: Filter by domain (for multi-tenancy)
+            user_key: Filter by user
 
         Returns:
             List of Activity objects
@@ -392,7 +397,8 @@ class ActivityService:
             since=since,
             until=until,
             actor=actor,
-            context_domain=context_domain
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def get_summary(
@@ -400,7 +406,7 @@ class ActivityService:
         hours: Optional[int] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
-        context_domain: Optional[str] = None
+        domain_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get activity summary by type.
@@ -409,7 +415,7 @@ class ActivityService:
             hours: Look back this many hours
             since: Start time (overrides hours)
             until: End time
-            context_domain: Filter by domain (for multi-tenancy)
+            domain_key: Filter by domain (for multi-tenancy)
 
         Returns:
             Dict with summary and total
@@ -418,14 +424,14 @@ class ActivityService:
             from datetime import timedelta
             since = get_now() - timedelta(hours=hours)
 
-        return Activity.get_summary(since=since, until=until, context_domain=context_domain)
+        return Activity.get_summary(since=since, until=until, domain_key=domain_key)
 
     def get_timeline(
         self,
         hours: int = 24,
         bucket_minutes: int = 60,
         since: Optional[datetime] = None,
-        context_domain: Optional[str] = None
+        domain_key: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Get time-bucketed activity data.
@@ -434,7 +440,7 @@ class ActivityService:
             hours: Number of hours to look back
             bucket_minutes: Bucket size in minutes
             since: Override start time
-            context_domain: Filter by domain (for multi-tenancy)
+            domain_key: Filter by domain (for multi-tenancy)
 
         Returns:
             List of timeline data points
@@ -443,7 +449,7 @@ class ActivityService:
             hours=hours,
             bucket_minutes=bucket_minutes,
             since=since,
-            context_domain=context_domain
+            domain_key=domain_key
         )
 
     def purge_old(self) -> int:

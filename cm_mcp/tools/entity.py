@@ -39,9 +39,9 @@ async def search_entities(
             params["type"] = entity_type  # API expects "type" not "entity_type"
 
         # Add domain filter for multi-tenancy
-        context_domain = session_state.get("context_domain")
-        if context_domain:
-            params["domain"] = context_domain
+        domain_key = session_state.get("domain_key")
+        if domain_key:
+            params["domain"] = domain_key
 
         result = await _make_request(config, "GET", "/entities", params=params, agent_id=agent_id)
 
@@ -102,9 +102,9 @@ async def get_entity(
             try:
                 msg_params = {"entity_key": entity_key, "limit": 10}
                 # Add domain filter for multi-tenancy
-                context_domain = session_state.get("context_domain")
-                if context_domain:
-                    msg_params["context_domain"] = context_domain
+                domain_key = session_state.get("domain_key")
+                if domain_key:
+                    msg_params["domain_key"] = domain_key
 
                 messages_result = await _make_request(
                     config, "GET", "/messages",
@@ -157,7 +157,7 @@ async def create_entity(
 
     # Track which agent created this entity
     agent_id = session_state.get("agent_id") or "unknown"
-    context_domain = session_state.get("context_domain")
+    domain_key = session_state.get("domain_key")
 
     try:
         payload = {
@@ -168,8 +168,8 @@ async def create_entity(
         }
 
         # Include domain context for multi-tenancy if available
-        if context_domain:
-            payload["context_domain"] = context_domain
+        if domain_key:
+            payload["domain_key"] = domain_key
 
         result = await _make_request(
             config,
@@ -279,9 +279,9 @@ async def search_entities_semantic(
             params["type"] = entity_type
 
         # Add domain filter for multi-tenancy
-        context_domain = session_state.get("context_domain")
-        if context_domain:
-            params["domain"] = context_domain
+        domain_key = session_state.get("domain_key")
+        if domain_key:
+            params["domain"] = domain_key
 
         result = await _make_request(config, "GET", "/search/semantic", params=params, agent_id=agent_id)
 

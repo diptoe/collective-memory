@@ -88,7 +88,7 @@ def register_github_routes(api: Api):
                         entity_type='Repository',
                         name=repo_info.name,
                         properties=properties,
-                        context_domain=f'github.{repo_info.full_name.split("/")[0]}',
+                        domain_key=f'github.{repo_info.full_name.split("/")[0]}',
                         confidence=1.0,
                         source='github-api',
                     )

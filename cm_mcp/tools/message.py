@@ -87,9 +87,9 @@ async def send_message(
             payload["entity_keys"] = entity_keys
 
         # Include domain context for multi-tenancy if available
-        context_domain = session_state.get("context_domain")
-        if context_domain:
-            payload["context_domain"] = context_domain
+        domain_key = session_state.get("domain_key")
+        if domain_key:
+            payload["domain_key"] = domain_key
 
         result = await _make_request(
             config,
@@ -177,9 +177,9 @@ async def get_messages(
             params["since"] = since
 
         # Add domain filter for multi-tenancy
-        context_domain = session_state.get("context_domain")
-        if context_domain:
-            params["context_domain"] = context_domain
+        domain_key = session_state.get("domain_key")
+        if domain_key:
+            params["domain_key"] = domain_key
 
         result = await _make_request(config, "GET", endpoint, params=params)
 

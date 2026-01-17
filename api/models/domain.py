@@ -173,8 +173,8 @@ def ensure_default_domain() -> 'Domain':
 
     This should be called during app initialization to:
     1. Create the default domain if it doesn't exist
-    2. Update all entities with NULL context_domain
-    3. Update all messages with NULL context_domain
+    2. Update all entities with NULL domain_key
+    3. Update all messages with NULL domain_key
     4. Update all users with NULL domain_key
 
     Returns the default domain.
@@ -199,19 +199,19 @@ def ensure_default_domain() -> 'Domain':
         db.session.commit()
         print(f"[Domain] Created default domain: {CM_DEFAULT_DOMAIN} ({domain.domain_key})")
 
-    # Migrate entities with NULL context_domain
-    entity_count = Entity.query.filter(Entity.context_domain.is_(None)).update(
-        {'context_domain': domain.domain_key},
+    # Migrate entities with NULL domain_key
+    entity_count = Entity.query.filter(Entity.domain_key.is_(None)).update(
+        {'domain_key': domain.domain_key},
         synchronize_session=False
     )
     if entity_count > 0:
         db.session.commit()
         print(f"[Domain] Migrated {entity_count} entities to default domain")
 
-    # Migrate messages with NULL context_domain (if column exists)
+    # Migrate messages with NULL domain_key (if column exists)
     try:
-        message_count = Message.query.filter(Message.context_domain.is_(None)).update(
-            {'context_domain': domain.domain_key},
+        message_count = Message.query.filter(Message.domain_key.is_(None)).update(
+            {'domain_key': domain.domain_key},
             synchronize_session=False
         )
         if message_count > 0:

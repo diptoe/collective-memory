@@ -58,9 +58,9 @@ def register_activity_routes(api: Api):
             actor = request.args.get('actor')
 
             # Get user's domain for filtering
-            context_domain = None
+            domain_key = None
             if g.current_user:
-                context_domain = g.current_user.domain_key
+                domain_key = g.current_user.domain_key
 
             # Parse timestamps
             since = None
@@ -85,7 +85,7 @@ def register_activity_routes(api: Api):
                 since=since,
                 until=until,
                 actor=actor,
-                context_domain=context_domain
+                domain_key=domain_key
             )
 
             return {
@@ -112,9 +112,9 @@ def register_activity_routes(api: Api):
             until_str = request.args.get('until')
 
             # Get user's domain for filtering
-            context_domain = None
+            domain_key = None
             if g.current_user:
-                context_domain = g.current_user.domain_key
+                domain_key = g.current_user.domain_key
 
             since = None
             until = None
@@ -135,7 +135,7 @@ def register_activity_routes(api: Api):
                 hours=hours if not since else None,
                 since=since,
                 until=until,
-                context_domain=context_domain
+                domain_key=domain_key
             )
 
             return {
@@ -159,9 +159,9 @@ def register_activity_routes(api: Api):
             since_str = request.args.get('since')
 
             # Get user's domain for filtering
-            context_domain = None
+            domain_key = None
             if g.current_user:
-                context_domain = g.current_user.domain_key
+                domain_key = g.current_user.domain_key
 
             since = None
             if since_str:
@@ -174,7 +174,7 @@ def register_activity_routes(api: Api):
                 hours=hours,
                 bucket_minutes=bucket_minutes,
                 since=since,
-                context_domain=context_domain
+                domain_key=domain_key
             )
 
             return {

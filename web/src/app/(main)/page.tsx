@@ -175,7 +175,10 @@ export default function ActivityPage() {
       } else if (timeRange === '24h') {
         label = date.toLocaleTimeString([], { hour: '2-digit' });
       } else {
-        label = date.toLocaleDateString([], { weekday: 'short' });
+        // Include day number to distinguish between same weekdays (e.g., "Fri 10" vs "Fri 17")
+        const weekday = date.toLocaleDateString([], { weekday: 'short' });
+        const day = date.getDate();
+        label = `${weekday} ${day}`;
       }
 
       const angle = i * angleStep - Math.PI / 2;

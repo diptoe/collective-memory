@@ -395,6 +395,16 @@ export const api = {
       apiClient.put<UserResponse>(`/users/${userKey}/domain`, { domain_key: domainKey }),
   },
 
+  // Admin Sessions
+  adminSessions: {
+    list: (params?: { include_expired?: boolean; limit?: number }) =>
+      apiClient.get<SessionsResponse>('/auth/admin/sessions', { params }),
+    revoke: (sessionKey: string) =>
+      apiClient.delete<{ user_key: string }>(`/auth/admin/sessions/${sessionKey}`),
+    cleanup: () =>
+      apiClient.post<{ deleted_count: number }>('/auth/admin/sessions/cleanup'),
+  },
+
   // Domains (admin only)
   domains: {
     list: (params?: { status?: string }) =>
