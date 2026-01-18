@@ -124,16 +124,10 @@ class Message(BaseModel):
         if user:
             return user.display_name
 
-        # Try Agent table
+        # Try Agent table - use agent_id as the display name
         from api.models.agent import Agent
         agent = Agent.query.filter_by(agent_key=key).first()
         if agent:
-            # Prefer persona name, then agent_id
-            if agent.persona_key:
-                from api.models.persona import Persona
-                persona = Persona.query.filter_by(persona_key=agent.persona_key).first()
-                if persona:
-                    return persona.name
             return agent.agent_id
 
         # Return key as fallback

@@ -24,8 +24,8 @@ async def send_message(
     Args:
         channel: Channel name (e.g., 'general', 'backend', 'frontend', 'urgent')
         content: Message content (text or structured data)
-        message_type: Type of message: 'status', 'announcement', 'request', 'task', 'message'
-        to_agent: Optional specific agent ID to send to (null for broadcast to channel)
+        message_type: Type of message: 'status', 'announcement', 'request', 'task', 'message', 'acknowledged', 'waiting', 'resumed'
+        to_agent: Optional specific agent ID or user_key to send to (null for broadcast to channel)
         reply_to: Optional message_key to reply to (creates a threaded conversation)
         priority: Priority level: 'normal', 'high', 'urgent' (default: 'normal')
         autonomous: Mark as autonomous task - receiver should work on it independently and reply when complete
@@ -35,7 +35,7 @@ async def send_message(
     channel = arguments.get("channel", "general")
     content = arguments.get("content")
     message_type = arguments.get("message_type", "message")
-    to_agent = arguments.get("to_agent")
+    to_agent = arguments.get("to_agent")  # Can be agent_key or user_key
     reply_to = arguments.get("reply_to")
     priority = arguments.get("priority", "normal")
     autonomous = arguments.get("autonomous", False)
@@ -45,28 +45,29 @@ async def send_message(
     if not content:
         return [types.TextContent(type="text", text="Error: content is required")]
 
-    # Get sender agent ID from session
-    from_agent = session_state.get("agent_id")
-    if not from_agent:
+    # Get sender agent_key from session (new schema uses keys, not IDs)
+    from_key = session_state.get("agent_key")
+    if not from_key:
         return [types.TextContent(
             type="text",
             text="Error: Not registered as an agent. Cannot send messages.\n\n"
-                 "Set CM_AGENT_ID environment variable to establish identity."
+                 "Use the identify tool to establish identity first."
         )]
 
     # Smart reply: if replying to a message sent directly to us, reply directly to sender
     auto_reply_to = None
-    if reply_to and not to_agent:
+    to_key = to_agent  # Will be set to specific recipient if provided
+    if reply_to and not to_key:
         try:
             # Fetch the original message to check if it was a direct message to us
             orig_result = await _make_request(config, "GET", f"/messages/detail/{reply_to}")
             if orig_result.get("success"):
-                orig_msg = orig_result.get("data", {}).get("message", {})
-                orig_to = orig_msg.get("to_agent")
-                orig_from = orig_msg.get("from_agent")
+                orig_msg = orig_result.get("data", {})
+                orig_to = orig_msg.get("to_key")
+                orig_from = orig_msg.get("from_key")
                 # If original was sent directly to me, reply directly to sender
-                if orig_to == from_agent and orig_from:
-                    to_agent = orig_from
+                if orig_to == from_key and orig_from:
+                    to_key = orig_from
                     auto_reply_to = orig_from
         except Exception:
             pass  # Fall back to broadcast if we can't fetch original
@@ -74,8 +75,8 @@ async def send_message(
     try:
         payload = {
             "channel": channel,
-            "from_agent": from_agent,
-            "to_agent": to_agent,
+            "from_key": from_key,
+            "to_key": to_key,
             "message_type": message_type,
             "content": {"text": content} if isinstance(content, str) else content,
             "priority": priority,
@@ -106,7 +107,7 @@ async def send_message(
             "POST",
             "/messages",
             json=payload,
-            agent_id=from_agent,
+            agent_id=session_state.get("agent_id"),  # For request tracking
         )
 
         if result.get("success"):
@@ -117,10 +118,11 @@ async def send_message(
             output += "\n\n"
             output += f"**Channel:** {channel}\n"
             output += f"**Type:** {message_type}\n"
+            output += f"**Scope:** {msg_data.get('scope', 'broadcast-domain')}\n"
             if reply_to:
                 output += f"**Reply to:** {reply_to}\n"
-            if to_agent:
-                output += f"**To:** {to_agent}"
+            if to_key:
+                output += f"**To:** {to_key}"
                 if auto_reply_to:
                     output += " (auto-routed reply to sender)"
                 output += "\n"
@@ -156,7 +158,7 @@ async def get_messages(
     Get messages from the message queue.
 
     Use this to check for messages from other agents or human coordinators.
-    Messages are filtered to show those directed to you + all broadcasts.
+    Messages are filtered by scope to show those directed to you + all broadcasts.
     Retrieved messages are automatically marked as read.
 
     Args:
@@ -172,8 +174,9 @@ async def get_messages(
     since = arguments.get("since")
     team_key = arguments.get("team_key")
 
-    # Get agent ID for per-agent read tracking
-    my_agent_id = session_state.get("agent_id")
+    # Get agent_key for per-agent read tracking (new schema uses keys)
+    my_agent_key = session_state.get("agent_key")
+    my_agent_id = session_state.get("agent_id")  # For display purposes
 
     try:
         if channel:
@@ -186,9 +189,9 @@ async def get_messages(
             "limit": str(limit),
         }
 
-        # Use per-agent tracking if we have an agent ID
-        if my_agent_id:
-            params["for_agent"] = my_agent_id
+        # Use per-agent tracking if we have an agent_key
+        if my_agent_key:
+            params["for_agent"] = my_agent_key
 
         # Add time filter if specified
         if since:
@@ -214,9 +217,9 @@ async def get_messages(
             if not messages:
                 return [types.TextContent(type="text", text="No messages found.")]
 
-            # Auto-mark retrieved messages as read (if we have an agent ID)
+            # Auto-mark retrieved messages as read (if we have an agent_key)
             marked_count = 0
-            if my_agent_id:
+            if my_agent_key:
                 for msg in messages:
                     if not msg.get("is_read", False):
                         try:
@@ -224,7 +227,7 @@ async def get_messages(
                                 config,
                                 "POST",
                                 f"/messages/mark-read/{msg.get('message_key')}",
-                                params={"agent_id": my_agent_id}
+                                params={"reader_key": my_agent_key}
                             )
                             marked_count += 1
                         except Exception:
@@ -239,9 +242,12 @@ async def get_messages(
             output += ")\n\n"
 
             for msg in messages:
-                is_mine = msg.get("from_agent") == my_agent_id
-                is_to_me = msg.get("to_agent") == my_agent_id
+                from_key = msg.get("from_key")
+                to_key = msg.get("to_key")
+                is_mine = from_key == my_agent_key
+                is_to_me = to_key == my_agent_key
                 is_autonomous = msg.get("autonomous", False)
+                scope = msg.get("scope", "broadcast-domain")
 
                 # Status indicators
                 if is_autonomous:
@@ -253,11 +259,11 @@ async def get_messages(
                 else:
                     status = "📭"
 
-                output += f"{status} **{msg.get('from_agent')}**"
+                output += f"{status} **{from_key}**"
                 if is_mine:
                     output += " (you)"
-                if msg.get("to_agent"):
-                    output += f" → {msg.get('to_agent')}"
+                if to_key:
+                    output += f" → {to_key}"
                     if is_to_me:
                         output += " (you)"
                 output += f"\n"
@@ -266,10 +272,10 @@ async def get_messages(
                 if is_autonomous and not is_mine:
                     output += f"   🤖 **AUTONOMOUS TASK** - Work on this and reply when complete\n"
 
-                output += f"   *{msg.get('message_type')}* in #{msg.get('channel')}"
+                output += f"   *{msg.get('message_type')}* in #{msg.get('channel')} [{scope}]"
                 # Show team scope if set
                 if msg.get('team_key'):
-                    output += f" 👥 (team)"
+                    output += f" 👥"
                 output += "\n"
 
                 # Content
@@ -309,9 +315,9 @@ async def mark_message_read(
     if not message_key:
         return [types.TextContent(type="text", text="Error: message_key is required")]
 
-    # Get agent ID for per-agent read tracking
-    agent_id = session_state.get("agent_id")
-    if not agent_id:
+    # Get agent_key for per-agent read tracking (new schema uses reader_key)
+    agent_key = session_state.get("agent_key")
+    if not agent_key:
         return [types.TextContent(
             type="text",
             text="Error: Not registered as an agent. Cannot mark messages read.\n\n"
@@ -323,7 +329,7 @@ async def mark_message_read(
             config,
             "POST",
             f"/messages/mark-read/{message_key}",
-            params={"agent_id": agent_id}
+            params={"reader_key": agent_key}
         )
 
         if result.get("success"):
@@ -407,9 +413,9 @@ async def mark_all_messages_read(
     channel = arguments.get("channel")
     team_key = arguments.get("team_key")
 
-    # Get agent ID for per-agent read tracking (required)
-    agent_id = session_state.get("agent_id")
-    if not agent_id:
+    # Get agent_key for per-agent read tracking (new schema uses reader_key)
+    agent_key = session_state.get("agent_key")
+    if not agent_key:
         return [types.TextContent(
             type="text",
             text="Error: Not registered as an agent. Cannot mark messages read.\n\n"
@@ -417,7 +423,7 @@ async def mark_all_messages_read(
         )]
 
     try:
-        params = {"agent_id": agent_id}
+        params = {"reader_key": agent_key}
         if channel:
             params["channel"] = channel
         # Team scope filtering - use explicit team_key or active team from session

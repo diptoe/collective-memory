@@ -458,8 +458,8 @@ def register_agent_routes(api: Api):
                 agent.update_heartbeat()
 
                 # Get unread message counts for this agent
-                unread_count = Message.get_unread_count(agent_id=agent_id)
-                autonomous_count = Message.get_unread_autonomous_count(agent_id=agent_id)
+                unread_count = Message.get_unread_count(agent_key=agent.agent_key)
+                autonomous_count = Message.get_unread_autonomous_count(agent_key=agent.agent_key)
 
                 # Record activity with message counts
                 activity_service.record_agent_heartbeat(
