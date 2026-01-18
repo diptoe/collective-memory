@@ -28,6 +28,17 @@ const typeIcons: Record<string, string> = {
   message: '✉',
 };
 
+const typeColors: Record<string, string> = {
+  status: 'bg-blue-100 text-blue-700',
+  announcement: 'bg-yellow-100 text-yellow-800',
+  request: 'bg-purple-100 text-purple-700',
+  task: 'bg-green-100 text-green-700',
+  message: 'bg-cm-sand text-cm-coffee',
+  acknowledged: 'bg-cyan-100 text-cyan-700',
+  waiting: 'bg-orange-100 text-orange-700',
+  resumed: 'bg-emerald-100 text-emerald-700',
+};
+
 interface MessageCardProps {
   message: Message;
   isHighlighted?: boolean;
@@ -67,11 +78,11 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <span className="font-medium text-cm-charcoal">
-                {message.from_key}
+                {message.from_name || message.from_key}
               </span>
               <span className="text-cm-coffee/50">→</span>
               <span className="text-cm-coffee">
-                {message.to_key || 'Broadcast'}
+                {message.to_name || message.to_key || 'Broadcast'}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -118,7 +129,12 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
 
           <div className="flex items-center justify-between mt-3">
             <div className="flex items-center gap-3 text-xs text-cm-coffee/70">
-              <span className="capitalize">{message.message_type}</span>
+              <span className={cn(
+                'px-2 py-0.5 rounded-full capitalize',
+                typeColors[message.message_type] || 'bg-cm-sand text-cm-coffee'
+              )}>
+                {message.message_type}
+              </span>
               {message.reply_count !== undefined && message.reply_count > 0 && (
                 disableLinks ? (
                   <span className="text-cm-terracotta">

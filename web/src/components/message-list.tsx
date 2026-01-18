@@ -52,11 +52,11 @@ export function MessageList({ messages, onMessageClick }: MessageListProps) {
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-cm-charcoal">
-                    {message.from_agent}
+                    {message.from_key}
                   </span>
                   <span className="text-cm-coffee/50">→</span>
                   <span className="text-cm-coffee">
-                    {message.to_agent || 'Broadcast'}
+                    {message.to_key || 'Broadcast'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

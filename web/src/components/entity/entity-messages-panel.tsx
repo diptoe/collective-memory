@@ -82,13 +82,13 @@ export function EntityMessagesPanel({ entity }: EntityMessagesPanelProps) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className="font-medium text-cm-charcoal text-sm">
-                  {message.from_agent}
+                  {message.from_key}
                 </span>
-                {message.to_agent && (
+                {message.to_key && (
                   <>
                     <span className="text-cm-coffee/50">\u2192</span>
                     <span className="text-cm-coffee text-sm">
-                      {message.to_agent}
+                      {message.to_key}
                     </span>
                   </>
                 )}
