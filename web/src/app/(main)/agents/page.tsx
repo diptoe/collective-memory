@@ -6,6 +6,7 @@ import { Agent, ClientType } from '@/types';
 import { AgentStatus } from '@/components/agent-status';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
+import { useAuthStore } from '@/lib/stores/auth-store';
 
 const CLIENT_LABELS: Record<ClientType, string> = {
   'claude-code': 'Claude Code',
@@ -23,13 +24,19 @@ const CLIENT_COLORS: Record<ClientType, string> = {
   'cursor': 'bg-cyan-100 text-cyan-800',
 };
 
+type ScopeFilter = 'my-agents' | 'all-domain' | string; // string for team_key
+
 export default function AgentsPage() {
+  const { user: currentUser } = useAuthStore();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterClient, setFilterClient] = useState<string>('all');
-  const [filterTeam, setFilterTeam] = useState<string>('all');
+  const [filterScope, setFilterScope] = useState<ScopeFilter>('my-agents');
   const [showInactive, setShowInactive] = useState(true);
   const [deleting, setDeleting] = useState(false);
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'domain_admin';
+  const userTeams = currentUser?.teams || [];
 
   const loadAgents = async () => {
     try {
@@ -69,16 +76,22 @@ export default function AgentsPage() {
     }
   };
 
-  // Get unique clients and teams from agents for filter buttons
+  // Get unique clients from agents for filter buttons
   const availableClients = [...new Set(agents.map(a => a.client).filter(Boolean))] as ClientType[];
-  const availableTeams = [...new Set(agents.map(a => a.team_name).filter(Boolean))] as string[];
 
-  // Filter agents by team
-  const filteredAgents = filterTeam === 'all'
-    ? agents
-    : filterTeam === 'domain'
-      ? agents.filter(a => !a.team_name)
-      : agents.filter(a => a.team_name === filterTeam);
+  // Filter agents by scope
+  const filteredAgents = (() => {
+    if (filterScope === 'my-agents') {
+      // Show only agents belonging to the current user
+      return agents.filter(a => a.user_key === currentUser?.user_key);
+    } else if (filterScope === 'all-domain') {
+      // Show all agents in the domain (admin only)
+      return agents;
+    } else {
+      // Filter by specific team_key
+      return agents.filter(a => a.team_key === filterScope);
+    }
+  })();
 
   const activeAgents = filteredAgents.filter((a) => a.is_active);
   const inactiveAgents = filteredAgents.filter((a) => !a.is_active);
@@ -145,48 +158,23 @@ export default function AgentsPage() {
           ))}
         </div>
 
-        {/* Team filter */}
-        {availableTeams.length > 0 && (
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-cm-coffee/70 mr-1">Scope:</span>
-            <button
-              onClick={() => setFilterTeam('all')}
-              className={cn(
-                'px-3 py-1.5 text-sm rounded-lg transition-colors',
-                filterTeam === 'all'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-              )}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setFilterTeam('domain')}
-              className={cn(
-                'px-3 py-1.5 text-sm rounded-lg transition-colors',
-                filterTeam === 'domain'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-              )}
-            >
-              Domain
-            </button>
-            {availableTeams.map((team) => (
-              <button
-                key={team}
-                onClick={() => setFilterTeam(team)}
-                className={cn(
-                  'px-3 py-1.5 text-sm rounded-lg transition-colors',
-                  filterTeam === team
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                )}
-              >
-                {team}
-              </button>
+        {/* Scope filter dropdown */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-cm-coffee">Scope:</label>
+          <select
+            value={filterScope}
+            onChange={(e) => setFilterScope(e.target.value as ScopeFilter)}
+            className="px-3 py-1.5 text-sm border border-cm-sand rounded-lg bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+          >
+            <option value="my-agents">My Agents</option>
+            {userTeams.map((team) => (
+              <option key={team.team_key} value={team.team_key}>
+                {team.name}
+              </option>
             ))}
-          </div>
-        )}
+            {isAdmin && <option value="all-domain">All Domain Agents</option>}
+          </select>
+        </div>
 
         <label className="flex items-center gap-2 text-sm text-cm-coffee">
           <input

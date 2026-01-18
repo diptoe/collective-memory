@@ -27,7 +27,9 @@ export default function MainLayout({
       try {
         const response = await api.auth.me();
         if (response.success && response.data?.user) {
-          setUser(response.data.user, response.data.session);
+          // Include teams in user object for scope filtering
+          const userData = { ...response.data.user, teams: response.data.teams };
+          setUser(userData, response.data.session);
         } else {
           // No valid session
           setUser(null);

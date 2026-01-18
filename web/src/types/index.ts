@@ -289,6 +289,15 @@ export interface ActivityTimelinePoint {
 export type UserRole = 'admin' | 'domain_admin' | 'user';
 export type UserStatus = 'active' | 'suspended' | 'pending';
 
+export interface UserTeam {
+  team_key: string;
+  name: string;
+  slug: string;
+  description?: string;
+  role: TeamMemberRole;
+  membership_slug?: string;
+}
+
 export interface User {
   user_key: string;
   email: string;
@@ -306,6 +315,7 @@ export interface User {
     name: string;
     slug: string;
   };
+  teams?: UserTeam[];  // User's team memberships (from auth/me)
   pat?: string;  // Only included when viewing own data
   pat_created_at?: string;
   last_login_at?: string;
