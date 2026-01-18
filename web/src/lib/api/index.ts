@@ -382,12 +382,14 @@ export const api = {
       apiClient.delete<{ revoked_count: number }>('/auth/sessions/all'),
   },
 
-  // Users (admin only)
+  // Users (admin or domain_admin)
   users: {
     list: (params?: { role?: string; status?: string; limit?: number; offset?: number }) =>
       apiClient.get<UsersResponse>('/users', { params }),
     get: (userKey: string) =>
       apiClient.get<UserResponse>(`/users/${userKey}`),
+    create: (data: { email: string; password: string; first_name: string; last_name: string; role?: string; domain_key?: string }) =>
+      apiClient.post<UserResponse>('/users', data),
     update: (userKey: string, data: { first_name?: string; last_name?: string; status?: string }) =>
       apiClient.put<UserResponse>(`/users/${userKey}`, data),
     delete: (userKey: string) =>

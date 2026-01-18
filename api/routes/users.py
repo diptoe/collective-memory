@@ -7,7 +7,7 @@ from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import User, Session, Domain
-from api.services.auth import require_admin, hash_password
+from api.services.auth import require_admin, require_domain_admin, hash_password
 from api.services.activity import activity_service
 
 
@@ -54,6 +54,15 @@ def register_user_routes(api: Api):
         'status': fields.String(description='User status: active, suspended'),
     })
 
+    user_create_model = ns.model('UserCreate', {
+        'email': fields.String(required=True, description='User email'),
+        'password': fields.String(required=True, description='User password'),
+        'first_name': fields.String(required=True, description='First name'),
+        'last_name': fields.String(required=True, description='Last name'),
+        'role': fields.String(description='User role: admin, domain_admin, user (default: user)'),
+        'domain_key': fields.String(description='Domain to assign user to'),
+    })
+
     role_change_model = ns.model('RoleChange', {
         'role': fields.String(required=True, description='New role: admin, user'),
     })
@@ -98,12 +107,114 @@ def register_user_routes(api: Api):
                 'success': True,
                 'msg': f'Found {len(users)} users',
                 'data': {
-                    'users': [u.to_dict() for u in users],
+                    'users': [u.to_dict(include_domain=True) for u in users],
                     'total': total,
                     'limit': limit,
                     'offset': offset,
                 }
             }
+
+        @ns.doc('create_user')
+        @ns.expect(user_create_model)
+        @require_domain_admin
+        @ns.marshal_with(response_model)
+        def post(self):
+            """
+            Create a new user (admin or domain_admin).
+
+            - System admins can create users in any domain with any role
+            - Domain admins can only create users in their own domain with role 'user' or 'domain_admin'
+            """
+            current_user = g.current_user
+            data = request.json or {}
+
+            # Validate required fields
+            required = ['email', 'password', 'first_name', 'last_name']
+            for field in required:
+                if not data.get(field):
+                    return {'success': False, 'msg': f'{field} is required'}, 400
+
+            email = data['email'].strip().lower()
+            password = data['password']
+            first_name = data['first_name'].strip()
+            last_name = data['last_name'].strip()
+            role = data.get('role', 'user')
+            domain_key = data.get('domain_key')
+
+            # Validate email format
+            if '@' not in email or '.' not in email:
+                return {'success': False, 'msg': 'Invalid email format'}, 400
+
+            # Password validation
+            if len(password) < 8:
+                return {'success': False, 'msg': 'Password must be at least 8 characters'}, 400
+
+            # Validate role
+            valid_roles = ['admin', 'domain_admin', 'user']
+            if role not in valid_roles:
+                return {'success': False, 'msg': f'Invalid role. Must be one of: {", ".join(valid_roles)}'}, 400
+
+            # Check if email already exists
+            if User.get_by_email(email):
+                return {'success': False, 'msg': 'A user with this email already exists'}, 400
+
+            # Domain admin restrictions
+            if current_user.role == 'domain_admin':
+                # Domain admins can only create users in their own domain
+                if domain_key and domain_key != current_user.domain_key:
+                    return {'success': False, 'msg': 'Domain admins can only create users in their own domain'}, 403
+
+                # Force domain_key to current user's domain
+                domain_key = current_user.domain_key
+
+                # Domain admins cannot create system admins
+                if role == 'admin':
+                    return {'success': False, 'msg': 'Domain admins cannot create system admin users'}, 403
+
+            # All users must be linked to a domain
+            if not domain_key:
+                return {'success': False, 'msg': 'Domain is required for all users'}, 400
+
+            # Validate domain
+            if domain_key:
+                domain = Domain.get_by_key(domain_key)
+                if not domain:
+                    return {'success': False, 'msg': 'Domain not found'}, 404
+                if domain.status != 'active':
+                    return {'success': False, 'msg': 'Cannot assign user to suspended domain'}, 400
+
+            try:
+                # Create user
+                user = User(
+                    email=email,
+                    password_hash=hash_password(password),
+                    first_name=first_name,
+                    last_name=last_name,
+                    role=role,
+                    domain_key=domain_key,
+                    status='active'
+                )
+                user.save()
+
+                # Record activity
+                activity_service.record_create(
+                    actor=current_user.user_key,
+                    entity_type='User',
+                    entity_key=user.user_key,
+                    entity_name=user.display_name,
+                    changes={'email': email, 'role': role, 'domain_key': domain_key},
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'User created successfully',
+                    'data': {'user': user.to_dict()}
+                }, 201
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
 
     @ns.route('/<string:user_key>')
     @ns.param('user_key', 'User identifier')
