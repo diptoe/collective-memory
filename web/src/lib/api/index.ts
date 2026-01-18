@@ -49,6 +49,7 @@ interface DomainStatsResponse { total: number; active: number; suspended: number
 interface TeamsResponse { teams: Team[]; total: number }
 interface TeamResponse { team: Team }
 interface TeamMembersResponse { team: Team; members: TeamMembership[] }
+interface TeamMemberResponse { membership: TeamMembership }
 interface TeamStatsResponse { total: number; active: number; archived: number }
 
 /**
@@ -443,10 +444,10 @@ export const api = {
       apiClient.delete(`/teams/${teamKey}`),
     members: (teamKey: string) =>
       apiClient.get<TeamMembersResponse>(`/teams/${teamKey}/members`),
-    addMember: (teamKey: string, data: { user_key: string; role?: TeamMemberRole }) =>
-      apiClient.post<TeamMembersResponse>(`/teams/${teamKey}/members`, data),
-    updateMember: (teamKey: string, userKey: string, data: { role: TeamMemberRole }) =>
-      apiClient.put<TeamMembersResponse>(`/teams/${teamKey}/members/${userKey}`, data),
+    addMember: (teamKey: string, data: { user_key: string; role?: TeamMemberRole; slug?: string }) =>
+      apiClient.post<TeamMemberResponse>(`/teams/${teamKey}/members`, data),
+    updateMember: (teamKey: string, userKey: string, data: { role?: TeamMemberRole; slug?: string }) =>
+      apiClient.put<TeamMemberResponse>(`/teams/${teamKey}/members/${userKey}`, data),
     removeMember: (teamKey: string, userKey: string) =>
       apiClient.delete(`/teams/${teamKey}/members/${userKey}`),
     stats: () =>

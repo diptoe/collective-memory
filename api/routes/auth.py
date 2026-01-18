@@ -295,6 +295,7 @@ def register_auth_routes(api: Api):
                     'slug': team.slug,
                     'description': team.description,
                     'role': team_membership.role if team_membership else 'member',
+                    'membership_slug': team_membership.slug if team_membership else None,
                 })
 
             # Get available scopes and default scope

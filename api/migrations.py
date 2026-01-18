@@ -41,6 +41,38 @@ def _run_custom_migrations():
                 db.session.rollback()
                 logger.warning(f"Migration warning (may already be done): {e}")
 
+    # Migration: Backfill team_memberships.slug with user initials
+    if 'team_memberships' in inspector.get_table_names():
+        columns = [c['name'] for c in inspector.get_columns('team_memberships')]
+        if 'slug' in columns:
+            # Check if any memberships have null slug that should be backfilled
+            try:
+                result = db.session.execute(text(
+                    '''
+                    SELECT COUNT(*) FROM team_memberships tm
+                    JOIN users u ON tm.user_key = u.user_key
+                    WHERE tm.slug IS NULL AND u.initials IS NOT NULL
+                    '''
+                ))
+                null_count = result.scalar()
+                if null_count and null_count > 0:
+                    logger.info(f"Backfilling {null_count} team_memberships.slug with user initials")
+                    db.session.execute(text(
+                        '''
+                        UPDATE team_memberships tm
+                        SET slug = LOWER(u.initials)
+                        FROM users u
+                        WHERE tm.user_key = u.user_key
+                        AND tm.slug IS NULL
+                        AND u.initials IS NOT NULL
+                        '''
+                    ))
+                    db.session.commit()
+                    logger.info("Migration complete: team_memberships.slug backfilled")
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(f"Migration warning (slug backfill): {e}")
+
 
 def run_migrations(allow_column_removal: bool = False):
     """

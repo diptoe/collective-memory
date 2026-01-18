@@ -407,8 +407,9 @@ async def identify(
             registration_data["project_name"] = detected_project_name
 
         # Fetch user info BEFORE registration to get team_key
-        # We need this for: user initials, team resolution, and domain context
+        # We need this for: user initials, membership slug, team resolution, and domain context
         user_initials = None
+        membership_slug = None
         resolved_team_key = None
         resolved_team_name = None
         user_data = {}
@@ -433,11 +434,13 @@ async def identify(
                         if team:
                             resolved_team_key = explicit_team_key
                             resolved_team_name = team.get('name')
+                            membership_slug = team.get('membership_slug')
                     elif explicit_team_slug:
                         team = next((t for t in teams if t.get('slug') == explicit_team_slug), None)
                         if team:
                             resolved_team_key = team.get('team_key')
                             resolved_team_name = team.get('name')
+                            membership_slug = team.get('membership_slug')
                     elif teams and agent_id:
                         # Auto-detect from agent_id pattern matching team slugs or names
                         agent_id_lower = agent_id.lower().replace('-', ' ').replace('_', ' ')
@@ -447,25 +450,30 @@ async def identify(
                             if team_slug and team_slug in agent_id_lower:
                                 resolved_team_key = t.get('team_key')
                                 resolved_team_name = t.get('name')
+                                membership_slug = t.get('membership_slug')
                                 break
                             elif team_name and team_name in agent_id_lower:
                                 resolved_team_key = t.get('team_key')
                                 resolved_team_name = t.get('name')
+                                membership_slug = t.get('membership_slug')
                                 break
             except Exception:
                 pass  # Continue without user info
 
-        # Auto-suffix agent_id with user initials (if not already present)
-        if user_initials and agent_id:
-            if not agent_id.endswith(f'-{user_initials}'):
-                # Check if agent_id already has a 2-char alphabetic suffix
+        # Use membership_slug if available (team-specific), otherwise fall back to user_initials
+        suffix = membership_slug or user_initials
+
+        # Auto-suffix agent_id with suffix (if not already present)
+        if suffix and agent_id:
+            if not agent_id.endswith(f'-{suffix}'):
+                # Check if agent_id already has a short alphanumeric suffix that we should replace
                 parts = agent_id.rsplit('-', 1)
-                if len(parts) == 2 and len(parts[1]) == 2 and parts[1].isalpha():
-                    # Replace existing 2-char suffix with user initials
-                    agent_id = f"{parts[0]}-{user_initials}"
+                if len(parts) == 2 and len(parts[1]) <= 10 and parts[1].replace('-', '').isalnum():
+                    # Replace existing suffix with user's suffix
+                    agent_id = f"{parts[0]}-{suffix}"
                 else:
-                    # Append user initials
-                    agent_id = f"{agent_id}-{user_initials}"
+                    # Append suffix
+                    agent_id = f"{agent_id}-{suffix}"
 
         # Add team_key to registration if resolved
         if resolved_team_key:
@@ -554,6 +562,7 @@ async def identify(
             if resolved_team_key:
                 session_state["active_team_key"] = resolved_team_key
                 session_state["active_team_name"] = resolved_team_name
+                session_state["membership_slug"] = membership_slug
                 # Determine detection method for display
                 if explicit_team_key:
                     session_state["active_team_method"] = "explicit_team_key"

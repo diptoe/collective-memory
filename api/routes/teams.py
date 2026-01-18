@@ -86,10 +86,12 @@ def register_team_routes(api: Api):
     add_member_model = ns.model('AddMemberRequest', {
         'user_key': fields.String(required=True, description='User key to add'),
         'role': fields.String(description='Role: owner, admin, member, viewer (default: member)'),
+        'slug': fields.String(description='Custom identifier (2-10 chars, alphanumeric). Defaults to user initials.'),
     })
 
     update_member_model = ns.model('UpdateMemberRequest', {
-        'role': fields.String(required=True, description='Role: owner, admin, member, viewer'),
+        'role': fields.String(description='Role: owner, admin, member, viewer'),
+        'slug': fields.String(description='Custom identifier (2-10 chars, alphanumeric with hyphens)'),
     })
 
     response_model = ns.model('Response', {
@@ -394,8 +396,18 @@ def register_team_routes(api: Api):
             if role not in ('owner', 'admin', 'member', 'viewer'):
                 return {'success': False, 'msg': 'Invalid role'}, 400
 
+            # Validate slug if provided
+            slug = data.get('slug')
+            if slug:
+                import re
+                slug = slug.strip().lower()
+                if len(slug) < 2 or len(slug) > 10:
+                    return {'success': False, 'msg': 'Slug must be 2-10 characters'}, 400
+                if not re.match(r'^[a-z0-9-]+$', slug):
+                    return {'success': False, 'msg': 'Slug must be alphanumeric with hyphens only'}, 400
+
             try:
-                membership = team.add_member(new_member.user_key, role)
+                membership = team.add_member(new_member.user_key, role, slug=slug)
 
                 # Record activity
                 activity_service.record_create(
@@ -444,17 +456,37 @@ def register_team_routes(api: Api):
 
             data = request.json or {}
 
-            if not data.get('role'):
-                return {'success': False, 'msg': 'role is required'}, 400
+            if not data.get('role') and 'slug' not in data:
+                return {'success': False, 'msg': 'role or slug is required'}, 400
 
-            new_role = data['role']
-            if new_role not in ('owner', 'admin', 'member', 'viewer'):
-                return {'success': False, 'msg': 'Invalid role'}, 400
-
+            changes = {}
             old_role = membership.role
+            old_slug = membership.slug
 
             try:
-                membership.set_role(new_role)
+                import re
+
+                # Handle role update
+                if data.get('role'):
+                    new_role = data['role']
+                    if new_role not in ('owner', 'admin', 'member', 'viewer'):
+                        return {'success': False, 'msg': 'Invalid role'}, 400
+                    membership.role = new_role
+                    changes['role'] = {'old': old_role, 'new': new_role}
+
+                # Handle slug update
+                if 'slug' in data:
+                    slug = data['slug']
+                    if slug:
+                        slug = slug.strip().lower()
+                        if len(slug) < 2 or len(slug) > 10:
+                            return {'success': False, 'msg': 'Slug must be 2-10 characters'}, 400
+                        if not re.match(r'^[a-z0-9-]+$', slug):
+                            return {'success': False, 'msg': 'Slug must be alphanumeric with hyphens only'}, 400
+                    membership.slug = slug if slug else None
+                    changes['slug'] = {'old': old_slug, 'new': membership.slug}
+
+                membership.save()
 
                 # Record activity
                 activity_service.record_update(
@@ -462,14 +494,14 @@ def register_team_routes(api: Api):
                     entity_type='TeamMembership',
                     entity_key=membership.membership_key,
                     entity_name=f'{membership.user.display_name} -> {team.name}',
-                    changes={'role': {'old': old_role, 'new': new_role}},
+                    changes=changes,
                     domain_key=team.domain_key,
                     user_key=user.user_key
                 )
 
                 return {
                     'success': True,
-                    'msg': 'Member role updated',
+                    'msg': 'Member updated',
                     'data': {
                         'membership': membership.to_dict(include_user=True)
                     }

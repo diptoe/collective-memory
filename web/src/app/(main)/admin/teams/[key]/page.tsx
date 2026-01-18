@@ -130,14 +130,44 @@ export default function TeamDetailPage() {
 
     try {
       const response = await api.teams.updateMember(teamKey, userKey, { role: newRole });
-      if (response.success && response.data) {
-        setMembers(response.data.members);
+      if (response.success && response.data?.membership) {
+        // Update the specific member in the array
+        setMembers(prev => prev.map(m =>
+          m.user_key === userKey ? { ...m, ...response.data!.membership } : m
+        ));
       } else {
         setError(response.msg || 'Failed to update member role');
       }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { msg?: string } } };
       setError(error.response?.data?.msg || 'Failed to update member role');
+    } finally {
+      setActionInProgress('');
+    }
+  };
+
+  const updateMemberSlug = async (userKey: string, newSlug: string) => {
+    const trimmedSlug = newSlug.trim().toLowerCase();
+    // Find current member to check if unchanged
+    const member = members.find(m => m.user_key === userKey);
+    if (member?.slug === trimmedSlug || (!member?.slug && !trimmedSlug)) return;
+
+    setActionInProgress(`slug-${userKey}`);
+    setError('');
+
+    try {
+      const response = await api.teams.updateMember(teamKey, userKey, { slug: trimmedSlug });
+      if (response.success && response.data?.membership) {
+        // Update the specific member in the array
+        setMembers(prev => prev.map(m =>
+          m.user_key === userKey ? { ...m, ...response.data!.membership } : m
+        ));
+      } else {
+        setError(response.msg || 'Failed to update member slug');
+      }
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { msg?: string } } };
+      setError(error.response?.data?.msg || 'Failed to update member slug');
     } finally {
       setActionInProgress('');
     }
@@ -355,10 +385,26 @@ export default function TeamDetailPage() {
                     <p className="text-sm font-medium text-cm-charcoal">
                       {membership.user?.display_name || 'Unknown User'}
                     </p>
-                    <p className="text-xs text-cm-coffee">{membership.user?.email}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-cm-coffee">{membership.user?.email}</p>
+                      {membership.slug && (
+                        <span className="px-1.5 py-0.5 text-xs bg-cm-sand rounded text-cm-coffee font-mono">
+                          @{membership.slug}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    defaultValue={membership.slug || ''}
+                    placeholder="slug"
+                    onBlur={(e) => updateMemberSlug(membership.user_key, e.target.value)}
+                    disabled={actionInProgress === `slug-${membership.user_key}`}
+                    className="w-20 px-2 py-1 text-xs border border-cm-sand rounded-md bg-cm-ivory text-cm-charcoal font-mono placeholder:text-cm-sand focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 disabled:opacity-50"
+                    title="Custom identifier (2-10 chars, used as agent_id suffix)"
+                  />
                   <select
                     value={membership.role}
                     onChange={(e) => updateMemberRole(membership.user_key, e.target.value as TeamMemberRole)}
@@ -414,9 +460,21 @@ function AddMemberModal({
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserKey, setSelectedUserKey] = useState('');
   const [role, setRole] = useState<TeamMemberRole>('member');
+  const [slug, setSlug] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Update slug when user is selected
+  const handleUserSelect = (userKey: string) => {
+    setSelectedUserKey(userKey);
+    const selectedUser = users.find(u => u.user_key === userKey);
+    if (selectedUser?.initials) {
+      setSlug(selectedUser.initials.toLowerCase());
+    } else {
+      setSlug('');
+    }
+  };
 
   useEffect(() => {
     loadUsers();
@@ -453,6 +511,7 @@ function AddMemberModal({
       const response = await api.teams.addMember(teamKey, {
         user_key: selectedUserKey,
         role,
+        ...(slug && { slug }),
       });
 
       if (response.success) {
@@ -490,7 +549,7 @@ function AddMemberModal({
                 <label className="block text-sm font-medium text-cm-charcoal mb-1">User</label>
                 <select
                   value={selectedUserKey}
-                  onChange={(e) => setSelectedUserKey(e.target.value)}
+                  onChange={(e) => handleUserSelect(e.target.value)}
                   className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
                 >
                   <option value="">Select a user...</option>
@@ -515,6 +574,22 @@ function AddMemberModal({
                 </select>
                 <p className="text-xs text-cm-coffee mt-1">
                   Owners and admins can manage team members. Members can create content. Viewers can only read.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-cm-charcoal mb-1">
+                  Slug <span className="text-cm-coffee font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder="Defaults to user initials"
+                  maxLength={10}
+                  className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal font-mono focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                />
+                <p className="text-xs text-cm-coffee mt-1">
+                  Used as agent ID suffix (e.g., claude-code-project-{slug || 'wh'})
                 </p>
               </div>
             </div>

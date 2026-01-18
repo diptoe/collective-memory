@@ -103,7 +103,7 @@ class Team(BaseModel):
         """Get count of team members."""
         return TeamMembership.query.filter_by(team_key=self.team_key).count()
 
-    def add_member(self, user_key: str, role: str = 'member') -> 'TeamMembership':
+    def add_member(self, user_key: str, role: str = 'member', slug: str = None) -> 'TeamMembership':
         """Add a user to the team."""
         existing = TeamMembership.query.filter_by(
             team_key=self.team_key,
@@ -111,13 +111,21 @@ class Team(BaseModel):
         ).first()
         if existing:
             existing.role = role
+            if slug is not None:
+                existing.slug = slug
             existing.save()
             return existing
+
+        # Get user for default slug
+        from api.models.user import User
+        user = User.get(user_key)
+        default_slug = slug or (user.initials.lower() if user and user.initials else None)
 
         membership = TeamMembership(
             team_key=self.team_key,
             user_key=user_key,
             role=role,
+            slug=default_slug,
         )
         membership.save()
         return membership
@@ -181,12 +189,13 @@ class TeamMembership(BaseModel):
     - viewer: Read-only access to team-scoped entities
     """
     __tablename__ = 'team_memberships'
-    _schema_version = 1
+    _schema_version = 2
 
     membership_key = Column(String(36), primary_key=True, default=get_key)
     team_key = Column(String(36), ForeignKey('teams.team_key', ondelete='CASCADE'), nullable=False, index=True)
     user_key = Column(String(36), ForeignKey('users.user_key', ondelete='CASCADE'), nullable=False, index=True)
     role = Column(String(20), default='member', nullable=False)  # owner, admin, member, viewer
+    slug = Column(String(10), nullable=True)  # User's preferred identifier within team (e.g., initials or nickname)
     joined_at = Column(DateTime(timezone=True), default=get_now)
 
     # Relationships
@@ -197,13 +206,14 @@ class TeamMembership(BaseModel):
         Index('ix_team_memberships_unique', 'team_key', 'user_key', unique=True),
     )
 
-    _default_fields = ['membership_key', 'team_key', 'user_key', 'role']
+    _default_fields = ['membership_key', 'team_key', 'user_key', 'role', 'slug']
     _readonly_fields = ['membership_key', 'joined_at']
 
     @classmethod
     def _schema_migrations(cls):
         return {
-            1: "Initial schema with team_key, user_key, role, joined_at"
+            1: "Initial schema with team_key, user_key, role, joined_at",
+            2: "Added slug field for custom user identifier within team"
         }
 
     @classmethod
@@ -239,6 +249,14 @@ class TeamMembership(BaseModel):
         self.role = role
         self.save()
 
+    def ensure_slug(self) -> str | None:
+        """Ensure slug is set, defaulting to user initials."""
+        if not self.slug and self.user:
+            self.slug = self.user.initials.lower() if self.user.initials else None
+            if self.slug:
+                self.save()
+        return self.slug
+
     def to_dict(self, include_user: bool = False, include_team: bool = False) -> dict:
         """Convert membership to dictionary."""
         result = {
@@ -246,6 +264,7 @@ class TeamMembership(BaseModel):
             'team_key': self.team_key,
             'user_key': self.user_key,
             'role': self.role,
+            'slug': self.slug,
             'joined_at': self.joined_at.isoformat() if self.joined_at else None,
         }
 

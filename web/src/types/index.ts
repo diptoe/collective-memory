@@ -383,6 +383,7 @@ export interface TeamMembership {
   team_key: string;
   user_key: string;
   role: TeamMemberRole;
+  slug?: string;  // Custom identifier for this user within the team (e.g., initials or nickname)
   joined_at: string;
   // Extended fields from API
   user?: {

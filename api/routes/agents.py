@@ -195,21 +195,7 @@ def register_agent_routes(api: Api):
             user_initials = user.initials.lower() if user and user.initials else None
             user_name = user.display_name if user else None
 
-            # Auto-suffix agent_id with user initials if not already present
-            agent_id = data['agent_id']
-            if user_initials:
-                # Check if agent_id already ends with user initials
-                if not agent_id.endswith(f'-{user_initials}'):
-                    # Check if already has 2-char suffix that we should replace
-                    parts = agent_id.rsplit('-', 1)
-                    if len(parts) == 2 and len(parts[1]) == 2 and parts[1].isalpha():
-                        # Replace existing 2-char suffix with user initials
-                        agent_id = f"{parts[0]}-{user_initials}"
-                    else:
-                        # Append user initials
-                        agent_id = f"{agent_id}-{user_initials}"
-
-            # Resolve team_key and get team_name
+            # Resolve team_key and get team_name FIRST (needed for membership_slug)
             team_key = data.get('team_key')
             team_name = None
             if team_key:
@@ -218,6 +204,32 @@ def register_agent_routes(api: Api):
                     team_name = team.name
                 else:
                     return {'success': False, 'msg': f"Team not found: '{team_key}'"}, 404
+
+            # Get membership slug for the active team (if applicable)
+            membership_slug = None
+            if team_key and user:
+                from api.models.team import TeamMembership
+                membership = TeamMembership.get_user_membership(user.user_key, team_key)
+                if membership:
+                    # Use existing slug or generate from initials
+                    membership_slug = membership.slug or membership.ensure_slug()
+
+            # Use membership_slug if available, otherwise fall back to user_initials
+            suffix = membership_slug or user_initials
+
+            # Auto-suffix agent_id with suffix if not already present
+            agent_id = data['agent_id']
+            if suffix:
+                # Check if agent_id already ends with suffix
+                if not agent_id.endswith(f'-{suffix}'):
+                    # Check if already has short alphanumeric suffix that we should replace
+                    parts = agent_id.rsplit('-', 1)
+                    if len(parts) == 2 and len(parts[1]) <= 10 and parts[1].replace('-', '').isalnum():
+                        # Replace existing suffix with user's suffix
+                        agent_id = f"{parts[0]}-{suffix}"
+                    else:
+                        # Append suffix
+                        agent_id = f"{agent_id}-{suffix}"
 
             # Get project info
             project_key = data.get('project_key')
