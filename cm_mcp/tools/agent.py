@@ -62,6 +62,130 @@ def _detect_project_from_git() -> dict | None:
         return None
 
 
+async def _fetch_existing_agents_for_user(config: Any, client_filter: str = None) -> list:
+    """
+    Fetch existing agents for the authenticated user.
+
+    Returns a list of agent dicts with agent_id, focus, last_heartbeat, client, etc.
+    """
+    try:
+        params = {"active_only": "false"}  # Show all agents, not just active
+        if client_filter:
+            params["client"] = client_filter
+
+        # The /agents endpoint already filters by authenticated user
+        result = await _make_request(config, "GET", "/agents", params=params)
+
+        if result.get("success"):
+            return result.get("data", {}).get("agents", [])
+        return []
+    except Exception:
+        return []
+
+
+def _score_agent_relevance(agent: dict, client_type: str, project_name: str) -> int:
+    """
+    Score an agent's relevance to the current context.
+
+    Higher score = more relevant.
+    """
+    score = 0
+
+    # Same client type is a strong signal
+    if agent.get("client") == client_type:
+        score += 50
+
+    # Project name in agent_id
+    agent_id = agent.get("agent_id", "").lower()
+    if project_name and project_name.lower() in agent_id:
+        score += 40
+
+    # Active agents score higher
+    if agent.get("is_active"):
+        score += 30
+
+    # Recent heartbeat (within last hour)
+    last_heartbeat = agent.get("last_heartbeat")
+    if last_heartbeat:
+        try:
+            from datetime import datetime, timezone
+            hb_time = datetime.fromisoformat(last_heartbeat.replace('Z', '+00:00'))
+            now = datetime.now(timezone.utc)
+            age_minutes = (now - hb_time).total_seconds() / 60
+            if age_minutes < 60:
+                score += 20
+            elif age_minutes < 240:
+                score += 10
+        except Exception:
+            pass
+
+    return score
+
+
+def _format_existing_agents(agents: list, client_type: str, project_name: str) -> str:
+    """
+    Format existing agents for display with relevance scoring.
+    """
+    if not agents:
+        return ""
+
+    # Score and sort agents by relevance
+    scored_agents = []
+    for agent in agents:
+        score = _score_agent_relevance(agent, client_type, project_name)
+        scored_agents.append((score, agent))
+
+    scored_agents.sort(key=lambda x: x[0], reverse=True)
+
+    output = "## Existing Agents Found\n\n"
+    output += "You have existing agent registrations that might be you:\n\n"
+    output += "| Agent ID | Client | Focus | Status | Relevance |\n"
+    output += "|----------|--------|-------|--------|----------|\n"
+
+    best_match = None
+    for score, agent in scored_agents[:5]:  # Show top 5
+        agent_id = agent.get("agent_id", "unknown")
+        client = agent.get("client", "-")
+        focus = agent.get("focus", "-")
+        if focus and len(focus) > 30:
+            focus = focus[:27] + "..."
+
+        is_active = agent.get("is_active", False)
+        status = "🟢 Active" if is_active else "⚪ Inactive"
+
+        # Relevance indicator
+        if score >= 80:
+            relevance = "⭐⭐⭐ High"
+            if not best_match:
+                best_match = agent
+        elif score >= 50:
+            relevance = "⭐⭐ Medium"
+            if not best_match:
+                best_match = agent
+        elif score >= 20:
+            relevance = "⭐ Low"
+        else:
+            relevance = "- None"
+
+        output += f"| `{agent_id}` | {client} | {focus} | {status} | {relevance} |\n"
+
+    output += "\n"
+
+    # Suggestion
+    if best_match:
+        output += f"**💡 Suggestion:** Use `{best_match.get('agent_id')}` (best match for current context)\n\n"
+        output += "To continue as this agent, use the same agent_id:\n"
+        output += "```\n"
+        output += f'identify(agent_id="{best_match.get("agent_id")}", client="{client_type}", model_id="...")\n'
+        output += "```\n\n"
+        output += "Or proceed with a new agent_id to create a fresh registration.\n\n"
+    else:
+        output += "No strong matches found. Proceeding will create a new agent registration.\n\n"
+
+    output += "---\n\n"
+    return output
+
+
 async def _fetch_available_options(config: Any) -> dict:
     """Fetch available personas, clients, and models from CM API."""
     options = {
@@ -94,7 +218,8 @@ async def _fetch_available_options(config: Any) -> dict:
             clients = clients_result.get("data", {}).get("clients", [])
             options["clients"] = [
                 {
-                    "client": c.get("client"),
+                    "client": c.get("value"),  # API returns 'value' not 'client'
+                    "name": c.get("name"),
                     "description": c.get("description"),
                     "suggested_personas": c.get("suggested_personas", []),
                 }
@@ -170,6 +295,25 @@ async def identify(
             output += f"- **Persona:** {session_state.get('persona') or '(not set)'}\n"
             output += f"- **Client:** {session_state.get('client') or '(not set)'}\n"
             output += f"- **Focus:** {session_state.get('focus') or '(not set)'}\n\n"
+            output += "---\n\n"
+
+        # Show existing agents for this user
+        existing_agents = await _fetch_existing_agents_for_user(config)
+        if existing_agents:
+            output += "## Your Existing Agent Registrations\n"
+            output += "You have previously registered agents that you can resume:\n\n"
+            output += "| Agent ID | Client | Focus | Status |\n"
+            output += "|----------|--------|-------|--------|\n"
+            for agent in existing_agents[:10]:  # Show top 10
+                agent_id_display = agent.get("agent_id", "unknown")
+                client = agent.get("client", "-")
+                focus = agent.get("focus", "-")
+                if focus and len(focus) > 30:
+                    focus = focus[:27] + "..."
+                is_active = agent.get("is_active", False)
+                status = "🟢 Active" if is_active else "⚪ Inactive"
+                output += f"| `{agent_id_display}` | {client} | {focus} | {status} |\n"
+            output += "\n*To resume an existing agent, use its agent_id when calling identify.*\n\n"
             output += "---\n\n"
 
         # Dynamic identity guidance
@@ -327,7 +471,7 @@ async def identify(
         return [types.TextContent(type="text", text=output)]
 
     try:
-        # Detect project from git remote (auto-detection)
+        # Detect project from git remote (auto-detection) - do this early for agent matching
         git_project = _detect_project_from_git()
         detected_project_key = None
         detected_project_name = None
@@ -335,6 +479,31 @@ async def identify(
         if git_project:
             # Use git remote info for project context (no API sync during registration)
             detected_project_name = git_project['repo']
+
+        # Fetch existing agents for this user to help with identity selection
+        # Don't filter by client - show all agents and let relevance scoring handle it
+        existing_agents = await _fetch_existing_agents_for_user(config)
+
+        # Check if the provided agent_id matches an existing agent
+        # Account for auto-suffix: cc-wayne-cm might match cc-wayne-cm-wh
+        existing_agent_ids = [a.get("agent_id") for a in existing_agents]
+        agent_id_is_existing = agent_id in existing_agent_ids
+
+        # Also check if provided agent_id is a prefix of any existing agent (before suffix)
+        agent_id_matches_prefix = any(
+            existing_id.startswith(agent_id + "-") or existing_id == agent_id
+            for existing_id in existing_agent_ids
+        )
+
+        # Build the existing agents display (will be shown in output later)
+        existing_agents_display = ""
+        if existing_agents and not agent_id_is_existing and not agent_id_matches_prefix:
+            # Only show existing agents if the provided agent_id is truly NEW
+            existing_agents_display = _format_existing_agents(
+                existing_agents,
+                client_type,
+                detected_project_name
+            )
 
         # Resolve model_id to model_key if provided
         resolved_model_key = model_key
@@ -592,8 +761,27 @@ async def identify(
                 except Exception:
                     pass
 
+            # Check for active work session
+            active_work_session = None
+            try:
+                work_session_result = await _make_request(
+                    config,
+                    "GET",
+                    "/work-sessions/active"
+                )
+                if work_session_result.get("success"):
+                    active_work_session = work_session_result.get("data", {}).get("session")
+                    if active_work_session:
+                        session_state["active_work_session"] = active_work_session
+            except Exception:
+                pass  # Continue without work session info
+
             output = "# Identity Confirmed\n\n"
             output += f"Welcome to Collective Memory (CM)!\n\n"
+
+            # Show existing agents if any (and this is a new agent_id)
+            if existing_agents_display:
+                output += existing_agents_display
 
             # Show authenticated user details prominently
             if session_state.get("user_display_name") or session_state.get("user_email"):
@@ -675,6 +863,32 @@ async def identify(
                     output += f"**GitHub:** {git_project.get('owner')}/{git_project.get('repo')}\n"
                 if detected_project_name:
                     output += f"**Name:** {detected_project_name}\n"
+
+            # Show active work session if any
+            if active_work_session:
+                output += "\n## Active Work Session\n"
+                session_name = active_work_session.get('name') or 'Unnamed session'
+                project_info = active_work_session.get('project', {})
+                project_name = project_info.get('name') if project_info else active_work_session.get('project_key', 'Unknown')
+                output += f"**Session:** {session_name}\n"
+                output += f"**Project:** {project_name}\n"
+                # Show time remaining if available
+                time_remaining = active_work_session.get('time_remaining_seconds')
+                if time_remaining is not None:
+                    if time_remaining < 600:  # Less than 10 minutes
+                        mins = max(1, time_remaining // 60)
+                        output += f"**Expires in:** ⚠️ {mins} minute{'s' if mins != 1 else ''}\n"
+                    elif time_remaining < 3600:  # Less than 1 hour
+                        mins = time_remaining // 60
+                        output += f"**Expires in:** {mins} minutes\n"
+                    else:
+                        hours = time_remaining // 3600
+                        mins = (time_remaining % 3600) // 60
+                        output += f"**Expires in:** {hours}h {mins}m\n"
+                output += "\n**Track your progress with milestones:**\n"
+                output += "- `record_milestone(name=\"Starting X\", status=\"started\")` - when beginning major tasks\n"
+                output += "- `record_milestone(name=\"X completed\")` - when finishing tasks (status defaults to \"completed\")\n"
+                output += "- `record_milestone(name=\"Blocked on Y\", status=\"blocked\")` - if you hit a blocker\n"
 
             if agent_data.get("affinity_warning"):
                 output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"

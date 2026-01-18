@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
@@ -32,7 +32,7 @@ interface ActivityTimelineResponse { timeline: ActivityTimelinePoint[]; hours: n
 interface ActivityTypesResponse { types: string[] }
 
 // Auth response types
-interface AuthUserResponse { user: User; session?: Session; session_expires_at?: string; available_scopes?: Scope[]; default_scope?: Scope }
+interface AuthUserResponse { user: User; session?: Session; session_expires_at?: string; available_scopes?: Scope[]; default_scope?: Scope; teams?: UserTeam[] }
 interface SessionsResponse { sessions: Session[] }
 interface PatResponse { pat: string; pat_created_at: string }
 interface UsersResponse { users: User[]; total: number; limit: number; offset: number }
@@ -51,6 +51,13 @@ interface TeamResponse { team: Team }
 interface TeamMembersResponse { team: Team; members: TeamMembership[] }
 interface TeamMemberResponse { membership: TeamMembership }
 interface TeamStatsResponse { total: number; active: number; archived: number }
+
+// Work session response types
+interface WorkSessionsResponse { sessions: WorkSession[]; total: number }
+interface WorkSessionResponse { session: WorkSession }
+interface WorkSessionActiveResponse { session: WorkSession | null }
+interface WorkSessionEntitiesResponse { entities: Entity[]; total: number }
+interface WorkSessionMessagesResponse { messages: Message[]; total: number }
 
 /**
  * API Response type from the backend
@@ -454,5 +461,29 @@ export const api = {
       apiClient.delete(`/teams/${teamKey}/members/${userKey}`),
     stats: () =>
       apiClient.get<TeamStatsResponse>('/teams/stats'),
+  },
+
+  // Work Sessions
+  workSessions: {
+    list: (params?: { status?: 'active' | 'closed' | 'expired'; project_key?: string; limit?: number; offset?: number }) =>
+      apiClient.get<WorkSessionsResponse>('/work-sessions', { params }),
+    getActive: (params?: { project_key?: string }) =>
+      apiClient.get<WorkSessionActiveResponse>('/work-sessions/active', { params }),
+    get: (sessionKey: string, params?: { include_user?: boolean; include_project?: boolean; include_stats?: boolean }) =>
+      apiClient.get<WorkSessionResponse>(`/work-sessions/${sessionKey}`, { params }),
+    start: (data: { project_key: string; name?: string; team_key?: string }) =>
+      apiClient.post<WorkSessionResponse>('/work-sessions', data),
+    update: (sessionKey: string, data: { name?: string; summary?: string }) =>
+      apiClient.put<WorkSessionResponse>(`/work-sessions/${sessionKey}`, data),
+    extend: (sessionKey: string, hours = 1.0) =>
+      apiClient.post<WorkSessionResponse>(`/work-sessions/${sessionKey}/extend`, { hours }),
+    close: (sessionKey: string, summary?: string) =>
+      apiClient.post<WorkSessionResponse>(`/work-sessions/${sessionKey}/close`, summary ? { summary } : undefined),
+    activity: (sessionKey: string) =>
+      apiClient.post<WorkSessionResponse>(`/work-sessions/${sessionKey}/activity`),
+    getEntities: (sessionKey: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<WorkSessionEntitiesResponse>(`/work-sessions/${sessionKey}/entities`, { params }),
+    getMessages: (sessionKey: string, params?: { limit?: number; offset?: number }) =>
+      apiClient.get<WorkSessionMessagesResponse>(`/work-sessions/${sessionKey}/messages`, { params }),
   },
 };

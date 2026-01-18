@@ -119,6 +119,10 @@ async def get_entity(
             else:
                 output += f"**Scope:** domain (default)\n"
 
+            # Show work session link if present
+            if entity.get('work_session_key'):
+                output += f"**Work Session:** {entity.get('work_session_key')}\n"
+
             props = entity.get('properties', {})
             if props:
                 output += f"\n**Properties:**\n```json\n{json.dumps(props, indent=2)}\n```\n"

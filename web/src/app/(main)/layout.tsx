@@ -75,7 +75,7 @@ export default function MainLayout({
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen">
       {/* Sidebar Navigation */}
       <nav className="w-64 bg-cm-ivory border-r border-cm-sand flex flex-col h-screen sticky top-0">
         <div className="p-4 border-b border-cm-sand">
@@ -101,6 +101,7 @@ export default function MainLayout({
           <NavLink href="/graph" icon="git-branch" active={pathname === '/graph'}>Graph</NavLink>
           <NavLink href="/messages" icon="inbox" active={pathname.startsWith('/messages')}>Messages</NavLink>
           <NavLink href="/agents" icon="cpu" active={pathname.startsWith('/agents')}>Agents</NavLink>
+          <NavLink href="/sessions" icon="timer" active={pathname.startsWith('/sessions')}>Sessions</NavLink>
 
           {/* Admin section */}
           {(user?.role === 'admin' || user?.role === 'domain_admin') && (
@@ -113,7 +114,7 @@ export default function MainLayout({
                 <>
                   <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
                   <NavLink href="/admin/domains" icon="globe" active={pathname.startsWith('/admin/domains')}>Domains</NavLink>
-                  <NavLink href="/admin/sessions" icon="key" active={pathname.startsWith('/admin/sessions')}>Sessions</NavLink>
+                  <NavLink href="/admin/authentications" icon="key" active={pathname.startsWith('/admin/authentications')}>Authentications</NavLink>
                 </>
               )}
             </>
@@ -159,7 +160,7 @@ export default function MainLayout({
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 min-h-0 overflow-auto">
         <ClientLayout>{children}</ClientLayout>
       </main>
     </div>
@@ -209,6 +210,7 @@ function NavIcon({ name }: { name: string }) {
     'key': '🔑',
     'settings': '⚙️',
     'team': '👨‍👩‍👧‍👦',
+    'timer': '⏱️',
   };
   return <span className="w-5 text-center">{icons[name] || '•'}</span>;
 }

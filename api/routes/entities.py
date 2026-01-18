@@ -178,13 +178,27 @@ def register_entity_routes(api: Api):
             # Multi-tenancy: automatically set domain from authenticated user
             user_domain = get_user_domain_key()
 
+            # Handle scope - default to domain scope if not specified
+            scope_type = data.get('scope_type')
+            scope_key = data.get('scope_key')
+
+            # Validate scope if provided
+            if scope_type:
+                user = g.current_user if hasattr(g, 'current_user') else None
+                if user and scope_key:
+                    if not scope_service.can_access_scope(user, scope_type, scope_key):
+                        return {'success': False, 'msg': 'Access denied to specified scope'}, 403
+
             entity = Entity(
                 entity_type=data['entity_type'],
                 name=data['name'],
                 properties=data.get('properties', {}),
                 domain_key=user_domain,  # Auto-set from user's domain
                 confidence=data.get('confidence', 1.0),
-                source=data.get('source')
+                source=data.get('source'),
+                scope_type=scope_type,
+                scope_key=scope_key,
+                work_session_key=data.get('work_session_key')
             )
 
             # Override auto-generated key if custom key provided

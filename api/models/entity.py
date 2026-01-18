@@ -50,6 +50,9 @@ class Entity(BaseModel):
     scope_type = Column(String(20), nullable=True, index=True)
     scope_key = Column(String(36), nullable=True, index=True)
 
+    # Work session tracking - links entity to the session it was created in
+    work_session_key = Column(String(64), nullable=True, index=True)
+
     confidence = Column(Float, default=1.0)
     source = Column(String(100), nullable=True)
 
@@ -74,7 +77,7 @@ class Entity(BaseModel):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 2  # Added scope_type, scope_key for flexible scoping
+        return 3  # Added work_session_key for session tracking
 
     @classmethod
     def get_by_type(cls, entity_type: str, limit: int = 100) -> list['Entity']:

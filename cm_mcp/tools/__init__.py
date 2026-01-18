@@ -72,6 +72,15 @@ from .activity import (
     get_activity_summary,
 )
 
+from .work_session import (
+    get_active_session,
+    start_session,
+    end_session,
+    extend_session,
+    record_milestone,
+    record_interaction,  # Legacy alias
+)
+
 __all__ = [
     # Entity tools
     'search_entities',
@@ -124,4 +133,11 @@ __all__ = [
     # Activity tools
     'list_activities',
     'get_activity_summary',
+    # Work session tools
+    'get_active_session',
+    'start_session',
+    'end_session',
+    'extend_session',
+    'record_milestone',
+    'record_interaction',  # Legacy alias
 ]

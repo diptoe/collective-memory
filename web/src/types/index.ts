@@ -3,7 +3,7 @@
  */
 
 // Entity types
-export type EntityType = 'Person' | 'Project' | 'Technology' | 'Document' | 'Organization' | 'Concept' | 'Repository';
+export type EntityType = 'Person' | 'Project' | 'Technology' | 'Document' | 'Organization' | 'Concept' | 'Repository' | 'Milestone';
 
 export interface Entity {
   entity_key: string;
@@ -16,6 +16,7 @@ export interface Entity {
   scope_type?: 'domain' | 'team' | 'user' | null;
   scope_key?: string | null;
   scope_name?: string; // Resolved name of the scope (team name, user name, etc.)
+  work_session_key?: string; // Work session this entity was created in
   created_at: string;
   updated_at: string;
   relationships?: {
@@ -212,6 +213,7 @@ export interface Message {
   entity_keys?: string[];  // Linked entity keys for knowledge graph connection
   team_key?: string;     // Team scope (null = domain-wide)
   team_name?: string;    // Resolved team name for display
+  work_session_key?: string; // Work session this message was sent in
   is_read: boolean;
   read_at?: string;
   created_at: string;
@@ -417,4 +419,43 @@ export interface Scope {
   scope_key: string;
   name: string;
   access_level: ScopeAccessLevel;
+}
+
+// Work Session types (focused work periods on projects)
+export type WorkSessionStatus = 'active' | 'closed' | 'expired';
+export type WorkSessionClosedBy = 'user' | 'agent' | 'system' | null;
+
+export interface WorkSession {
+  session_key: string;
+  user_key: string;
+  project_key: string;
+  team_key?: string;
+  domain_key?: string;
+  name?: string;
+  status: WorkSessionStatus;
+  started_at: string;
+  ended_at?: string;
+  last_activity_at: string;
+  auto_close_at?: string;
+  closed_by?: WorkSessionClosedBy;
+  summary?: string;
+  properties: Record<string, unknown>;
+  // Computed fields
+  time_remaining_seconds?: number;
+  is_expired?: boolean;
+  // Extended fields (when include_user=true or include_project=true)
+  user?: {
+    user_key: string;
+    display_name: string;
+    email: string;
+  };
+  project?: {
+    entity_key: string;
+    name: string;
+  };
+  // Stats (when include_stats=true)
+  stats?: {
+    entity_count: number;
+    message_count: number;
+  };
 }

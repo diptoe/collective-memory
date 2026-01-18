@@ -85,6 +85,7 @@ class Message(BaseModel):
     entity_keys = Column(JSONB, default=list)  # Linked entity keys for knowledge graph connection
     domain_key = Column(String(36), nullable=True, index=True)  # Domain for multi-tenancy isolation
     team_key = Column(String(36), nullable=True, index=True)  # Team scope (required for broadcast-team)
+    work_session_key = Column(String(64), nullable=True, index=True)  # Work session tracking
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
@@ -105,7 +106,7 @@ class Message(BaseModel):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 11  # Added from_name, to_name for display purposes
+        return 12  # Added work_session_key for session tracking
 
     @classmethod
     def resolve_name(cls, key: str) -> str:

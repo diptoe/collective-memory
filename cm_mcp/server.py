@@ -66,6 +66,12 @@ from .tools import (
     # Activity tools
     list_activities,
     get_activity_summary,
+    # Work session tools
+    get_active_session,
+    start_session,
+    end_session,
+    extend_session,
+    record_milestone,
 )
 
 
@@ -126,7 +132,38 @@ To stay active during a long session:
 - Use `list_agents()` to see who else is collaborating
 - Use `update_focus()` when your task changes
 
-## Available Tools (40 total)
+## WORK SESSIONS & MILESTONES
+
+Work sessions track focused work periods on a project. When you have an active session,
+record milestones to track your progress.
+
+**If identify() shows you have an active work session:**
+- Record milestones as you work to create an audit trail
+- Use `record_milestone(name="Starting X", status="started")` when beginning major tasks
+- Use `record_milestone(name="X completed", status="completed")` when you finish tasks
+- Use `record_milestone(name="Blocked on Y", status="blocked")` if you hit a blocker
+
+**Milestone Status Values:**
+- `started`: Beginning a significant task or feature
+- `completed`: Finished a task (default if not specified)
+- `blocked`: Hit a blocker that needs resolution
+
+**Good milestones to record:**
+- Starting/completing feature implementations
+- Fixing bugs (reference issue numbers in properties)
+- Completing code reviews
+- Hitting and resolving blockers
+- Making architectural decisions
+
+**Example workflow during a session:**
+```
+record_milestone(name="Implementing user authentication", status="started")
+# ... work on authentication ...
+record_milestone(name="JWT auth with refresh tokens working", status="completed")
+record_milestone(name="Waiting for OAuth credentials", status="blocked", properties={"blocker": "Need Google API keys"})
+```
+
+## Available Tools (45 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
 - identify: FIRST tool to call - shows options or registers you with CM
@@ -187,6 +224,13 @@ To stay active during a long session:
 ### ACTIVITY MONITORING (2 tools) - Track system activity
 - list_activities: View recent activities with filtering (by type, actor, time)
 - get_activity_summary: Get aggregated activity counts by type
+
+### WORK SESSIONS (5 tools) - Track focused work periods
+- get_active_session: Check for an active work session
+- start_session: Start a new work session for a project
+- end_session: Close a work session with optional summary
+- extend_session: Extend the auto-close timer
+- record_milestone: Record progress milestones (started/completed/blocked)
 
 ## Recommended Workflow
 1. Identify yourself: identify() to see options, then identify with your agent_id
@@ -1269,6 +1313,130 @@ RETURNS: Table of activity types with counts and percentages.""",
                 }
             }
         ),
+
+        # ============================================================
+        # WORK SESSION TOOLS - Track focused work periods on projects
+        # ============================================================
+        types.Tool(
+            name="get_active_session",
+            description="""Check for an active work session for the current user.
+
+USE THIS WHEN: You want to see if there's already an active work session, especially before starting a new one.
+
+EXAMPLES:
+- {} → Check for any active session
+- {"project_key": "ent-project-xyz"} → Check for session on specific project
+
+RETURNS: Active session details including time remaining, or message that no session is active.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_key": {"type": "string", "description": "Optional: Filter by specific project entity key"}
+                }
+            }
+        ),
+        types.Tool(
+            name="start_session",
+            description="""Start a new work session for a project.
+
+USE THIS WHEN: You're beginning focused work on a project and want to track entities/messages created during the session.
+
+WHAT IT DOES:
+- Creates a work session tied to a Project entity
+- Entities and messages created while session is active are automatically linked
+- Session auto-closes after 1 hour of inactivity
+- Only one active session per project allowed
+
+EXAMPLES:
+- {"project_key": "ent-project-xyz"}
+- {"project_key": "ent-dashboard", "name": "Implementing auth feature"}
+- {"project_key": "ent-api", "name": "Bug fixes", "team_key": "team-backend"}
+
+RETURNS: Session details including session_key and auto-close time.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_key": {"type": "string", "description": "REQUIRED: The Project entity key to work on"},
+                    "name": {"type": "string", "description": "Optional: Descriptive name for the session"},
+                    "team_key": {"type": "string", "description": "Optional: Team scope for the session"}
+                },
+                "required": ["project_key"]
+            }
+        ),
+        types.Tool(
+            name="end_session",
+            description="""End (close) a work session.
+
+USE THIS WHEN: You've finished your focused work and want to close the session.
+
+EXAMPLES:
+- {} → Close active session
+- {"summary": "Completed auth feature implementation"}
+- {"session_key": "sess-xyz", "summary": "Fixed 3 bugs"}
+
+RETURNS: Closed session details including duration.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_key": {"type": "string", "description": "Optional: Specific session to close (defaults to active session)"},
+                    "summary": {"type": "string", "description": "Optional: Summary of work done in the session"}
+                }
+            }
+        ),
+        types.Tool(
+            name="extend_session",
+            description="""Extend the auto-close timer for a work session.
+
+USE THIS WHEN: You need more time and want to prevent the session from auto-closing.
+
+EXAMPLES:
+- {} → Extend active session by 1 hour (default)
+- {"hours": 2} → Extend by 2 hours
+- {"session_key": "sess-xyz", "hours": 0.5} → Extend specific session by 30 minutes
+
+RETURNS: Updated session with new auto-close time.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_key": {"type": "string", "description": "Optional: Specific session to extend (defaults to active session)"},
+                    "hours": {"type": "number", "description": "Hours to extend (default: 1.0, max: 8.0)", "default": 1.0}
+                }
+            }
+        ),
+        types.Tool(
+            name="record_milestone",
+            description="""Record a milestone during a work session.
+
+USE THIS WHEN: You complete or start a significant task, hit a blocker, or want to track progress.
+
+WHEN TO RECORD MILESTONES:
+- Starting a major task: status="started" (e.g., "Implementing authentication")
+- Completing a task: status="completed" (e.g., "API endpoint working")
+- Hitting a blocker: status="blocked" (e.g., "Waiting for API access")
+
+WHAT IT DOES:
+- Creates a 'Milestone' entity linked to the current work session
+- Updates the session's activity timestamp (prevents auto-close)
+- Provides an audit trail of progress during the session
+
+EXAMPLES:
+- {"name": "Implementing authentication", "status": "started"}
+- {"name": "Login endpoint working", "status": "completed"}
+- {"name": "API integration blocked", "status": "blocked", "properties": {"blocker": "Missing API key"}}
+- {"name": "Bug fix: null pointer in user service", "status": "completed", "properties": {"issue": "#42"}}
+
+RETURNS: Created Milestone entity details with status emoji.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "REQUIRED: Name/description of the milestone"},
+                    "status": {"type": "string", "description": "Milestone status: 'started', 'completed', or 'blocked' (default: 'completed')", "enum": ["started", "completed", "blocked"], "default": "completed"},
+                    "properties": {"type": "object", "description": "Optional: Additional properties (e.g., blocker reason, files changed)"},
+                    "session_key": {"type": "string", "description": "Optional: Specific session (defaults to active session)"}
+                },
+                "required": ["name"]
+            }
+        ),
     ]
 
 
@@ -1470,6 +1638,18 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = await list_activities(arguments, config, _session_state)
     elif name == "get_activity_summary":
         result = await get_activity_summary(arguments, config, _session_state)
+
+    # Work session tools
+    elif name == "get_active_session":
+        result = await get_active_session(arguments, config, _session_state)
+    elif name == "start_session":
+        result = await start_session(arguments, config, _session_state)
+    elif name == "end_session":
+        result = await end_session(arguments, config, _session_state)
+    elif name == "extend_session":
+        result = await extend_session(arguments, config, _session_state)
+    elif name == "record_milestone":
+        result = await record_milestone(arguments, config, _session_state)
 
     else:
         result = [types.TextContent(type="text", text=f"Unknown tool: {name}")]
