@@ -6,11 +6,14 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Persona } from '@/types';
 import { PersonaCard } from '@/components/persona-card';
+import { useAuthStore, isAdmin } from '@/lib/stores/auth-store';
 
 export default function PersonasPage() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
+  const canEdit = isAdmin(user);
 
   useEffect(() => {
     async function loadPersonas() {
@@ -46,12 +49,14 @@ export default function PersonasPage() {
             Manage AI model personalities and configurations
           </p>
         </div>
-        <Link 
-          href="/personas/new"
-          className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
-        >
-          + New Persona
-        </Link>
+{canEdit && (
+          <Link
+            href="/personas/new"
+            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
+          >
+            + New Persona
+          </Link>
+        )}
       </div>
 
       {personas.length === 0 ? (

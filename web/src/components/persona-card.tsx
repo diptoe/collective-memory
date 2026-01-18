@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 import { Persona } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +12,15 @@ interface PersonaCardProps {
 }
 
 export function PersonaCard({ persona, onClick, selected }: PersonaCardProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = async (e: React.MouseEvent, text: string) => {
+    e.stopPropagation(); // Prevent card click
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div
       onClick={onClick}
@@ -46,7 +57,16 @@ export function PersonaCard({ persona, onClick, selected }: PersonaCardProps) {
             </span>
           </div>
 
-          <p className="text-sm text-cm-coffee mt-0.5">{persona.role}</p>
+          <p className="text-sm text-cm-coffee mt-0.5 flex items-center gap-1">
+            <span className="font-mono">{persona.role}</span>
+            <button
+              onClick={(e) => copyToClipboard(e, persona.role)}
+              className="p-0.5 text-cm-coffee/40 hover:text-cm-coffee transition-colors"
+              title="Copy persona ID"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </p>
           {persona.suggested_clients && persona.suggested_clients.length > 0 && (
             <p className="text-xs text-cm-coffee/70 mt-1">
               For: {persona.suggested_clients.join(', ')}

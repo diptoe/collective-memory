@@ -3,15 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Copy, Check } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Persona, ClientType } from '@/types';
 import { use } from 'react';
+import { useAuthStore, isAdmin } from '@/lib/stores/auth-store';
 
 export default function PersonaDetailPage({ params }: { params: Promise<{ key: string }> }) {
   // Unwrap params using React.use()
   const { key } = use(params);
-  
+
   const router = useRouter();
+  const { user } = useAuthStore();
+  const canEdit = isAdmin(user);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +34,25 @@ export default function PersonaDetailPage({ params }: { params: Promise<{ key: s
   const [selectedClients, setSelectedClients] = useState<ClientType[]>([]);
 
   const availableClients: ClientType[] = ['claude-code', 'claude-desktop', 'codex', 'gemini-cli', 'cursor'];
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = async (text: string, field: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
+  };
 
   useEffect(() => {
     loadPersona();
@@ -165,36 +188,38 @@ export default function PersonaDetailPage({ params }: { params: Promise<{ key: s
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {!isEditing && (
-            <button
-              onClick={handleToggleStatus}
-              className={`px-4 py-2 rounded-lg transition-colors border ${
-                persona?.status === 'active'
-                  ? 'border-red-200 text-red-600 hover:bg-red-50'
-                  : 'border-green-200 text-green-600 hover:bg-green-50'
-              }`}
-            >
-              {persona?.status === 'active' ? 'Archive' : 'Activate'}
-            </button>
-          )}
-          
-          {isEditing ? (
-            <button 
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 text-cm-coffee hover:text-cm-charcoal border border-cm-sand rounded-lg"
-            >
-              Cancel
-            </button>
-          ) : (
-            <button 
-              onClick={() => setIsEditing(true)}
-              className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna"
-            >
-              Edit Persona
-            </button>
-          )}
-        </div>
+        {canEdit && (
+          <div className="flex items-center gap-3">
+            {!isEditing && (
+              <button
+                onClick={handleToggleStatus}
+                className={`px-4 py-2 rounded-lg transition-colors border ${
+                  persona?.status === 'active'
+                    ? 'border-red-200 text-red-600 hover:bg-red-50'
+                    : 'border-green-200 text-green-600 hover:bg-green-50'
+                }`}
+              >
+                {persona?.status === 'active' ? 'Archive' : 'Activate'}
+              </button>
+            )}
+
+            {isEditing ? (
+              <button
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 text-cm-coffee hover:text-cm-charcoal border border-cm-sand rounded-lg"
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna"
+              >
+                Edit Persona
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -365,17 +390,44 @@ export default function PersonaDetailPage({ params }: { params: Promise<{ key: s
             <div className="space-y-6">
               <div className="bg-cm-ivory rounded-xl border border-cm-sand p-6">
                 <h3 className="text-sm font-medium text-cm-coffee mb-4">Metadata</h3>
-                
+
                 <div className="space-y-4">
                   <div>
-                    <span className="text-xs text-cm-coffee uppercase tracking-wider">Persona Key</span>
-                    <p className="font-mono text-sm text-cm-charcoal mt-1 break-all">{persona?.persona_key}</p>
+                    <span className="text-xs text-cm-coffee uppercase tracking-wider">Persona ID</span>
+                    <p className="font-mono text-sm text-cm-charcoal mt-1 break-all flex items-center gap-2">
+                      {persona?.role}
+                      {persona?.role && (
+                        <button
+                          onClick={() => copyToClipboard(persona.role, 'role')}
+                          className="p-1 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
+                          title="Copy persona ID"
+                        >
+                          {copiedField === 'role' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </p>
                   </div>
-                  
+
+                  <div>
+                    <span className="text-xs text-cm-coffee uppercase tracking-wider">Persona Key</span>
+                    <p className="font-mono text-sm text-cm-charcoal mt-1 break-all flex items-center gap-2">
+                      {persona?.persona_key}
+                      {persona?.persona_key && (
+                        <button
+                          onClick={() => copyToClipboard(persona.persona_key, 'key')}
+                          className="p-1 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
+                          title="Copy persona key"
+                        >
+                          {copiedField === 'key' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </p>
+                  </div>
+
                   <div>
                     <span className="text-xs text-cm-coffee uppercase tracking-wider">Created</span>
                     <p className="text-sm text-cm-charcoal mt-1">
-                      {persona?.created_at && new Date(persona.created_at).toLocaleDateString()}
+                      {formatDateTime(persona?.created_at)}
                     </p>
                   </div>
 

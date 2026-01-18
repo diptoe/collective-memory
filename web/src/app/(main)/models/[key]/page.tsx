@@ -3,19 +3,42 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Copy, Check } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Model, ModelProvider } from '@/types';
 import { use } from 'react';
+import { useAuthStore, isAdmin } from '@/lib/stores/auth-store';
 
 export default function ModelDetailPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params);
 
   const router = useRouter();
+  const { user } = useAuthStore();
+  const canEdit = isAdmin(user);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState<Model | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = async (text: string, field: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
+  };
 
   // Form state
   const [formData, setFormData] = useState({
@@ -161,32 +184,34 @@ export default function ModelDetailPage({ params }: { params: Promise<{ key: str
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {!isEditing && model?.status === 'active' && (
-            <button
-              onClick={handleToggleStatus}
-              className="px-4 py-2 rounded-lg transition-colors border border-amber-200 text-amber-600 hover:bg-amber-50"
-            >
-              Deprecate
-            </button>
-          )}
+        {canEdit && (
+          <div className="flex items-center gap-3">
+            {!isEditing && model?.status === 'active' && (
+              <button
+                onClick={handleToggleStatus}
+                className="px-4 py-2 rounded-lg transition-colors border border-amber-200 text-amber-600 hover:bg-amber-50"
+              >
+                Deprecate
+              </button>
+            )}
 
-          {isEditing ? (
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 text-cm-coffee hover:text-cm-charcoal border border-cm-sand rounded-lg"
-            >
-              Cancel
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna"
-            >
-              Edit Model
-            </button>
-          )}
-        </div>
+            {isEditing ? (
+              <button
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 text-cm-coffee hover:text-cm-charcoal border border-cm-sand rounded-lg"
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna"
+              >
+                Edit Model
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -358,7 +383,18 @@ export default function ModelDetailPage({ params }: { params: Promise<{ key: str
                 <div className="space-y-4">
                   <div>
                     <span className="text-xs text-cm-coffee uppercase tracking-wider">Model Key</span>
-                    <p className="font-mono text-sm text-cm-charcoal mt-1 break-all">{model?.model_key}</p>
+                    <p className="font-mono text-sm text-cm-charcoal mt-1 break-all flex items-center gap-2">
+                      {model?.model_key}
+                      {model?.model_key && (
+                        <button
+                          onClick={() => copyToClipboard(model.model_key, 'key')}
+                          className="p-1 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
+                          title="Copy model key"
+                        >
+                          {copiedField === 'key' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </p>
                   </div>
 
                   <div>
@@ -372,20 +408,31 @@ export default function ModelDetailPage({ params }: { params: Promise<{ key: str
 
                   <div>
                     <span className="text-xs text-cm-coffee uppercase tracking-wider">Model ID</span>
-                    <p className="font-mono text-sm text-cm-charcoal mt-1 break-all">{model?.model_id}</p>
+                    <p className="font-mono text-sm text-cm-charcoal mt-1 break-all flex items-center gap-2">
+                      {model?.model_id}
+                      {model?.model_id && (
+                        <button
+                          onClick={() => copyToClipboard(model.model_id, 'model_id')}
+                          className="p-1 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
+                          title="Copy model ID"
+                        >
+                          {copiedField === 'model_id' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </p>
                   </div>
 
                   <div>
                     <span className="text-xs text-cm-coffee uppercase tracking-wider">Created</span>
                     <p className="text-sm text-cm-charcoal mt-1">
-                      {model?.created_at && new Date(model.created_at).toLocaleDateString()}
+                      {formatDateTime(model?.created_at)}
                     </p>
                   </div>
 
                   <div>
                     <span className="text-xs text-cm-coffee uppercase tracking-wider">Updated</span>
                     <p className="text-sm text-cm-charcoal mt-1">
-                      {model?.updated_at && new Date(model.updated_at).toLocaleDateString()}
+                      {formatDateTime(model?.updated_at)}
                     </p>
                   </div>
                 </div>

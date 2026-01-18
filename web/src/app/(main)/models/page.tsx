@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Copy, Check } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Model, ModelProvider } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuthStore, isAdmin } from '@/lib/stores/auth-store';
 
 const PROVIDER_COLORS: Record<ModelProvider, string> = {
   anthropic: 'bg-orange-100 text-orange-800',
@@ -19,6 +21,8 @@ const PROVIDER_LABELS: Record<ModelProvider, string> = {
 };
 
 export default function ModelsPage() {
+  const { user } = useAuthStore();
+  const canEdit = isAdmin(user);
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterProvider, setFilterProvider] = useState<string>('all');
@@ -76,9 +80,11 @@ export default function ModelsPage() {
             Manage available LLM models for AI agents
           </p>
         </div>
-        <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors">
-          + Add Model
-        </button>
+{canEdit && (
+          <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors">
+            + Add Model
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -165,6 +171,16 @@ export default function ModelsPage() {
 }
 
 function ModelCard({ model }: { model: Model }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = async (e: React.MouseEvent, text: string) => {
+    e.preventDefault(); // Prevent navigation
+    e.stopPropagation();
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <Link
       href={`/models/${model.model_key}`}
@@ -173,7 +189,16 @@ function ModelCard({ model }: { model: Model }) {
       <div className="flex items-start justify-between mb-2">
         <div>
           <h3 className="font-semibold text-cm-charcoal">{model.name}</h3>
-          <p className="text-xs text-cm-coffee font-mono">{model.model_id}</p>
+          <p className="text-xs text-cm-coffee font-mono flex items-center gap-1">
+            {model.model_id}
+            <button
+              onClick={(e) => copyToClipboard(e, model.model_id)}
+              className="p-0.5 text-cm-coffee/40 hover:text-cm-coffee transition-colors"
+              title="Copy model ID"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </p>
         </div>
         <span className={cn(
           'px-2 py-0.5 rounded text-xs',
