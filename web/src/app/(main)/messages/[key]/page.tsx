@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -9,9 +9,7 @@ import { cn } from '@/lib/utils';
 import { TYPE_COLORS } from '@/lib/graph/layout';
 import { formatDateTime } from '@/lib/utils';
 import { Markdown } from '@/components/markdown/markdown';
-
-// Get person ID from environment
-const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'unknown-user';
+import { useAuthStore } from '@/lib/stores/auth-store';
 
 const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message'] as const;
 const PRIORITIES = ['normal', 'high', 'urgent'] as const;
@@ -69,11 +67,11 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <span className="font-medium text-cm-charcoal">
-                {message.from_agent}
+                {message.from_key}
               </span>
               <span className="text-cm-coffee/50">→</span>
               <span className="text-cm-coffee">
-                {message.to_agent || 'Broadcast'}
+                {message.to_key || 'Broadcast'}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -101,8 +99,19 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
             </div>
           </div>
 
-          <p className="text-xs text-cm-coffee/70 mb-2">
-            #{message.channel} · {formatDateTime(message.created_at)}
+          <p className="text-xs text-cm-coffee/70 mb-2 flex items-center gap-2">
+            <span>#{message.channel}</span>
+            {message.team_key ? (
+              <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 flex items-center gap-1">
+                <span>👥</span> {message.team_name || 'Team'}
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.5 rounded bg-cm-sand/50 text-cm-coffee flex items-center gap-1">
+                <span>🌐</span> Domain
+              </span>
+            )}
+            <span>·</span>
+            <span>{formatDateTime(message.created_at)}</span>
           </p>
 
           <Markdown content={messageText} />
@@ -151,6 +160,7 @@ function MessageCard({ message, isHighlighted, showReplyButton, onReply, disable
 export default function MessageDetailPage() {
   const params = useParams();
   const messageKey = params.key as string;
+  const { user } = useAuthStore();
 
   const [message, setMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
@@ -166,8 +176,6 @@ export default function MessageDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  // Track if we've ensured the person entity exists
-  const personEnsured = useRef(false);
 
   const loadMessage = async () => {
     setLoading(true);
@@ -225,10 +233,14 @@ export default function MessageDetailPage() {
 
   const handleConfirm = async () => {
     if (!message) return;
+    if (!user?.user_key) {
+      alert('You must be logged in to confirm tasks');
+      return;
+    }
 
     setConfirming(true);
     try {
-      await api.messages.confirm(message.message_key, `human:${PERSON_ID}`);
+      await api.messages.confirm(message.message_key, user.user_key);
       loadMessage(); // Refresh to show confirmation status
     } catch (err) {
       console.error('Failed to confirm message:', err);
@@ -255,43 +267,25 @@ export default function MessageDetailPage() {
     }
   };
 
-  // Ensure person entity exists in the knowledge graph
-  const ensurePersonEntity = async () => {
-    if (personEnsured.current || PERSON_ID === 'unknown-user') return;
-
-    try {
-      const res = await api.entities.get(PERSON_ID);
-      if (res.data?.entity?.entity_key) {
-        personEnsured.current = true;
-        return;
-      }
-    } catch {
-      try {
-        const name = PERSON_ID.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        await api.entities.create({
-          entity_key: PERSON_ID,
-          entity_type: 'Person',
-          name,
-          properties: { source: 'web-ui' },
-        });
-        personEnsured.current = true;
-      } catch (createErr) {
-        console.error('Failed to create person entity:', createErr);
-      }
-    }
-  };
-
   const handleSendReply = async () => {
     if (!replyContent.trim() || !message) return;
+    if (!user?.user_key) {
+      alert('You must be logged in to send replies');
+      return;
+    }
 
     setSending(true);
     try {
-      await ensurePersonEntity();
+      // Determine if we should reply directly to the sender
+      // If original sender is the current user, broadcast instead of replying to self
+      // Otherwise reply directly to sender (API will auto-detect the correct scope)
+      const isSelfMessage = message.from_key === user.user_key;
+      const toKey = isSelfMessage ? undefined : message.from_key;
 
       await api.messages.post({
         channel: message.channel,
-        from_agent: `human:${PERSON_ID}`,
-        to_agent: message.from_agent.startsWith('human:') ? undefined : message.from_agent,
+        from_key: user.user_key,  // Use authenticated user's key
+        to_key: toKey,
         reply_to_key: message.message_key,
         message_type: replyType,
         content: { text: replyContent },
@@ -353,8 +347,19 @@ export default function MessageDetailPage() {
             <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
               Message Thread
             </h1>
-            <p className="text-cm-coffee mt-1">
-              #{message.channel} · {formatDateTime(message.created_at)}
+            <p className="text-cm-coffee mt-1 flex items-center gap-2">
+              <span>#{message.channel}</span>
+              {message.team_key ? (
+                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-xs flex items-center gap-1">
+                  <span>👥</span> {message.team_name || 'Team'}
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded bg-cm-sand/50 text-cm-coffee text-xs flex items-center gap-1">
+                  <span>🌐</span> Domain
+                </span>
+              )}
+              <span>·</span>
+              <span>{formatDateTime(message.created_at)}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">

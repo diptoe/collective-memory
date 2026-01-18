@@ -317,11 +317,11 @@ RETURNS: The created entity with its assigned entity_key and scope.""",
 USE THIS WHEN: You need to correct, enrich, or modify existing entity data, or move an entity to a different scope.
 
 EXAMPLES:
-- Update name: {"entity_key": "ent-abc123", "name": "React Dashboard v2"}
-- Change type: {"entity_key": "ent-abc123", "entity_type": "Application"}
-- Add properties: {"entity_key": "ent-abc123", "properties": {"status": "completed"}}
-- Move to team scope: {"entity_key": "ent-abc123", "scope_type": "team", "scope_key": "team-xyz789"}
-- Move to personal scope: {"entity_key": "ent-abc123", "scope_type": "user", "scope_key": "usr-abc123"}
+- Update name: {"entity_key": "swift-bold-keen-lion", "name": "React Dashboard v2"}
+- Change type: {"entity_key": "swift-bold-keen-lion", "entity_type": "Application"}
+- Add properties: {"entity_key": "swift-bold-keen-lion", "properties": {"status": "completed"}}
+- Move to team scope: {"entity_key": "swift-bold-keen-lion", "scope_type": "team", "scope_key": "calm-fresh-wild-river"}
+- Move to personal scope: {"entity_key": "swift-bold-keen-lion", "scope_type": "user", "scope_key": "bright-quick-warm-spark"}
 
 NOTE: Properties are merged, not replaced. To remove a property, set it to null.
 SCOPE: Use scope_type and scope_key together to move entity visibility between domain, team, or user.""",

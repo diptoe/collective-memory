@@ -172,11 +172,25 @@ export interface MessageReader {
   read_at: string | null;
 }
 
+// Message scope types
+export type MessageScope =
+  | 'broadcast-domain'    // Visible to all agents/users in domain
+  | 'broadcast-team'      // Visible to all agents/users in team
+  | 'agent-agent'         // Direct message between agents
+  | 'agent-user'          // Agent sending to user
+  | 'user-agent'          // User sending to agent
+  | 'user-agents'         // User broadcasting to all agents
+  | 'agent-agents';       // Agent broadcasting to all agents
+
 export interface Message {
   message_key: string;
   channel: string;
-  from_agent: string;
-  to_agent?: string;
+  from_key: string;       // agent_key or user_key of sender
+  from_name?: string;     // Display name of sender (denormalized for readability)
+  to_key?: string;        // agent_key or user_key of recipient (null for broadcasts)
+  to_name?: string;       // Display name of recipient (denormalized for readability)
+  user_key?: string;      // user_key associated with agent sender (if applicable)
+  scope: MessageScope;    // Message visibility scope
   reply_to_key?: string;
   message_type: MessageType;
   content: Record<string, unknown>;
@@ -186,6 +200,8 @@ export interface Message {
   confirmed_by?: string; // Who confirmed
   confirmed_at?: string; // When confirmed
   entity_keys?: string[];  // Linked entity keys for knowledge graph connection
+  team_key?: string;     // Team scope (null = domain-wide)
+  team_name?: string;    // Resolved team name for display
   is_read: boolean;
   read_at?: string;
   created_at: string;

@@ -1,16 +1,26 @@
 """
 Collective Memory Platform - Message Routes
 
-Inter-agent message queue operations.
+Inter-agent and user message queue operations.
+
+Scope types define message visibility and routing:
+- broadcast-domain: Visible to all agents and users in the domain
+- broadcast-team: Visible to all agents and users in a specific team
+- agent-agent: Direct message between two specific agents
+- agent-user: Message from an agent to a specific user
+- user-agent: Message from a user to a specific agent
+- user-agents: Message from a user to all agents linked to them
+- agent-agents: Message from an agent to all agents linked to a user
 
 Read tracking modes:
-- Per-agent: Pass agent_id to track reads per agent (recommended)
+- Per-reader: Pass reader_key to track reads per agent/user (recommended)
 - Legacy: Uses global read_at field on Message (backward compatible)
 """
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Message, MessageRead
+from api.models.message import VALID_SCOPES
 from api.services.activity import activity_service
 from api.services.auth import require_auth
 
@@ -23,10 +33,42 @@ def get_user_domain_key() -> str | None:
 
 
 def get_user_key() -> str | None:
-    """Get the current user's user_key for activity tracking."""
+    """Get the current user's user_key."""
     if hasattr(g, 'current_user') and g.current_user:
         return g.current_user.user_key
     return None
+
+
+def is_user_key(key: str) -> bool:
+    """
+    Check if a key belongs to a User (vs an Agent).
+
+    Args:
+        key: The key to check
+
+    Returns:
+        True if the key is a user_key, False otherwise
+    """
+    if not key:
+        return False
+    from api.models.user import User
+    return User.query.filter_by(user_key=key).first() is not None
+
+
+def is_agent_key(key: str) -> bool:
+    """
+    Check if a key belongs to an Agent (vs a User).
+
+    Args:
+        key: The key to check
+
+    Returns:
+        True if the key is an agent_key, False otherwise
+    """
+    if not key:
+        return False
+    from api.models.agent import Agent
+    return Agent.query.filter_by(agent_key=key).first() is not None
 
 
 def get_user_team_keys() -> list[str]:
@@ -49,7 +91,7 @@ def register_message_routes(api: Api):
 
     ns = api.namespace(
         'messages',
-        description='Inter-agent message operations',
+        description='Inter-agent and user message operations',
         path='/messages'
     )
 
@@ -57,13 +99,16 @@ def register_message_routes(api: Api):
     message_model = ns.model('Message', {
         'message_key': fields.String(readonly=True, description='Unique message identifier'),
         'channel': fields.String(required=True, description='Channel name'),
-        'from_agent': fields.String(required=True, description='Sender agent ID'),
-        'to_agent': fields.String(description='Recipient agent ID (null for broadcast)'),
+        'from_key': fields.String(required=True, description='Sender key (agent_key or user_key)'),
+        'to_key': fields.String(description='Recipient key (agent_key or user_key, null for broadcasts)'),
+        'user_key': fields.String(description='User key for user-agents/agent-agents scopes'),
+        'scope': fields.String(required=True, description='Message scope: broadcast-domain, broadcast-team, agent-agent, agent-user, user-agent, user-agents, agent-agents'),
         'reply_to_key': fields.String(description='Parent message key (for replies)'),
-        'message_type': fields.String(required=True, description='Type: status, announcement, request, task, message'),
+        'message_type': fields.String(required=True, description='Type: status, announcement, request, task, message, acknowledged, waiting, resumed'),
         'content': fields.Raw(required=True, description='Message content as JSON'),
         'priority': fields.String(description='Priority: normal, high, urgent'),
         'autonomous': fields.Boolean(description='Whether this is an autonomous task requiring action'),
+        'team_key': fields.String(description='Team key (required for broadcast-team scope)'),
         'read_at': fields.DateTime(readonly=True),
         'is_read': fields.Boolean(readonly=True),
         'reply_count': fields.Integer(readonly=True, description='Number of replies'),
@@ -73,16 +118,16 @@ def register_message_routes(api: Api):
 
     message_create = ns.model('MessageCreate', {
         'channel': fields.String(required=True, description='Channel name'),
-        'from_agent': fields.String(description='Sender agent ID (required unless from_human is set)'),
-        'from_human': fields.String(description='Human sender name (for non-agent messages)'),
-        'to_agent': fields.String(description='Recipient agent ID (null for broadcast)'),
+        'from_key': fields.String(description='Sender key (agent_key or user_key)'),
+        'to_key': fields.String(description='Recipient key (null for broadcasts)'),
+        'scope': fields.String(description='Message scope (auto-detected if not provided)'),
         'reply_to_key': fields.String(description='Parent message key (for replies)'),
         'message_type': fields.String(required=True, description='Message type'),
         'content': fields.Raw(required=True, description='Message content as JSON'),
         'priority': fields.String(description='Priority level', default='normal'),
-        'autonomous': fields.Boolean(description='Mark as autonomous task - receiver should work on it and reply', default=False),
+        'autonomous': fields.Boolean(description='Mark as autonomous task', default=False),
         'entity_keys': fields.List(fields.String(), description='Entity keys to link this message to'),
-        'team_key': fields.String(description='Team key for team-scoped messages (null for domain-wide)'),
+        'team_key': fields.String(description='Team key for broadcast-team scope'),
     })
 
     response_model = ns.model('Response', {
@@ -99,27 +144,27 @@ def register_message_routes(api: Api):
         @ns.param('channel', 'Filter by channel name', type=str)
         @ns.param('since', 'Only return messages created after this ISO8601 timestamp', type=str)
         @ns.param('entity_key', 'Filter messages linked to this entity', type=str)
-        @ns.param('for_agent', 'Get messages for this agent (direct + broadcasts) with per-agent read status', type=str)
-        @ns.param('from_agent', 'Filter by sender agent ID only', type=str)
-        @ns.param('to_agent', 'Filter by recipient agent ID only', type=str)
-        @ns.param('team_key', 'Filter by specific team (null shows domain-wide only)', type=str)
-        @ns.param('include_readers', 'Include list of agents who have read each message', type=bool, default=False)
-        @ns.param('include_thread_info', 'Include reply_count and has_parent for each message', type=bool, default=False)
+        @ns.param('for_agent', 'Get messages for this agent_key with per-agent read status', type=str)
+        @ns.param('for_user', 'Get messages for this user_key', type=str)
+        @ns.param('from_key', 'Filter by sender key', type=str)
+        @ns.param('to_key', 'Filter by recipient key', type=str)
+        @ns.param('scope', 'Filter by scope type', type=str)
+        @ns.param('team_key', 'Filter by specific team', type=str)
+        @ns.param('include_readers', 'Include list of readers', type=bool, default=False)
+        @ns.param('include_thread_info', 'Include reply_count and has_parent', type=bool, default=False)
         @ns.marshal_with(response_model)
         @require_auth
         def get(self):
             """
-            Get all messages across all channels with optional filters.
+            Get messages with optional filters.
             Automatically filtered by user's domain.
 
             When for_agent is provided:
-            - Returns messages TO this agent + all broadcasts
+            - Returns messages visible to this agent based on scope rules
             - Uses per-agent read tracking for is_read status
-            - unread_only uses per-agent read tracking
 
-            When for_agent is not provided:
-            - Returns all messages matching other filters
-            - Uses legacy global read_at for is_read status
+            When for_user is provided:
+            - Returns messages visible to this user based on scope rules
             """
             from datetime import datetime
             limit = request.args.get('limit', 50, type=int)
@@ -128,14 +173,17 @@ def register_message_routes(api: Api):
             since = request.args.get('since')
             entity_key = request.args.get('entity_key')
             for_agent = request.args.get('for_agent')
-            from_agent = request.args.get('from_agent')
-            to_agent = request.args.get('to_agent')
+            for_user = request.args.get('for_user')
+            from_key_filter = request.args.get('from_key')
+            to_key_filter = request.args.get('to_key')
+            scope_filter = request.args.get('scope')
             team_key_filter = request.args.get('team_key')
             include_readers = request.args.get('include_readers', 'false').lower() == 'true'
             include_thread_info = request.args.get('include_thread_info', 'false').lower() == 'true'
 
             # Multi-tenancy: automatically use user's domain
             user_domain = get_user_domain_key()
+            user_key = get_user_key()
             user_team_keys = get_user_team_keys()
 
             # Validate team access if specific team requested
@@ -148,50 +196,64 @@ def register_message_routes(api: Api):
                 try:
                     since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
                 except ValueError:
-                    pass  # Invalid timestamp, ignore
+                    pass
 
-            # Per-agent mode: use MessageRead-aware queries
+            # Agent-specific mode
             if for_agent:
-                if unread_only:
-                    messages = Message.get_unread_for_agent(
-                        for_agent,
-                        channel=channel,
-                        limit=limit,
-                        team_keys=user_team_keys,
-                        team_key=team_key_filter
-                    )
-                else:
-                    messages = Message.get_for_agent(
-                        for_agent,
-                        limit=limit,
-                        unread_only=False,
-                        team_keys=user_team_keys,
-                        team_key=team_key_filter
-                    )
-                    if channel:
-                        messages = [m for m in messages if m.channel == channel]
+                messages = Message.get_for_agent(
+                    agent_key=for_agent,
+                    user_key=user_key,  # For user-agents/agent-agents visibility
+                    limit=limit,
+                    unread_only=unread_only,
+                    team_keys=user_team_keys,
+                    team_key_filter=team_key_filter,
+                    domain_key=user_domain
+                )
 
-                # Apply since filter (post-query filtering for per-agent mode)
+                # Apply additional filters
+                if channel:
+                    messages = [m for m in messages if m.channel == channel]
                 if since_dt:
                     messages = [m for m in messages if m.created_at and m.created_at >= since_dt]
-
-                # Apply entity_key filter (post-query filtering for per-agent mode)
                 if entity_key:
                     messages = [m for m in messages if m.entity_keys and entity_key in m.entity_keys]
 
-                # Multi-tenancy: filter by user's domain
-                if user_domain:
-                    messages = [m for m in messages if m.domain_key == user_domain]
-
                 return {
                     'success': True,
-                    'msg': f'Retrieved {len(messages)} messages for {for_agent}',
+                    'msg': f'Retrieved {len(messages)} messages for agent {for_agent}',
                     'data': {
-                        'messages': [m.to_dict(for_agent=for_agent, include_readers=include_readers, include_thread_info=include_thread_info) for m in messages]
+                        'messages': [m.to_dict(for_reader=for_agent, include_readers=include_readers, include_thread_info=include_thread_info) for m in messages]
                     }
                 }
 
-            # Legacy mode: direct query with global read_at
+            # User-specific mode
+            if for_user:
+                messages = Message.get_for_user(
+                    user_key=for_user,
+                    limit=limit,
+                    unread_only=unread_only,
+                    team_keys=user_team_keys,
+                    team_key_filter=team_key_filter,
+                    domain_key=user_domain
+                )
+
+                # Apply additional filters
+                if channel:
+                    messages = [m for m in messages if m.channel == channel]
+                if since_dt:
+                    messages = [m for m in messages if m.created_at and m.created_at >= since_dt]
+                if entity_key:
+                    messages = [m for m in messages if m.entity_keys and entity_key in m.entity_keys]
+
+                return {
+                    'success': True,
+                    'msg': f'Retrieved {len(messages)} messages for user {for_user}',
+                    'data': {
+                        'messages': [m.to_dict(for_reader=for_user, include_readers=include_readers, include_thread_info=include_thread_info) for m in messages]
+                    }
+                }
+
+            # General query mode
             from sqlalchemy import or_
             query = Message.query
 
@@ -199,35 +261,34 @@ def register_message_routes(api: Api):
             if user_domain:
                 query = query.filter(Message.domain_key == user_domain)
 
-            # Team scope filtering
-            if team_key_filter:
-                # Filter to specific team only
-                query = query.filter(Message.team_key == team_key_filter)
-            elif user_team_keys:
-                # Show domain-wide (team_key is null) OR messages in user's teams
-                query = query.filter(
-                    or_(Message.team_key.is_(None), Message.team_key.in_(user_team_keys))
-                )
-            # If no team_keys, show all (backward compatible for users not in teams)
+            # Scope filtering - only show messages user should see
+            if scope_filter:
+                query = query.filter(Message.scope == scope_filter)
 
-            # Filter by channel
+            # Team filtering
+            if team_key_filter == '':
+                # Empty string = domain-wide broadcasts only
+                query = query.filter(Message.scope == 'broadcast-domain')
+            elif team_key_filter:
+                query = query.filter(Message.team_key == team_key_filter)
+
+            # Channel filter
             if channel:
                 query = query.filter(Message.channel == channel)
 
-            # Filter by time
+            # Time filter
             if since_dt:
                 query = query.filter(Message.created_at >= since_dt)
 
-            # Filter by linked entity
+            # Entity filter
             if entity_key:
-                # JSONB array contains check
                 query = query.filter(Message.entity_keys.contains([entity_key]))
 
             # Specific filters
-            if from_agent:
-                query = query.filter(Message.from_agent == from_agent)
-            if to_agent:
-                query = query.filter(Message.to_agent == to_agent)
+            if from_key_filter:
+                query = query.filter(Message.from_key == from_key_filter)
+            if to_key_filter:
+                query = query.filter(Message.to_key == to_key_filter)
 
             if unread_only:
                 query = query.filter(Message.read_at.is_(None))
@@ -247,21 +308,36 @@ def register_message_routes(api: Api):
         @ns.marshal_with(response_model, code=201)
         @require_auth
         def post(self):
-            """Post a new message to a channel. Automatically assigned to user's domain."""
+            """
+            Post a new message. Automatically assigned to user's domain.
+
+            Scope auto-detection:
+            - If to_key is set and looks like agent_key: agent-agent or user-agent
+            - If to_key is set and looks like user_key: agent-user
+            - If team_key is set without to_key: broadcast-team
+            - Otherwise: broadcast-domain
+            """
             data = request.json
 
             # Validate required fields
             if not data.get('channel'):
                 return {'success': False, 'msg': 'channel is required'}, 400
-            if not data.get('from_agent') and not data.get('from_human'):
-                return {'success': False, 'msg': 'either from_agent or from_human is required'}, 400
+            if not data.get('from_key'):
+                return {'success': False, 'msg': 'from_key is required'}, 400
             if not data.get('message_type'):
                 return {'success': False, 'msg': 'message_type is required'}, 400
             if not data.get('content'):
                 return {'success': False, 'msg': 'content is required'}, 400
 
-            # Multi-tenancy: automatically set domain from authenticated user
+            # Multi-tenancy
             user_domain = get_user_domain_key()
+            current_user_key = get_user_key()
+
+            from_key = data.get('from_key')
+            to_key = data.get('to_key')
+            team_key = data.get('team_key')
+            scope = data.get('scope')
+            msg_user_key = data.get('user_key')  # For user-agents/agent-agents
 
             # Validate reply_to_key if provided
             reply_to_key = data.get('reply_to_key')
@@ -270,65 +346,78 @@ def register_message_routes(api: Api):
                 parent = Message.get_by_key(reply_to_key)
                 if not parent:
                     return {'success': False, 'msg': f'Parent message {reply_to_key} not found'}, 404
-                # Verify parent belongs to same domain
                 if user_domain and parent.domain_key != user_domain:
                     return {'success': False, 'msg': f'Parent message {reply_to_key} not found'}, 404
+                # Inherit team_key from parent for replies
+                team_key = parent.team_key
 
-            # Use from_human as from_agent if no agent specified (prefix with "human:")
-            from_agent = data.get('from_agent')
-            if not from_agent and data.get('from_human'):
-                from_agent = f"human:{data['from_human']}"
+            # Auto-detect scope if not provided
+            if not scope:
+                if to_key:
+                    # Determine scope based on sender/recipient types
+                    from_is_user = is_user_key(from_key)
+                    to_is_user = is_user_key(to_key)
 
-            # For replies, default to_agent to parent's from_agent (reply to sender)
-            to_agent = data.get('to_agent')
-            if not to_agent and parent:
-                to_agent = parent.from_agent
+                    if from_is_user and not to_is_user:
+                        scope = 'user-agent'
+                    elif not from_is_user and to_is_user:
+                        scope = 'agent-user'
+                    else:
+                        scope = 'agent-agent'
+                elif team_key:
+                    scope = 'broadcast-team'
+                else:
+                    scope = 'broadcast-domain'
 
-            # Handle entity_keys - merge with parent's entity_keys for replies
+            # Validate scope
+            is_valid, error = Message.validate_scope(scope, to_key, team_key, msg_user_key)
+            if not is_valid:
+                return {'success': False, 'msg': error}, 400
+
+            # Validate team access for broadcast-team
+            if scope == 'broadcast-team' and not user_can_access_team(team_key):
+                return {'success': False, 'msg': 'Cannot send messages to this team'}, 403
+
+            # Handle entity_keys - merge with parent's for replies
             entity_keys = data.get('entity_keys', []) or []
             if parent and parent.entity_keys:
-                # Merge parent's entity_keys with new ones (unique)
                 entity_keys = list(set(entity_keys) | set(parent.entity_keys))
 
-            # Handle team_key - validate access or inherit from parent
-            team_key = data.get('team_key')
-            if parent:
-                # For replies, inherit team_key from parent
-                team_key = parent.team_key
-            elif team_key:
-                # Validate user is a member of the team
-                if not user_can_access_team(team_key):
-                    return {'success': False, 'msg': 'Cannot send messages to this team'}, 403
+            # Resolve display names for readability
+            from_name = Message.resolve_name(from_key)
+            to_name = Message.resolve_name(to_key) if to_key else None
 
             message = Message(
                 channel=data['channel'],
-                from_agent=from_agent,
-                user_key=get_user_key(),  # Track authenticated user
-                to_agent=to_agent,
+                from_key=from_key,
+                from_name=from_name,
+                to_key=to_key,
+                to_name=to_name,
+                user_key=msg_user_key or current_user_key,  # Track user context
+                scope=scope,
                 reply_to_key=reply_to_key,
                 message_type=data['message_type'],
                 content=data['content'],
                 priority=data.get('priority', 'normal'),
                 autonomous=data.get('autonomous', False),
                 entity_keys=entity_keys if entity_keys else None,
-                domain_key=user_domain,  # Auto-set from user's domain
-                team_key=team_key  # Team scope (null = domain-wide)
+                domain_key=user_domain,
+                team_key=team_key
             )
 
             try:
                 message.save()
-                # Record activity
                 activity_service.record_message_sent(
-                    actor=from_agent,
+                    actor=from_key,
                     message_key=message.message_key,
                     channel=message.channel,
-                    recipient=message.to_agent,
-                    domain_key=get_user_domain_key(),
-                    user_key=get_user_key()
+                    recipient=message.to_key,
+                    domain_key=user_domain,
+                    user_key=current_user_key
                 )
                 return {
                     'success': True,
-                    'msg': 'Message posted' + (' as reply' if reply_to_key else ''),
+                    'msg': f'Message posted (scope: {scope})' + (' as reply' if reply_to_key else ''),
                     'data': message.to_dict(include_thread_info=True)
                 }, 201
             except Exception as e:
@@ -341,67 +430,55 @@ def register_message_routes(api: Api):
         @ns.param('limit', 'Maximum messages to return', type=int, default=50)
         @ns.param('unread_only', 'Only return unread messages', type=bool, default=False)
         @ns.param('for_agent', 'Get per-agent read status for this agent', type=str)
-        @ns.param('team_key', 'Filter by specific team (optional)', type=str)
+        @ns.param('team_key', 'Filter by specific team', type=str)
         @ns.marshal_with(response_model)
         @require_auth
         def get(self, channel):
-            """Get messages from a channel. Filtered by user's domain and team scope."""
-            from sqlalchemy import or_
-
+            """Get messages from a channel. Filtered by user's domain."""
             limit = request.args.get('limit', 50, type=int)
             unread_only = request.args.get('unread_only', 'false').lower() == 'true'
             for_agent = request.args.get('for_agent')
-            team_key = request.args.get('team_key')
+            team_key_filter = request.args.get('team_key')
 
-            # Multi-tenancy: get user's domain and team access
             user_domain = get_user_domain_key()
+            user_key = get_user_key()
             user_team_keys = get_user_team_keys()
 
-            # Validate team_key access if specified
-            if team_key and not user_can_access_team(team_key):
+            if team_key_filter and not user_can_access_team(team_key_filter):
                 return {'success': False, 'msg': 'Cannot access messages from this team'}, 403
 
-            if for_agent and unread_only:
-                # Per-agent unread filtering with team scope
-                messages = Message.get_unread_for_agent(
-                    for_agent,
-                    channel=channel,
+            if for_agent:
+                messages = Message.get_for_agent(
+                    agent_key=for_agent,
+                    user_key=user_key,
                     limit=limit,
-                    team_keys=user_team_keys if not team_key else None,
-                    team_key=team_key
+                    unread_only=unread_only,
+                    team_keys=user_team_keys,
+                    team_key_filter=team_key_filter,
+                    domain_key=user_domain
                 )
-                # Filter by domain
-                if user_domain:
-                    messages = [m for m in messages if m.domain_key == user_domain]
-                unread_count = len(messages)
+                messages = [m for m in messages if m.channel == channel]
             else:
                 query = Message.query.filter_by(channel=channel)
 
-                # Filter by domain
                 if user_domain:
                     query = query.filter(Message.domain_key == user_domain)
 
-                # Filter by team scope
-                if team_key:
-                    query = query.filter(Message.team_key == team_key)
-                elif user_team_keys:
-                    # Show domain-wide (team_key is null) OR messages in user's teams
-                    query = query.filter(
-                        or_(Message.team_key.is_(None), Message.team_key.in_(user_team_keys))
-                    )
+                if team_key_filter == '':
+                    query = query.filter(Message.scope == 'broadcast-domain')
+                elif team_key_filter:
+                    query = query.filter(Message.team_key == team_key_filter)
 
                 if unread_only:
                     query = query.filter(Message.read_at.is_(None))
 
                 messages = query.order_by(Message.created_at.desc()).limit(limit).all()
-                unread_count = Message.get_unread_count(channel, agent_id=for_agent)
 
             return {
                 'success': True,
                 'msg': f'Retrieved {len(messages)} messages',
                 'data': {
-                    'messages': [m.to_dict(for_agent=for_agent) for m in messages],
-                    'unread_count': unread_count
+                    'messages': [m.to_dict(for_reader=for_agent) for m in messages]
                 }
             }
 
@@ -411,32 +488,27 @@ def register_message_routes(api: Api):
     class ChannelMessagesSince(Resource):
         @ns.doc('get_channel_messages_since')
         @ns.param('limit', 'Maximum messages to return', type=int, default=50)
-        @ns.param('team_key', 'Filter by specific team (optional)', type=str)
+        @ns.param('team_key', 'Filter by specific team', type=str)
         @ns.marshal_with(response_model)
         @require_auth
         def get(self, channel, timestamp):
-            """Get messages from a channel since a timestamp. Filtered by user's domain and team scope."""
+            """Get messages from a channel since a timestamp."""
             limit = request.args.get('limit', 50, type=int)
-            team_key = request.args.get('team_key')
+            team_key_filter = request.args.get('team_key')
 
-            # Validate team_key access if specified
-            if team_key and not user_can_access_team(team_key):
+            if team_key_filter and not user_can_access_team(team_key_filter):
                 return {'success': False, 'msg': 'Cannot access messages from this team'}, 403
 
             messages = Message.get_by_channel(channel, limit=limit, since=timestamp)
 
-            # Multi-tenancy: filter by user's domain
             user_domain = get_user_domain_key()
             if user_domain:
                 messages = [m for m in messages if m.domain_key == user_domain]
 
-            # Filter by team scope
-            user_team_keys = get_user_team_keys()
-            if team_key:
-                messages = [m for m in messages if m.team_key == team_key]
-            elif user_team_keys:
-                # Show domain-wide (team_key is null) OR messages in user's teams
-                messages = [m for m in messages if m.team_key is None or m.team_key in user_team_keys]
+            if team_key_filter == '':
+                messages = [m for m in messages if m.scope == 'broadcast-domain']
+            elif team_key_filter:
+                messages = [m for m in messages if m.team_key == team_key_filter]
 
             return {
                 'success': True,
@@ -448,48 +520,39 @@ def register_message_routes(api: Api):
 
     def _check_message_access(message, user_domain, user_team_keys):
         """Check if user has access to message based on domain and team scope."""
-        # Check domain access
         if user_domain and message.domain_key != user_domain:
             return False
-        # Check team access - if message is team-scoped, user must be in that team
         if message.team_key:
             if not user_team_keys or message.team_key not in user_team_keys:
                 return False
         return True
 
-    # Legacy alias for backward compatibility
-    def _check_message_domain_access(message, user_domain):
-        """Check if user has access to message based on domain."""
-        return _check_message_access(message, user_domain, get_user_team_keys())
-
     @ns.route('/mark-read/<string:message_key>')
     @ns.param('message_key', 'Message identifier')
     class MarkMessageRead(Resource):
         @ns.doc('mark_message_read')
-        @ns.param('agent_id', 'Agent marking as read (for per-agent tracking)', type=str)
+        @ns.param('reader_key', 'Key of agent/user marking as read', type=str)
         @ns.marshal_with(response_model)
         @require_auth
         def post(self, message_key):
-            """
-            Mark a message as read. Must belong to user's domain.
-            """
+            """Mark a message as read."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
 
-            # Multi-tenancy: verify domain access
             user_domain = get_user_domain_key()
-            if not _check_message_domain_access(message, user_domain):
+            user_team_keys = get_user_team_keys()
+            if not _check_message_access(message, user_domain, user_team_keys):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
-            agent_id = request.args.get('agent_id')
+            reader_key = request.args.get('reader_key')
 
             try:
-                message.mark_read(agent_id=agent_id)
+                message.mark_read(reader_key=reader_key)
                 return {
                     'success': True,
-                    'msg': f'Message marked as read' + (f' by {agent_id}' if agent_id else ''),
-                    'data': message.to_dict(for_agent=agent_id)
+                    'msg': f'Message marked as read' + (f' by {reader_key}' if reader_key else ''),
+                    'data': message.to_dict(for_reader=reader_key)
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -500,29 +563,22 @@ def register_message_routes(api: Api):
         @ns.marshal_with(response_model)
         @require_auth
         def delete(self):
-            """
-            Delete all messages from the queue for user's domain.
-            """
+            """Delete all messages for user's domain."""
             from api.models import db
 
-            # Multi-tenancy: only delete messages in user's domain
             user_domain = get_user_domain_key()
 
             try:
                 if user_domain:
-                    # Get message keys in this domain
                     domain_messages = Message.query.filter_by(domain_key=user_domain).all()
                     message_keys = [m.message_key for m in domain_messages]
 
                     if message_keys:
-                        # Delete read tracking records for these messages
                         MessageRead.query.filter(MessageRead.message_key.in_(message_keys)).delete(synchronize_session=False)
-                        # Delete messages
                         count = Message.query.filter(Message.message_key.in_(message_keys)).delete(synchronize_session=False)
                     else:
                         count = 0
                 else:
-                    # No domain - delete all (for backwards compatibility)
                     MessageRead.query.delete()
                     count = Message.query.delete()
 
@@ -531,9 +587,7 @@ def register_message_routes(api: Api):
                 return {
                     'success': True,
                     'msg': f'Cleared {count} messages',
-                    'data': {
-                        'deleted_count': count
-                    }
+                    'data': {'deleted_count': count}
                 }
             except Exception as e:
                 db.session.rollback()
@@ -542,64 +596,61 @@ def register_message_routes(api: Api):
     @ns.route('/mark-all-read')
     class MarkAllMessagesRead(Resource):
         @ns.doc('mark_all_messages_read')
-        @ns.param('agent_id', 'Agent marking as read (required for per-agent tracking)', type=str)
-        @ns.param('channel', 'Filter by channel (optional)', type=str)
-        @ns.param('team_key', 'Filter by specific team (optional)', type=str)
+        @ns.param('reader_key', 'Key of agent/user marking as read (required)', type=str)
+        @ns.param('channel', 'Filter by channel', type=str)
+        @ns.param('team_key', 'Filter by specific team', type=str)
         @ns.marshal_with(response_model)
         @require_auth
         def post(self):
-            """
-            Mark all unread messages as read for an agent. Filtered by user's domain and team scope.
-            """
-            agent_id = request.args.get('agent_id')
+            """Mark all unread messages as read for an agent/user."""
+            reader_key = request.args.get('reader_key')
             channel = request.args.get('channel')
-            team_key = request.args.get('team_key')
+            team_key_filter = request.args.get('team_key')
 
-            if not agent_id:
-                return {'success': False, 'msg': 'agent_id is required for per-agent read tracking'}, 400
+            if not reader_key:
+                return {'success': False, 'msg': 'reader_key is required'}, 400
 
-            # Validate team_key access if specified
-            if team_key and not user_can_access_team(team_key):
+            if team_key_filter and not user_can_access_team(team_key_filter):
                 return {'success': False, 'msg': 'Cannot access messages from this team'}, 403
 
-            # Multi-tenancy: get user's domain and teams
             user_domain = get_user_domain_key()
+            user_key = get_user_key()
             user_team_keys = get_user_team_keys()
 
             try:
-                # Get unread messages for this agent with team filtering
-                unread_messages = Message.get_unread_for_agent(
-                    agent_id,
-                    channel=channel,
-                    limit=1000,
-                    team_keys=user_team_keys if not team_key else None,
-                    team_key=team_key
-                )
+                # Determine if reader is user or agent by database lookup
+                if is_user_key(reader_key):
+                    unread_messages = Message.get_for_user(
+                        user_key=reader_key,
+                        limit=1000,
+                        unread_only=True,
+                        team_keys=user_team_keys if not team_key_filter else None,
+                        team_key_filter=team_key_filter,
+                        domain_key=user_domain
+                    )
+                else:
+                    unread_messages = Message.get_for_agent(
+                        agent_key=reader_key,
+                        user_key=user_key,
+                        limit=1000,
+                        unread_only=True,
+                        team_keys=user_team_keys if not team_key_filter else None,
+                        team_key_filter=team_key_filter,
+                        domain_key=user_domain
+                    )
 
-                # Filter by domain
-                if user_domain:
-                    unread_messages = [m for m in unread_messages if m.domain_key == user_domain]
+                if channel:
+                    unread_messages = [m for m in unread_messages if m.channel == channel]
 
                 count = len(unread_messages)
-
-                # Mark each as read by this agent
                 message_keys = [m.message_key for m in unread_messages]
                 if message_keys:
-                    MessageRead.mark_all_read_for_agent(agent_id, message_keys)
-
-                filters_applied = [f"agent_id={agent_id}"]
-                if channel:
-                    filters_applied.append(f"channel={channel}")
-                if team_key:
-                    filters_applied.append(f"team_key={team_key}")
-                filter_desc = f" ({', '.join(filters_applied)})"
+                    MessageRead.mark_all_read_for_reader(reader_key, message_keys)
 
                 return {
                     'success': True,
-                    'msg': f'Marked {count} messages as read{filter_desc}',
-                    'data': {
-                        'marked_count': count
-                    }
+                    'msg': f'Marked {count} messages as read',
+                    'data': {'marked_count': count}
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -608,20 +659,18 @@ def register_message_routes(api: Api):
     @ns.param('message_key', 'Message identifier')
     class ConfirmMessage(Resource):
         @ns.doc('confirm_message')
-        @ns.param('confirmed_by', 'Agent or human confirming the task', type=str, required=True)
+        @ns.param('confirmed_by', 'Key of agent/user confirming', type=str, required=True)
         @ns.marshal_with(response_model)
         @require_auth
         def post(self, message_key):
-            """
-            Confirm task completion on a message. Must belong to user's domain.
-            """
+            """Confirm task completion on a message."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
 
-            # Multi-tenancy: verify domain access
             user_domain = get_user_domain_key()
-            if not _check_message_domain_access(message, user_domain):
+            user_team_keys = get_user_team_keys()
+            if not _check_message_access(message, user_domain, user_team_keys):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             confirmed_by = request.args.get('confirmed_by')
@@ -642,16 +691,14 @@ def register_message_routes(api: Api):
         @ns.marshal_with(response_model)
         @require_auth
         def delete(self, message_key):
-            """
-            Remove confirmation from a message. Must belong to user's domain.
-            """
+            """Remove confirmation from a message."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
 
-            # Multi-tenancy: verify domain access
             user_domain = get_user_domain_key()
-            if not _check_message_domain_access(message, user_domain):
+            user_team_keys = get_user_team_keys()
+            if not _check_message_access(message, user_domain, user_team_keys):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             try:
@@ -677,16 +724,14 @@ def register_message_routes(api: Api):
         @ns.marshal_with(response_model)
         @require_auth
         def put(self, message_key):
-            """
-            Update entity links on a message. Must belong to user's domain.
-            """
+            """Update entity links on a message."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
 
-            # Multi-tenancy: verify domain access
             user_domain = get_user_domain_key()
-            if not _check_message_domain_access(message, user_domain):
+            user_team_keys = get_user_team_keys()
+            if not _check_message_access(message, user_domain, user_team_keys):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             data = request.json
@@ -725,57 +770,52 @@ def register_message_routes(api: Api):
     class MessageDetail(Resource):
         @ns.doc('get_message_detail')
         @ns.param('include_thread', 'Include parent and replies', type=bool, default=True)
-        @ns.param('include_readers', 'Include list of agents who have read', type=bool, default=True)
-        @ns.param('include_entities', 'Include linked entities from knowledge graph', type=bool, default=False)
-        @ns.param('for_agent', 'Get per-agent read status', type=str)
+        @ns.param('include_readers', 'Include list of readers', type=bool, default=True)
+        @ns.param('include_entities', 'Include linked entities', type=bool, default=False)
+        @ns.param('for_reader', 'Get per-reader read status', type=str)
         @ns.marshal_with(response_model)
         @require_auth
         def get(self, message_key):
-            """
-            Get a single message with full thread context. Must belong to user's domain.
-            """
+            """Get a single message with full thread context."""
             include_thread = request.args.get('include_thread', 'true').lower() == 'true'
             include_readers = request.args.get('include_readers', 'true').lower() == 'true'
             include_entities = request.args.get('include_entities', 'false').lower() == 'true'
-            for_agent = request.args.get('for_agent')
+            for_reader = request.args.get('for_reader')
 
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
 
-            # Multi-tenancy: verify domain access
             user_domain = get_user_domain_key()
-            if not _check_message_domain_access(message, user_domain):
+            user_team_keys = get_user_team_keys()
+            if not _check_message_access(message, user_domain, user_team_keys):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             result = message.to_dict(
-                for_agent=for_agent,
+                for_reader=for_reader,
                 include_readers=include_readers,
                 include_thread_info=True
             )
 
             if include_thread:
-                # Include parent message if this is a reply
                 if message.reply_to_key:
                     parent = message.get_parent()
                     if parent:
                         result['parent'] = parent.to_dict(
-                            for_agent=for_agent,
+                            for_reader=for_reader,
                             include_readers=False,
                             include_thread_info=True
                         )
 
-                # Include direct replies
                 replies = message.get_replies(limit=100)
                 result['replies'] = [
                     r.to_dict(
-                        for_agent=for_agent,
+                        for_reader=for_reader,
                         include_readers=False,
                         include_thread_info=True
                     ) for r in replies
                 ]
 
-            # Include linked entities from across the thread
             if include_entities:
                 from api.models import Entity
                 thread_entity_keys = Message.get_thread_entity_keys(message_key)
@@ -795,36 +835,29 @@ def register_message_routes(api: Api):
         @ns.marshal_with(response_model)
         @require_auth
         def delete(self, message_key):
-            """
-            Delete a message and all its replies. Must belong to user's domain.
-            """
+            """Delete a message and all its replies."""
             from api.models import db
 
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
 
-            # Multi-tenancy: verify domain access
             user_domain = get_user_domain_key()
-            if not _check_message_domain_access(message, user_domain):
+            user_team_keys = get_user_team_keys()
+            if not _check_message_access(message, user_domain, user_team_keys):
                 return {'success': False, 'msg': 'Message not found'}, 404
 
             def collect_thread_keys(msg_key: str, keys: set):
-                """Recursively collect all message keys in a thread."""
                 keys.add(msg_key)
                 replies = Message.query.filter_by(reply_to_key=msg_key).all()
                 for reply in replies:
                     collect_thread_keys(reply.message_key, keys)
 
             try:
-                # Collect all message keys in the thread
                 thread_keys = set()
                 collect_thread_keys(message_key, thread_keys)
 
-                # Delete read tracking records for all messages in thread
                 MessageRead.query.filter(MessageRead.message_key.in_(thread_keys)).delete(synchronize_session=False)
-
-                # Delete all messages in thread
                 Message.query.filter(Message.message_key.in_(thread_keys)).delete(synchronize_session=False)
 
                 db.session.commit()

@@ -1,11 +1,16 @@
 """
 Collective Memory Platform - Message Model
 
-Inter-agent messages for coordination and communication.
+Inter-agent and user messages for coordination and communication.
 
-Message delivery modes:
-- Direct: to_agent is set to a specific agent_id
-- Broadcast: to_agent is null (visible to all agents in channel)
+Scope types define message visibility and routing:
+- broadcast-domain: Visible to all agents and users in the domain
+- broadcast-team: Visible to all agents and users in a specific team
+- agent-agent: Direct message between two specific agents
+- agent-user: Message from an agent to a specific user
+- user-agent: Message from a user to a specific agent
+- user-agents: Message from a user to all agents linked to them
+- agent-agents: Message from an agent to all agents linked to a user
 
 Threading:
 - reply_to_key links to the parent message (null for top-level messages)
@@ -18,29 +23,57 @@ from sqlalchemy.dialects.postgresql import JSONB
 from api.models.base import BaseModel, db, get_key, get_now
 
 
+# Valid scope values
+VALID_SCOPES = [
+    'broadcast-domain',   # Broadcast to everyone in domain
+    'broadcast-team',     # Broadcast to everyone in team (requires team_key)
+    'agent-agent',        # Direct message between two agents
+    'agent-user',         # Agent sending to user
+    'user-agent',         # User sending to agent
+    'user-agents',        # User sending to all their linked agents
+    'agent-agents',       # Agent sending to all agents linked to a user
+]
+
+
 class Message(BaseModel):
     """
-    Inter-agent message for coordination.
+    Inter-agent and user message for coordination.
 
-    Message types: status, announcement, request, task, message
+    Message types: status, announcement, request, task, message, acknowledged, waiting, resumed
     Priority levels: normal, high, urgent
+
+    Keys:
+    - from_key: user_key or agent_key of the sender
+    - to_key: user_key or agent_key of recipient (null for broadcasts)
+    - user_key: For user-agents/agent-agents scopes, the user whose agents receive the message
+
+    Scope determines visibility:
+    - broadcast-domain: All in domain see it
+    - broadcast-team: All in team_key see it
+    - agent-agent: Only from_key and to_key see it
+    - agent-user: Only from_key (agent) and to_key (user) see it
+    - user-agent: Only from_key (user) and to_key (agent) see it
+    - user-agents: from_key (user) and all agents linked to user_key
+    - agent-agents: from_key (agent) and all agents linked to user_key
 
     Threading:
     - reply_to_key links to parent message for threaded conversations
     - Top-level messages have reply_to_key = null
 
     Read tracking:
-    - For broadcasts: each agent has their own read status via MessageRead
-    - For direct messages: recipient tracks via MessageRead
+    - Each agent tracks their own read status via MessageRead
     - Legacy read_at field kept for backward compatibility
     """
     __tablename__ = 'messages'
 
     message_key = Column(String(36), primary_key=True, default=get_key)
     channel = Column(String(100), nullable=False, index=True)
-    from_agent = Column(String(100), nullable=False)
-    user_key = Column(String(36), nullable=True, index=True)  # user who sent the message
-    to_agent = Column(String(100), nullable=True)  # null = broadcast to channel
+    from_key = Column(String(36), nullable=False, index=True)  # user_key or agent_key
+    from_name = Column(String(200), nullable=True)  # Display name of sender (denormalized for readability)
+    to_key = Column(String(36), nullable=True, index=True)  # user_key or agent_key (null for broadcasts)
+    to_name = Column(String(200), nullable=True)  # Display name of recipient (denormalized for readability)
+    user_key = Column(String(36), nullable=True, index=True)  # For user-agents/agent-agents scopes
+    scope = Column(String(36), nullable=False, default='broadcast-domain', index=True)
     reply_to_key = Column(String(36), ForeignKey('messages.message_key'), nullable=True, index=True)
     message_type = Column(String(50), nullable=False, index=True)
     content = Column(JSONB, nullable=False)
@@ -51,23 +84,77 @@ class Message(BaseModel):
     confirmed_at = Column(DateTime(timezone=True), nullable=True)  # When confirmed
     entity_keys = Column(JSONB, default=list)  # Linked entity keys for knowledge graph connection
     domain_key = Column(String(36), nullable=True, index=True)  # Domain for multi-tenancy isolation
-    team_key = Column(String(36), nullable=True, index=True)  # Team scope (null = domain-wide)
+    team_key = Column(String(36), nullable=True, index=True)  # Team scope (required for broadcast-team)
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
     # Indexes for message retrieval
     __table_args__ = (
         Index('ix_messages_channel_created', 'channel', 'created_at'),
-        Index('ix_messages_to_agent', 'to_agent'),
         Index('ix_messages_reply_to', 'reply_to_key'),
+        Index('ix_messages_scope', 'scope'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'user_key', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys', 'domain_key', 'team_key']
+    _default_fields = [
+        'message_key', 'channel', 'from_key', 'from_name', 'to_key', 'to_name',
+        'user_key', 'scope', 'reply_to_key', 'message_type', 'content', 'priority',
+        'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys',
+        'domain_key', 'team_key'
+    ]
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 9  # Added team_key for team-scoped messages
+        return 11  # Added from_name, to_name for display purposes
+
+    @classmethod
+    def resolve_name(cls, key: str) -> str:
+        """
+        Resolve a user_key or agent_key to a display name.
+
+        Looks up in both User and Agent tables to find the name.
+        Returns the key itself if no name is found.
+        """
+        if not key:
+            return None
+
+        # Try User table first
+        from api.models.user import User
+        user = User.query.filter_by(user_key=key).first()
+        if user:
+            return user.display_name
+
+        # Try Agent table
+        from api.models.agent import Agent
+        agent = Agent.query.filter_by(agent_key=key).first()
+        if agent:
+            # Prefer persona name, then agent_id
+            return agent.persona or agent.agent_id
+
+        # Return key as fallback
+        return key
+
+    @classmethod
+    def validate_scope(cls, scope: str, to_key: str = None, team_key: str = None, user_key: str = None) -> tuple[bool, str]:
+        """
+        Validate scope value and required fields.
+
+        Returns:
+            (is_valid, error_message)
+        """
+        if scope not in VALID_SCOPES:
+            return False, f"Invalid scope: {scope}. Valid values: {VALID_SCOPES}"
+
+        if scope == 'broadcast-team' and not team_key:
+            return False, "broadcast-team scope requires team_key"
+
+        if scope in ('agent-agent', 'agent-user', 'user-agent') and not to_key:
+            return False, f"{scope} scope requires to_key"
+
+        if scope in ('user-agents', 'agent-agents') and not user_key:
+            return False, f"{scope} scope requires user_key"
+
+        return True, None
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:
@@ -82,178 +169,316 @@ class Message(BaseModel):
     @classmethod
     def get_for_agent(
         cls,
-        agent_id: str,
+        agent_key: str,
+        user_key: str = None,
         limit: int = 50,
         unread_only: bool = False,
         team_keys: list[str] = None,
-        team_key: str = None
+        team_key_filter: str = None,
+        domain_key: str = None
     ) -> list['Message']:
         """
-        Get messages for a specific agent.
-        Includes direct messages TO this agent and broadcasts visible to them.
+        Get messages visible to a specific agent.
+
+        An agent can see messages where:
+        - scope=broadcast-domain and same domain_key
+        - scope=broadcast-team and team_key in agent's team_keys
+        - scope=agent-agent and (from_key=agent_key or to_key=agent_key)
+        - scope=agent-user and from_key=agent_key
+        - scope=user-agent and to_key=agent_key
+        - scope=user-agents and user_key matches agent's linked user
+        - scope=agent-agents and user_key matches agent's linked user
 
         Args:
-            agent_id: The agent's identifier
+            agent_key: The agent's key
+            user_key: The user_key linked to this agent (for user-agents/agent-agents)
             limit: Maximum messages to return
             unread_only: Only return unread messages
-            team_keys: List of team_keys the agent can access (for scope filtering)
-            team_key: Filter to a specific team only
+            team_keys: List of team_keys the agent can access
+            team_key_filter: Filter to a specific team only
+            domain_key: The agent's domain_key
         """
         from api.models.message_read import MessageRead
-        from sqlalchemy import or_
+        from sqlalchemy import or_, and_
 
-        query = cls.query.filter(
-            (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
+        conditions = []
+
+        # broadcast-domain: visible to all in domain
+        if domain_key:
+            conditions.append(
+                and_(
+                    cls.scope == 'broadcast-domain',
+                    cls.domain_key == domain_key
+                )
+            )
+
+        # broadcast-team: visible to team members
+        if team_keys:
+            if team_key_filter:
+                # Filter to specific team
+                conditions.append(
+                    and_(
+                        cls.scope == 'broadcast-team',
+                        cls.team_key == team_key_filter
+                    )
+                )
+            else:
+                # All teams agent belongs to
+                conditions.append(
+                    and_(
+                        cls.scope == 'broadcast-team',
+                        cls.team_key.in_(team_keys)
+                    )
+                )
+
+        # agent-agent: direct messages involving this agent
+        conditions.append(
+            and_(
+                cls.scope == 'agent-agent',
+                or_(cls.from_key == agent_key, cls.to_key == agent_key)
+            )
         )
 
-        # Apply team scope filtering
-        if team_key:
-            # Filter to specific team only
-            query = query.filter(cls.team_key == team_key)
-        elif team_keys:
-            # Show domain-wide (team_key is null) OR messages in agent's teams
-            query = query.filter(
-                or_(cls.team_key.is_(None), cls.team_key.in_(team_keys))
+        # agent-user: messages from this agent to a user (agent sees their own)
+        conditions.append(
+            and_(
+                cls.scope == 'agent-user',
+                cls.from_key == agent_key
             )
-        # If no team_keys provided, show all (backward compatible)
+        )
+
+        # user-agent: messages from a user to this agent
+        conditions.append(
+            and_(
+                cls.scope == 'user-agent',
+                cls.to_key == agent_key
+            )
+        )
+
+        # user-agents: messages from user to all their agents
+        if user_key:
+            conditions.append(
+                and_(
+                    cls.scope == 'user-agents',
+                    cls.user_key == user_key
+                )
+            )
+
+        # agent-agents: messages from agent to all agents of a user
+        if user_key:
+            conditions.append(
+                and_(
+                    cls.scope == 'agent-agents',
+                    cls.user_key == user_key
+                )
+            )
+
+        query = cls.query.filter(or_(*conditions))
 
         if unread_only:
             # Subquery to find messages this agent has read
             read_subquery = db.session.query(MessageRead.message_key).filter(
-                MessageRead.agent_id == agent_id
+                MessageRead.reader_key == agent_key
             ).scalar_subquery()
             query = query.filter(~cls.message_key.in_(read_subquery))
 
         return query.order_by(cls.created_at.desc()).limit(limit).all()
 
     @classmethod
-    def get_unread_count(cls, channel: str = None, agent_id: str = None) -> int:
-        """
-        Get count of unread messages.
-
-        Args:
-            channel: Filter by channel (optional)
-            agent_id: Count unread for this specific agent (required for accurate count)
-        """
-        from api.models.message_read import MessageRead
-
-        query = cls.query
-
-        if channel:
-            query = query.filter(cls.channel == channel)
-
-        if agent_id:
-            # Messages this agent should see (direct to them or broadcast)
-            query = query.filter(
-                (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
-            )
-            # Exclude messages they've read
-            read_subquery = db.session.query(MessageRead.message_key).filter(
-                MessageRead.agent_id == agent_id
-            ).scalar_subquery()
-            query = query.filter(~cls.message_key.in_(read_subquery))
-        else:
-            # Legacy: count messages with no read_at (less accurate for broadcasts)
-            query = query.filter(cls.read_at.is_(None))
-
-        return query.count()
-
-    @classmethod
-    def get_unread_for_agent(
+    def get_for_user(
         cls,
-        agent_id: str,
-        channel: str = None,
+        user_key: str,
         limit: int = 50,
+        unread_only: bool = False,
         team_keys: list[str] = None,
-        team_key: str = None
+        team_key_filter: str = None,
+        domain_key: str = None
     ) -> list['Message']:
         """
-        Get unread messages for an agent, optionally filtered by channel and team.
+        Get messages visible to a specific user.
+
+        A user can see messages where:
+        - scope=broadcast-domain and same domain_key
+        - scope=broadcast-team and team_key in user's team_keys
+        - scope=agent-user and to_key=user_key
+        - scope=user-agent and from_key=user_key
+        - scope=user-agents and from_key=user_key or user_key matches
 
         Args:
-            agent_id: The agent's identifier
-            channel: Filter by channel (optional)
+            user_key: The user's key
             limit: Maximum messages to return
-            team_keys: List of team_keys the agent can access (for scope filtering)
-            team_key: Filter to a specific team only
+            unread_only: Only return unread messages (uses user_key for read tracking)
+            team_keys: List of team_keys the user can access
+            team_key_filter: Filter to a specific team only
+            domain_key: The user's domain_key
         """
         from api.models.message_read import MessageRead
-        from sqlalchemy import or_
+        from sqlalchemy import or_, and_
 
-        query = cls.query.filter(
-            (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
+        conditions = []
+
+        # broadcast-domain: visible to all in domain
+        if domain_key:
+            conditions.append(
+                and_(
+                    cls.scope == 'broadcast-domain',
+                    cls.domain_key == domain_key
+                )
+            )
+
+        # broadcast-team: visible to team members
+        if team_keys:
+            if team_key_filter:
+                conditions.append(
+                    and_(
+                        cls.scope == 'broadcast-team',
+                        cls.team_key == team_key_filter
+                    )
+                )
+            else:
+                conditions.append(
+                    and_(
+                        cls.scope == 'broadcast-team',
+                        cls.team_key.in_(team_keys)
+                    )
+                )
+
+        # agent-user: messages from an agent to this user
+        conditions.append(
+            and_(
+                cls.scope == 'agent-user',
+                cls.to_key == user_key
+            )
         )
+
+        # user-agent: messages from this user (user sees their own)
+        conditions.append(
+            and_(
+                cls.scope == 'user-agent',
+                cls.from_key == user_key
+            )
+        )
+
+        # user-agents: messages from this user to their agents
+        conditions.append(
+            and_(
+                cls.scope == 'user-agents',
+                or_(cls.from_key == user_key, cls.user_key == user_key)
+            )
+        )
+
+        query = cls.query.filter(or_(*conditions))
+
+        if unread_only:
+            # Use user_key for read tracking
+            read_subquery = db.session.query(MessageRead.message_key).filter(
+                MessageRead.reader_key == user_key  # Users use their user_key as agent_id
+            ).scalar_subquery()
+            query = query.filter(~cls.message_key.in_(read_subquery))
+
+        return query.order_by(cls.created_at.desc()).limit(limit).all()
+
+    @classmethod
+    def get_unread_count(cls, agent_key: str = None, channel: str = None, domain_key: str = None) -> int:
+        """
+        Get count of unread messages for an agent.
+
+        Args:
+            agent_key: Count unread for this specific agent (required)
+            channel: Filter by channel (optional)
+            domain_key: The agent's domain_key
+        """
+        from api.models.message_read import MessageRead
+
+        if not agent_key:
+            return 0
+
+        # Get messages visible to this agent
+        query = cls.query.filter(cls.domain_key == domain_key) if domain_key else cls.query
 
         if channel:
             query = query.filter(cls.channel == channel)
-
-        # Apply team scope filtering
-        if team_key:
-            # Filter to specific team only
-            query = query.filter(cls.team_key == team_key)
-        elif team_keys:
-            # Show domain-wide (team_key is null) OR messages in agent's teams
-            query = query.filter(
-                or_(cls.team_key.is_(None), cls.team_key.in_(team_keys))
-            )
 
         # Exclude messages they've read
         read_subquery = db.session.query(MessageRead.message_key).filter(
-            MessageRead.agent_id == agent_id
+            MessageRead.reader_key == agent_key
         ).scalar_subquery()
         query = query.filter(~cls.message_key.in_(read_subquery))
 
-        return query.order_by(cls.created_at.desc()).limit(limit).all()
+        return query.count()
 
     @classmethod
     def get_unread_autonomous_count(
         cls,
-        agent_id: str,
-        team_keys: list[str] = None
+        agent_key: str,
+        user_key: str = None,
+        team_keys: list[str] = None,
+        domain_key: str = None
     ) -> int:
         """
         Get count of unread autonomous messages for an agent.
 
-        These are high-priority tasks that require the agent to act autonomously
-        and reply when complete.
-
         Args:
-            agent_id: The agent's identifier
-            team_keys: List of team_keys the agent can access (for scope filtering)
+            agent_key: The agent's key
+            user_key: The user_key linked to this agent
+            team_keys: List of team_keys the agent can access
+            domain_key: The agent's domain_key
         """
         from api.models.message_read import MessageRead
-        from sqlalchemy import or_
+        from sqlalchemy import or_, and_
 
-        query = cls.query.filter(
-            cls.autonomous == True,
-            (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
+        conditions = []
+
+        # Only autonomous messages
+        base_filter = cls.autonomous == True
+
+        # Build visibility conditions (same as get_for_agent)
+        if domain_key:
+            conditions.append(
+                and_(cls.scope == 'broadcast-domain', cls.domain_key == domain_key)
+            )
+
+        if team_keys:
+            conditions.append(
+                and_(cls.scope == 'broadcast-team', cls.team_key.in_(team_keys))
+            )
+
+        conditions.append(
+            and_(cls.scope == 'agent-agent', or_(cls.from_key == agent_key, cls.to_key == agent_key))
+        )
+        conditions.append(
+            and_(cls.scope == 'user-agent', cls.to_key == agent_key)
         )
 
-        # Apply team scope filtering
-        if team_keys:
-            query = query.filter(
-                or_(cls.team_key.is_(None), cls.team_key.in_(team_keys))
+        if user_key:
+            conditions.append(
+                and_(cls.scope == 'user-agents', cls.user_key == user_key)
             )
+            conditions.append(
+                and_(cls.scope == 'agent-agents', cls.user_key == user_key)
+            )
+
+        query = cls.query.filter(base_filter, or_(*conditions))
 
         # Exclude messages they've read
         read_subquery = db.session.query(MessageRead.message_key).filter(
-            MessageRead.agent_id == agent_id
+            MessageRead.reader_key == agent_key
         ).scalar_subquery()
         query = query.filter(~cls.message_key.in_(read_subquery))
 
         return query.count()
 
-    def mark_read(self, agent_id: str = None) -> bool:
+    def mark_read(self, reader_key: str = None) -> bool:
         """
         Mark the message as read.
 
         Args:
-            agent_id: The agent marking it read (required for proper tracking)
+            reader_key: The agent_key or user_key marking it read (required)
         """
         from api.models.message_read import MessageRead
 
-        if agent_id:
-            MessageRead.mark_read(self.message_key, agent_id)
+        if reader_key:
+            MessageRead.mark_read(self.message_key, reader_key)
             return True
         else:
             # Legacy behavior - mark globally
@@ -264,11 +489,8 @@ class Message(BaseModel):
         """
         Confirm task completion on this message.
 
-        Used by operators to explicitly confirm that an autonomous task
-        has been completed satisfactorily.
-
         Args:
-            confirmed_by: Agent ID or human name who confirmed
+            confirmed_by: agent_key or user_key who confirmed
         """
         self.confirmed = True
         self.confirmed_by = confirmed_by
@@ -276,26 +498,22 @@ class Message(BaseModel):
         return self.save()
 
     def unconfirm(self) -> bool:
-        """
-        Remove confirmation from this message.
-
-        Used when an operator realizes more work is needed after confirming.
-        """
+        """Remove confirmation from this message."""
         self.confirmed = False
         self.confirmed_by = None
         self.confirmed_at = None
         return self.save()
 
-    def is_read_by(self, agent_id: str) -> bool:
-        """Check if a specific agent has read this message."""
+    def is_read_by(self, reader_key: str) -> bool:
+        """Check if a specific agent or user has read this message."""
         from api.models.message_read import MessageRead
-        return MessageRead.has_read(self.message_key, agent_id)
+        return MessageRead.has_read(self.message_key, reader_key)
 
     def get_readers(self) -> list[str]:
-        """Get list of agent_ids who have read this message."""
+        """Get list of keys who have read this message."""
         from api.models.message_read import MessageRead
         reads = MessageRead.get_readers(self.message_key)
-        return [r.agent_id for r in reads]
+        return [r.reader_key for r in reads]
 
     def get_parent(self) -> 'Message':
         """Get the parent message this is replying to."""
@@ -318,7 +536,6 @@ class Message(BaseModel):
         Get a full thread starting from a message.
         Returns the root message and all descendants.
         """
-        # Find root of thread
         msg = cls.get_by_key(message_key)
         if not msg:
             return None
@@ -332,7 +549,6 @@ class Message(BaseModel):
             else:
                 break
 
-        # Build thread from root
         return {
             'root': root,
             'replies': cls._get_nested_replies(root.message_key)
@@ -359,7 +575,6 @@ class Message(BaseModel):
     def get_thread_entity_keys(cls, message_key: str) -> list[str]:
         """
         Get all unique entity keys linked across a thread.
-        Aggregates entity_keys from root message and all replies.
         """
         thread = cls.get_thread(message_key)
         if not thread:
@@ -367,12 +582,10 @@ class Message(BaseModel):
 
         entity_keys = set()
 
-        # Add from root
         root = thread.get('root')
         if root and root.entity_keys:
             entity_keys.update(root.entity_keys)
 
-        # Recursively collect from replies
         def collect_from_replies(replies):
             for item in replies:
                 msg = item.get('message')
@@ -383,20 +596,20 @@ class Message(BaseModel):
         collect_from_replies(thread.get('replies', []))
         return list(entity_keys)
 
-    def to_dict(self, include_read_status: bool = True, for_agent: str = None, include_readers: bool = False, include_thread_info: bool = False) -> dict:
+    def to_dict(self, include_read_status: bool = True, for_reader: str = None, include_readers: bool = False, include_thread_info: bool = False) -> dict:
         """
         Convert to dictionary.
 
         Args:
             include_read_status: Include is_read field
-            for_agent: Check read status for this specific agent
-            include_readers: Include list of agents who have read this message
+            for_reader: Check read status for this specific agent/user key
+            include_readers: Include list of keys who have read this message
             include_thread_info: Include reply_count and has_parent indicators
         """
         result = super().to_dict()
         if include_read_status:
-            if for_agent:
-                result['is_read'] = self.is_read_by(for_agent)
+            if for_reader:
+                result['is_read'] = self.is_read_by(for_reader)
             else:
                 # Legacy: use read_at field
                 result['is_read'] = self.read_at is not None
@@ -404,7 +617,7 @@ class Message(BaseModel):
         if include_readers:
             from api.models.message_read import MessageRead
             reads = MessageRead.get_readers(self.message_key)
-            result['readers'] = [{'agent_id': r.agent_id, 'read_at': r.read_at.isoformat() if r.read_at else None} for r in reads]
+            result['readers'] = [{'reader_key': r.reader_key, 'read_at': r.read_at.isoformat() if r.read_at else None} for r in reads]
             result['read_count'] = len(reads)
 
         if include_thread_info:

@@ -1,23 +1,13 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Message, Agent } from '@/types';
+import { Message, Agent, Team } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
 import { Markdown } from '@/components/markdown/markdown';
-
-// Get person ID from environment
-const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'unknown-user';
-
-// Derive display name from person ID (e.g., 'wayne-houlden' -> 'Wayne Houlden')
-function personIdToName(personId: string): string {
-  return personId
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-}
+import { useAuthStore } from '@/lib/stores/auth-store';
 
 const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message', 'acknowledged', 'waiting', 'resumed'] as const;
 const PRIORITIES = ['normal', 'high', 'urgent'] as const;
@@ -42,12 +32,17 @@ const typeIcons: Record<string, string> = {
 };
 
 export default function MessagesPage() {
+  const { user } = useAuthStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [channel, setChannel] = useState('all');
   const [channels, setChannels] = useState<string[]>(['general']);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('24h');
   const [clearing, setClearing] = useState(false);
+
+  // Scope filter state
+  const [scopeFilter, setScopeFilter] = useState<string>('all'); // 'all', 'domain', or team_key
+  const [teams, setTeams] = useState<Team[]>([]);
 
   // New message modal state
   const [showNewMessage, setShowNewMessage] = useState(false);
@@ -56,12 +51,9 @@ export default function MessagesPage() {
   const [newMessageType, setNewMessageType] = useState<typeof MESSAGE_TYPES[number]>('status');
   const [newMessagePriority, setNewMessagePriority] = useState<typeof PRIORITIES[number]>('normal');
   const [newMessageRecipient, setNewMessageRecipient] = useState<string>('broadcast');
+  const [newMessageScope, setNewMessageScope] = useState<string>('domain'); // 'domain' or team_key
   const [activeAgents, setActiveAgents] = useState<Agent[]>([]);
   const [sending, setSending] = useState(false);
-
-
-  // Track if we've ensured the person entity exists
-  const personEnsured = useRef(false);
 
   // Calculate since timestamp based on time filter
   const getSinceTimestamp = (filter: TimeFilter): string | undefined => {
@@ -79,13 +71,35 @@ export default function MessagesPage() {
     }
   };
 
+  // Load user's teams
+  const loadTeams = async () => {
+    try {
+      const res = await api.teams.list({ status: 'active' });
+      setTeams(res.data?.teams || []);
+    } catch (err) {
+      console.error('Failed to load teams:', err);
+    }
+  };
+
   // Load messages and extract channels
   const loadMessages = async () => {
     setLoading(true);
     try {
       const channelParam = channel === 'all' ? undefined : channel;
       const since = getSinceTimestamp(timeFilter);
-      const res = await api.messages.list(channelParam, { since });
+
+      // Determine team_key filter based on scope selection
+      let teamKeyParam: string | undefined;
+      if (scopeFilter === 'domain') {
+        // Domain-wide: explicitly filter for null team_key (backend handles this as empty string)
+        teamKeyParam = '';
+      } else if (scopeFilter !== 'all') {
+        // Specific team
+        teamKeyParam = scopeFilter;
+      }
+      // 'all' means no team_key filter - show all accessible messages
+
+      const res = await api.messages.list(channelParam, { since, team_key: teamKeyParam });
       const msgs = res.data?.messages || [];
       setMessages(msgs);
 
@@ -115,10 +129,11 @@ export default function MessagesPage() {
 
   useEffect(() => {
     loadMessages();
-  }, [channel, timeFilter]);
+  }, [channel, timeFilter, scopeFilter]);
 
   useEffect(() => {
     loadAgents();
+    loadTeams();
   }, []);
 
   const handleClearMessages = async () => {
@@ -136,52 +151,28 @@ export default function MessagesPage() {
     }
   };
 
-  // Ensure person entity exists in the knowledge graph
-  const ensurePersonEntity = async () => {
-    if (personEnsured.current || PERSON_ID === 'unknown-user') return;
-
-    try {
-      // Check if person exists
-      const res = await api.entities.get(PERSON_ID);
-      if (res.data?.entity?.entity_key) {
-        personEnsured.current = true;
-        return;
-      }
-    } catch {
-      // Entity doesn't exist, create it with PERSON_ID as the key
-      try {
-        await api.entities.create({
-          entity_key: PERSON_ID,
-          entity_type: 'Person',
-          name: personIdToName(PERSON_ID),
-          properties: { source: 'web-ui' },
-        });
-        personEnsured.current = true;
-      } catch (createErr) {
-        console.error('Failed to create person entity:', createErr);
-      }
-    }
-  };
-
   const handleSendMessage = async () => {
     if (!newMessageContent.trim()) return;
+    if (!user?.user_key) {
+      alert('You must be logged in to send messages');
+      return;
+    }
 
     setSending(true);
     try {
-      // Ensure person entity exists before first message
-      await ensurePersonEntity();
-
       await api.messages.post({
         channel: newMessageChannel,
-        from_agent: `human:${PERSON_ID}`,
-        to_agent: newMessageRecipient === 'broadcast' ? undefined : newMessageRecipient,
+        from_key: user.user_key,  // Use authenticated user's key
+        to_key: newMessageRecipient === 'broadcast' ? undefined : newMessageRecipient,
         message_type: newMessageType,
         content: { text: newMessageContent },
         priority: newMessagePriority,
+        team_key: newMessageScope === 'domain' ? undefined : newMessageScope,
       });
       setShowNewMessage(false);
       setNewMessageContent('');
       setNewMessageRecipient('broadcast');
+      setNewMessageScope('domain');
       loadMessages();
     } catch (err) {
       console.error('Failed to send message:', err);
@@ -265,22 +256,53 @@ export default function MessagesPage() {
           ))}
         </div>
 
-        {/* Time filter */}
-        <div className="flex items-center gap-1 pb-2">
-          {TIME_FILTERS.map((filter) => (
-            <button
-              key={filter}
-              onClick={() => setTimeFilter(filter)}
+        <div className="flex items-center gap-4 pb-2">
+          {/* Scope filter dropdown */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-cm-coffee">Scope:</label>
+            <select
+              value={scopeFilter}
+              onChange={(e) => setScopeFilter(e.target.value)}
               className={cn(
-                'px-3 py-1 text-xs font-medium rounded-full transition-colors',
-                timeFilter === filter
-                  ? 'bg-cm-terracotta text-cm-ivory'
-                  : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
+                'px-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta',
+                scopeFilter === 'all'
+                  ? 'border-cm-sand bg-cm-ivory'
+                  : scopeFilter === 'domain'
+                  ? 'border-cm-terracotta bg-cm-terracotta/10'
+                  : 'border-purple-500 bg-purple-50'
               )}
             >
-              {filter === 'all' ? 'All time' : filter}
-            </button>
-          ))}
+              <option value="all">All Messages</option>
+              <option value="domain">🌐 Domain-wide</option>
+              {teams.length > 0 && (
+                <optgroup label="Teams">
+                  {teams.map((team) => (
+                    <option key={team.team_key} value={team.team_key}>
+                      👥 {team.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          {/* Time filter */}
+          <div className="flex items-center gap-1">
+            {TIME_FILTERS.map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setTimeFilter(filter)}
+                className={cn(
+                  'px-3 py-1 text-xs font-medium rounded-full transition-colors',
+                  timeFilter === filter
+                    ? 'bg-cm-terracotta text-cm-ivory'
+                    : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
+                )}
+              >
+                {filter === 'all' ? 'All time' : filter}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -328,11 +350,11 @@ export default function MessagesPage() {
                           </span>
                         )}
                         <span className="font-medium text-cm-charcoal">
-                          {message.from_agent}
+                          {message.from_key}
                         </span>
                         <span className="text-cm-coffee/50">→</span>
                         <span className="text-cm-coffee">
-                          {message.to_agent || 'Broadcast'}
+                          {message.to_key || 'Broadcast'}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -381,8 +403,17 @@ export default function MessagesPage() {
                       </div>
                     </div>
 
-                    <p className="text-xs text-cm-coffee/70 mb-2">
-                      #{message.channel}
+                    <p className="text-xs text-cm-coffee/70 mb-2 flex items-center gap-2">
+                      <span>#{message.channel}</span>
+                      {message.team_key ? (
+                        <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 flex items-center gap-1">
+                          <span>👥</span> {message.team_name || 'Team'}
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded bg-cm-sand/50 text-cm-coffee flex items-center gap-1">
+                          <span>🌐</span> Domain
+                        </span>
+                      )}
                     </p>
 
                     <div className="text-sm text-cm-charcoal">
@@ -424,18 +455,37 @@ export default function MessagesPage() {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Channel */}
-              <div>
-                <label className="block text-sm font-medium text-cm-charcoal mb-1">
-                  Channel
-                </label>
-                <input
-                  type="text"
-                  value={newMessageChannel}
-                  onChange={(e) => setNewMessageChannel(e.target.value)}
-                  placeholder="general"
-                  className="w-full px-3 py-2 border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta"
-                />
+              {/* Channel and Scope */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-cm-charcoal mb-1">
+                    Channel
+                  </label>
+                  <input
+                    type="text"
+                    value={newMessageChannel}
+                    onChange={(e) => setNewMessageChannel(e.target.value)}
+                    placeholder="general"
+                    className="w-full px-3 py-2 border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-cm-charcoal mb-1">
+                    Scope
+                  </label>
+                  <select
+                    value={newMessageScope}
+                    onChange={(e) => setNewMessageScope(e.target.value)}
+                    className="w-full px-3 py-2 border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta"
+                  >
+                    <option value="domain">🌐 Domain-wide</option>
+                    {teams.map((team) => (
+                      <option key={team.team_key} value={team.team_key}>
+                        👥 {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Recipient */}
