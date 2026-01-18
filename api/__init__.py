@@ -3,12 +3,22 @@ Collective Memory Platform - Flask Application Factory
 
 Following Jai API patterns for Flask app initialization.
 """
-from flask import Flask
+import logging
+import traceback
+
+from flask import Flask, request
 from flask_cors import CORS
 from flask_restx import Api
 
 from api import config
 from api.models import db
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+logger = logging.getLogger('api')
 
 
 def create_app() -> Flask:
@@ -42,6 +52,29 @@ def create_app() -> Flask:
         "supports_credentials": True,
     }})
 
+    # Global exception handler for unhandled errors
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        """Log full traceback for all unhandled exceptions."""
+        # Get request details for context
+        method = request.method
+        path = request.path
+        remote_addr = request.remote_addr
+
+        # Log the full traceback
+        logger.error(
+            f"Unhandled exception on {method} {path} from {remote_addr}:\n"
+            f"Exception: {type(e).__name__}: {str(e)}\n"
+            f"Traceback:\n{traceback.format_exc()}"
+        )
+
+        # Return a generic error response
+        return {
+            'success': False,
+            'msg': f'Internal server error: {str(e)}',
+            'error_type': type(e).__name__
+        }, 500
+
     # Initialize Flask-RestX API with Swagger UI
     api = Api(
         app,
@@ -51,6 +84,26 @@ def create_app() -> Flask:
         doc='/api/docs',
         prefix='/api'
     )
+
+    # Flask-RestX error handler
+    @api.errorhandler(Exception)
+    def api_error_handler(e):
+        """Log errors caught by Flask-RestX."""
+        method = request.method
+        path = request.path
+        remote_addr = request.remote_addr
+
+        logger.error(
+            f"API exception on {method} {path} from {remote_addr}:\n"
+            f"Exception: {type(e).__name__}: {str(e)}\n"
+            f"Traceback:\n{traceback.format_exc()}"
+        )
+
+        return {
+            'success': False,
+            'msg': f'Internal server error: {str(e)}',
+            'error_type': type(e).__name__
+        }, 500
 
     # Register routes
     from api.routes import register_routes
