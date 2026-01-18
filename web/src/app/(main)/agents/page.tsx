@@ -27,6 +27,7 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterClient, setFilterClient] = useState<string>('all');
+  const [filterTeam, setFilterTeam] = useState<string>('all');
   const [showInactive, setShowInactive] = useState(true);
   const [deleting, setDeleting] = useState(false);
 
@@ -68,11 +69,19 @@ export default function AgentsPage() {
     }
   };
 
-  const activeAgents = agents.filter((a) => a.is_active);
-  const inactiveAgents = agents.filter((a) => !a.is_active);
-
-  // Get unique clients from agents for filter buttons
+  // Get unique clients and teams from agents for filter buttons
   const availableClients = [...new Set(agents.map(a => a.client).filter(Boolean))] as ClientType[];
+  const availableTeams = [...new Set(agents.map(a => a.team_name).filter(Boolean))] as string[];
+
+  // Filter agents by team
+  const filteredAgents = filterTeam === 'all'
+    ? agents
+    : filterTeam === 'domain'
+      ? agents.filter(a => !a.team_name)
+      : agents.filter(a => a.team_name === filterTeam);
+
+  const activeAgents = filteredAgents.filter((a) => a.is_active);
+  const inactiveAgents = filteredAgents.filter((a) => !a.is_active);
 
   if (loading) {
     return (
@@ -106,7 +115,8 @@ export default function AgentsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex flex-wrap items-center gap-4 mb-6">
+        {/* Client filter */}
         <div className="flex items-center gap-1">
           <button
             onClick={() => setFilterClient('all')}
@@ -134,6 +144,49 @@ export default function AgentsPage() {
             </button>
           ))}
         </div>
+
+        {/* Team filter */}
+        {availableTeams.length > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-cm-coffee/70 mr-1">Scope:</span>
+            <button
+              onClick={() => setFilterTeam('all')}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-lg transition-colors',
+                filterTeam === 'all'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+              )}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setFilterTeam('domain')}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-lg transition-colors',
+                filterTeam === 'domain'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+              )}
+            >
+              Domain
+            </button>
+            {availableTeams.map((team) => (
+              <button
+                key={team}
+                onClick={() => setFilterTeam(team)}
+                className={cn(
+                  'px-3 py-1.5 text-sm rounded-lg transition-colors',
+                  filterTeam === team
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                )}
+              >
+                {team}
+              </button>
+            ))}
+          </div>
+        )}
 
         <label className="flex items-center gap-2 text-sm text-cm-coffee">
           <input

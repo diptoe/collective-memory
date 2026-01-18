@@ -6,7 +6,7 @@ Agent registration, status operations, and checkpointing.
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Agent, AgentCheckpoint, Model, Persona, Session, is_valid_client, get_client_affinities
+from api.models import Agent, AgentCheckpoint, Model, Persona, Session, Team, is_valid_client, get_client_affinities
 from api.services.checkpoint import checkpoint_service
 from api.services.activity import activity_service
 from api.services.auth import require_auth
@@ -61,6 +61,10 @@ def register_agent_routes(api: Api):
         'focus': fields.String(description='Current work focus'),
         'role': fields.String(description='Legacy role (deprecated, use persona_key)'),
         'capabilities': fields.List(fields.String, description='Agent capabilities'),
+        # Team and project association
+        'team_key': fields.String(description='Team key for team-scoped agents (optional)'),
+        'project_key': fields.String(description='Project/Repository entity key (optional)'),
+        'project_name': fields.String(description='Project/Repository name (optional)'),
     })
 
     status_update = ns.model('StatusUpdate', {
@@ -186,8 +190,41 @@ def register_agent_routes(api: Api):
                     affinity_roles = get_client_affinities(client)
                     affinity_warning = f"Persona '{persona.role}' is not typically used with client '{client}'. Suggested personas for {client}: {affinity_roles}"
 
+            # Get user info for initials suffix and denormalization
+            user = g.current_user
+            user_initials = user.initials.lower() if user and user.initials else None
+            user_name = user.display_name if user else None
+
+            # Auto-suffix agent_id with user initials if not already present
+            agent_id = data['agent_id']
+            if user_initials:
+                # Check if agent_id already ends with user initials
+                if not agent_id.endswith(f'-{user_initials}'):
+                    # Check if already has 2-char suffix that we should replace
+                    parts = agent_id.rsplit('-', 1)
+                    if len(parts) == 2 and len(parts[1]) == 2 and parts[1].isalpha():
+                        # Replace existing 2-char suffix with user initials
+                        agent_id = f"{parts[0]}-{user_initials}"
+                    else:
+                        # Append user initials
+                        agent_id = f"{agent_id}-{user_initials}"
+
+            # Resolve team_key and get team_name
+            team_key = data.get('team_key')
+            team_name = None
+            if team_key:
+                team = Team.get_by_key(team_key)
+                if team:
+                    team_name = team.name
+                else:
+                    return {'success': False, 'msg': f"Team not found: '{team_key}'"}, 404
+
+            # Get project info
+            project_key = data.get('project_key')
+            project_name = data.get('project_name')
+
             # Check if agent already exists
-            existing = Agent.get_by_agent_id(data['agent_id'])
+            existing = Agent.get_by_agent_id(agent_id)
 
             if existing:
                 # Update existing agent (reconnection)
@@ -210,6 +247,22 @@ def register_agent_routes(api: Api):
                     existing.role = data['role']
                 if data.get('capabilities'):
                     existing.capabilities = data['capabilities']
+
+                # Update denormalized user info
+                existing.user_name = user_name
+                existing.user_initials = user_initials.upper() if user_initials else None
+
+                # Update team association if provided
+                if team_key:
+                    existing.team_key = team_key
+                    existing.team_name = team_name
+
+                # Update project association if provided
+                if project_key:
+                    existing.project_key = project_key
+                if project_name:
+                    existing.project_name = project_name
+
                 existing.update_heartbeat()
                 existing.save()
 
@@ -247,7 +300,7 @@ def register_agent_routes(api: Api):
 
             # Create new agent linked to the authenticated user
             agent = Agent(
-                agent_id=data['agent_id'],
+                agent_id=agent_id,  # Use processed agent_id with initials suffix
                 user_key=user_key,
                 client=client,
                 model_key=model_key,
@@ -255,7 +308,16 @@ def register_agent_routes(api: Api):
                 focus=data.get('focus'),
                 role=data.get('role'),
                 capabilities=data.get('capabilities', []),
-                status={'progress': 'not_started'}
+                status={'progress': 'not_started'},
+                # Denormalized user info
+                user_name=user_name,
+                user_initials=user_initials.upper() if user_initials else None,
+                # Team association
+                team_key=team_key,
+                team_name=team_name,
+                # Project association
+                project_key=project_key,
+                project_name=project_name,
             )
 
             # Update focus timestamp if focus provided

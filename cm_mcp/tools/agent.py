@@ -5,9 +5,61 @@ MCP tools for agent collaboration in the Collective Memory (CM) knowledge graph.
 """
 
 import mcp.types as types
+import subprocess
+import re
 from typing import Any
 
 from .utils import _make_request
+
+
+def _detect_project_from_git() -> dict | None:
+    """
+    Detect project from git remote URL.
+
+    Returns dict with owner, repo, url if detected, None otherwise.
+    """
+    try:
+        # Run git remote get-url origin
+        result = subprocess.run(
+            ['git', 'remote', 'get-url', 'origin'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return None
+
+        url = result.stdout.strip()
+        if not url:
+            return None
+
+        # Parse GitHub URL formats:
+        # HTTPS: https://github.com/owner/repo.git or https://github.com/owner/repo
+        # SSH: git@github.com:owner/repo.git or git@github.com:owner/repo
+
+        # HTTPS format
+        https_match = re.match(r'https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?$', url)
+        if https_match:
+            return {
+                'owner': https_match.group(1),
+                'repo': https_match.group(2),
+                'url': url,
+            }
+
+        # SSH format
+        ssh_match = re.match(r'git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$', url)
+        if ssh_match:
+            return {
+                'owner': ssh_match.group(1),
+                'repo': ssh_match.group(2),
+                'url': url,
+            }
+
+        return None
+
+    except Exception:
+        return None
 
 
 async def _fetch_available_options(config: Any) -> dict:
@@ -275,6 +327,67 @@ async def identify(
         return [types.TextContent(type="text", text=output)]
 
     try:
+        # Detect project from git remote (auto-detection)
+        git_project = _detect_project_from_git()
+        detected_project_key = None
+        detected_project_name = None
+
+        if git_project:
+            # Try to sync Repository entity and find parent Project entity
+            repo_entity_key = None
+            project_entity_key = None
+
+            try:
+                # Step 1: Sync Repository entity from GitHub
+                repo_url = f"https://github.com/{git_project['owner']}/{git_project['repo']}"
+                sync_result = await _make_request(
+                    config,
+                    "POST",
+                    "/github/sync",
+                    json={"repository_url": repo_url}
+                )
+                if sync_result.get("success"):
+                    sync_data = sync_result.get("data", {})
+                    entity_data = sync_data.get("entity", {})
+                    repo_entity_key = entity_data.get("entity_key")
+                    detected_project_name = entity_data.get("name") or git_project['repo']
+
+                # Step 2: Search for a Project entity with matching name
+                # Project is the parent entity type for Repository
+                repo_name = git_project['repo']
+                search_result = await _make_request(
+                    config,
+                    "GET",
+                    "/entities/search",
+                    params={"query": repo_name, "entity_type": "Project", "limit": "5"}
+                )
+                if search_result.get("success"):
+                    entities = search_result.get("data", {}).get("entities", [])
+                    # Look for exact or close match
+                    for entity in entities:
+                        entity_name = entity.get("name", "").lower()
+                        if entity_name == repo_name.lower() or entity_name == repo_name.lower().replace("-", " "):
+                            project_entity_key = entity.get("entity_key")
+                            detected_project_name = entity.get("name")
+                            break
+
+                # Step 3: Use Project entity_key if found, otherwise use Repository entity_key
+                if project_entity_key:
+                    detected_project_key = project_entity_key
+                    git_project['entity_type'] = 'Project'
+                elif repo_entity_key:
+                    detected_project_key = repo_entity_key
+                    git_project['entity_type'] = 'Repository'
+
+                # Store both for reference
+                git_project['repo_entity_key'] = repo_entity_key
+                git_project['project_entity_key'] = project_entity_key
+
+            except Exception as e:
+                # If sync fails, just use repo name as project name
+                detected_project_name = git_project['repo']
+                git_project['sync_error'] = str(e)
+
         # Resolve model_id to model_key if provided
         resolved_model_key = model_key
         model_name = None
@@ -339,6 +452,77 @@ async def identify(
         if focus:
             registration_data["focus"] = focus
 
+        # Add project info if detected
+        if detected_project_key:
+            registration_data["project_key"] = detected_project_key
+        if detected_project_name:
+            registration_data["project_name"] = detected_project_name
+
+        # Fetch user info BEFORE registration to get team_key
+        # We need this for: user initials, team resolution, and domain context
+        user_initials = None
+        resolved_team_key = None
+        resolved_team_name = None
+        user_data = {}
+        teams = []
+        available_scopes = []
+        default_scope = {}
+
+        if hasattr(config, 'pat') and config.pat:
+            try:
+                me_result = await _make_request(config, "GET", "/auth/me")
+                if me_result.get("success"):
+                    me_data = me_result.get("data", {})
+                    user_data = me_data.get("user", {})
+                    teams = me_data.get("teams", [])
+                    available_scopes = me_data.get("available_scopes", [])
+                    default_scope = me_data.get("default_scope", {})
+                    user_initials = user_data.get("initials", "").lower()
+
+                    # Resolve team from explicit params or auto-detect
+                    if explicit_team_key:
+                        team = next((t for t in teams if t.get('team_key') == explicit_team_key), None)
+                        if team:
+                            resolved_team_key = explicit_team_key
+                            resolved_team_name = team.get('name')
+                    elif explicit_team_slug:
+                        team = next((t for t in teams if t.get('slug') == explicit_team_slug), None)
+                        if team:
+                            resolved_team_key = team.get('team_key')
+                            resolved_team_name = team.get('name')
+                    elif teams and agent_id:
+                        # Auto-detect from agent_id pattern matching team slugs or names
+                        agent_id_lower = agent_id.lower().replace('-', ' ').replace('_', ' ')
+                        for t in teams:
+                            team_slug = t.get('slug', '').lower().replace('-', ' ').replace('_', ' ')
+                            team_name = t.get('name', '').lower()
+                            if team_slug and team_slug in agent_id_lower:
+                                resolved_team_key = t.get('team_key')
+                                resolved_team_name = t.get('name')
+                                break
+                            elif team_name and team_name in agent_id_lower:
+                                resolved_team_key = t.get('team_key')
+                                resolved_team_name = t.get('name')
+                                break
+            except Exception:
+                pass  # Continue without user info
+
+        # Auto-suffix agent_id with user initials (if not already present)
+        if user_initials and agent_id:
+            if not agent_id.endswith(f'-{user_initials}'):
+                # Check if agent_id already has a 2-char alphabetic suffix
+                parts = agent_id.rsplit('-', 1)
+                if len(parts) == 2 and len(parts[1]) == 2 and parts[1].isalpha():
+                    # Replace existing 2-char suffix with user initials
+                    agent_id = f"{parts[0]}-{user_initials}"
+                else:
+                    # Append user initials
+                    agent_id = f"{agent_id}-{user_initials}"
+
+        # Add team_key to registration if resolved
+        if resolved_team_key:
+            registration_data["team_key"] = resolved_team_key
+
         # Resolve persona to persona_key
         persona_key = None
         if persona:
@@ -384,88 +568,56 @@ async def identify(
             if agent_data.get("affinity_warning"):
                 session_state["affinity_warning"] = agent_data.get("affinity_warning")
 
-            # Fetch user info for multi-tenancy context
-            if hasattr(config, 'pat') and config.pat:
-                try:
-                    me_result = await _make_request(config, "GET", "/auth/me")
-                    if me_result.get("success"):
-                        me_data = me_result.get("data", {})
-                        user_data = me_data.get("user", {})
-                        session_state["user_key"] = user_data.get("user_key")
-                        session_state["user_email"] = user_data.get("email")
-                        session_state["user_display_name"] = user_data.get("display_name")
-                        session_state["user_first_name"] = user_data.get("first_name")
-                        session_state["user_last_name"] = user_data.get("last_name")
-                        session_state["user_role"] = user_data.get("role")
-                        session_state["user_status"] = user_data.get("status")
-                        domain_key = user_data.get("domain_key")
-                        if domain_key:
-                            session_state["domain_key"] = domain_key
-                        # Store domain details if available
-                        domain_data = user_data.get("domain")
-                        if domain_data:
-                            session_state["domain_name"] = domain_data.get("name")
+            # Store project info in session_state (from git detection)
+            if git_project:
+                session_state["project_owner"] = git_project.get('owner')
+                session_state["project_repo"] = git_project.get('repo')
+            if detected_project_key:
+                session_state["project_key"] = detected_project_key
+            if detected_project_name:
+                session_state["project_name"] = detected_project_name
 
-                        # Store teams info
-                        teams = me_data.get("teams", [])
-                        session_state["teams"] = teams
+            # Store user info (already fetched before registration)
+            if user_data:
+                session_state["user_key"] = user_data.get("user_key")
+                session_state["user_email"] = user_data.get("email")
+                session_state["user_display_name"] = user_data.get("display_name")
+                session_state["user_first_name"] = user_data.get("first_name")
+                session_state["user_last_name"] = user_data.get("last_name")
+                session_state["user_role"] = user_data.get("role")
+                session_state["user_status"] = user_data.get("status")
+                session_state["user_initials"] = user_data.get("initials")
+                domain_key = user_data.get("domain_key")
+                if domain_key:
+                    session_state["domain_key"] = domain_key
+                # Store domain details if available
+                domain_data = user_data.get("domain")
+                if domain_data:
+                    session_state["domain_name"] = domain_data.get("name")
 
-                        # Store scopes info
-                        available_scopes = me_data.get("available_scopes", [])
-                        default_scope = me_data.get("default_scope", {})
-                        session_state["available_scopes"] = available_scopes
-                        session_state["default_scope"] = default_scope
+            # Store teams info
+            session_state["teams"] = teams
 
-                        # Auto-detect or set active team
-                        detected_team = None
-                        detected_method = None
+            # Store scopes info
+            session_state["available_scopes"] = available_scopes
+            session_state["default_scope"] = default_scope
 
-                        if explicit_team_key:
-                            # Explicit team_key provided - validate and use
-                            team = next((t for t in teams if t.get('team_key') == explicit_team_key), None)
-                            if team:
-                                detected_team = team
-                                detected_method = "explicit_team_key"
-                            # else: invalid team_key, will be noted in output
-
-                        elif explicit_team_slug:
-                            # Explicit team_slug provided - resolve to team_key
-                            team = next((t for t in teams if t.get('slug') == explicit_team_slug), None)
-                            if team:
-                                detected_team = team
-                                detected_method = "explicit_team_slug"
-                            # else: team slug not found, will be noted in output
-
-                        elif teams and agent_id:
-                            # Auto-detect from agent_id pattern matching team slugs or names
-                            agent_id_lower = agent_id.lower().replace('-', ' ').replace('_', ' ')
-
-                            for t in teams:
-                                team_slug = t.get('slug', '').lower().replace('-', ' ').replace('_', ' ')
-                                team_name = t.get('name', '').lower()
-
-                                # Check if team slug or name is contained in agent_id
-                                if team_slug and team_slug in agent_id_lower:
-                                    detected_team = t
-                                    detected_method = f"auto (matched slug: {t.get('slug')})"
-                                    break
-                                elif team_name and team_name in agent_id_lower:
-                                    detected_team = t
-                                    detected_method = f"auto (matched name: {t.get('name')})"
-                                    break
-
-                        # Set active team if detected
-                        if detected_team:
-                            session_state["active_team_key"] = detected_team.get('team_key')
-                            session_state["active_team_name"] = detected_team.get('name')
-                            session_state["active_team_method"] = detected_method
-                            # Update default scope to team
-                            session_state["default_scope"] = {
-                                "scope_type": "team",
-                                "scope_key": detected_team.get('team_key')
-                            }
-                except Exception:
-                    pass  # If auth lookup fails, continue without domain
+            # Set active team if resolved (already done before registration)
+            if resolved_team_key:
+                session_state["active_team_key"] = resolved_team_key
+                session_state["active_team_name"] = resolved_team_name
+                # Determine detection method for display
+                if explicit_team_key:
+                    session_state["active_team_method"] = "explicit_team_key"
+                elif explicit_team_slug:
+                    session_state["active_team_method"] = "explicit_team_slug"
+                else:
+                    session_state["active_team_method"] = "auto (from agent_id)"
+                # Update default scope to team
+                session_state["default_scope"] = {
+                    "scope_type": "team",
+                    "scope_key": resolved_team_key
+                }
 
             # Try to resolve persona name
             if persona:
@@ -558,6 +710,26 @@ async def identify(
                 if session_state.get("active_team_method"):
                     output += f" ({session_state.get('active_team_method')})"
                 output += "\n"
+
+            # Show project info if detected
+            if detected_project_name or detected_project_key or git_project:
+                output += "\n## Project Context\n"
+                if git_project:
+                    output += f"**GitHub:** {git_project.get('owner')}/{git_project.get('repo')}\n"
+                if detected_project_name:
+                    output += f"**Name:** {detected_project_name}\n"
+                if detected_project_key:
+                    entity_type = git_project.get('entity_type', 'Unknown') if git_project else 'Unknown'
+                    output += f"**Entity:** {detected_project_key} ({entity_type})\n"
+                # Show both entity keys if different
+                if git_project:
+                    repo_key = git_project.get('repo_entity_key')
+                    proj_key = git_project.get('project_entity_key')
+                    if repo_key and proj_key and repo_key != proj_key:
+                        output += f"**Repository Entity:** {repo_key}\n"
+                        output += f"**Project Entity:** {proj_key}\n"
+                    if git_project.get('sync_error'):
+                        output += f"**Note:** {git_project.get('sync_error')}\n"
 
             if agent_data.get("affinity_warning"):
                 output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"
@@ -790,6 +962,20 @@ async def get_my_identity(
     if focus:
         output += f"\n### Current Focus\n"
         output += f"{focus}\n"
+
+    # Project context
+    project_name = session_state.get("project_name")
+    project_key = session_state.get("project_key")
+    project_owner = session_state.get("project_owner")
+    project_repo = session_state.get("project_repo")
+    if project_name or project_key:
+        output += f"\n### Project Context\n"
+        if project_name:
+            output += f"**Repository:** {project_name}\n"
+        if project_owner and project_repo:
+            output += f"**GitHub:** {project_owner}/{project_repo}\n"
+        if project_key:
+            output += f"**Entity Key:** {project_key}\n"
 
     # Affinity warning
     affinity_warning = session_state.get("affinity_warning")

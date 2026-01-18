@@ -29,6 +29,18 @@ class Agent(BaseModel):
     # Link to owning user (agents belong to users, users belong to domains)
     user_key = Column(String(36), ForeignKey('users.user_key'), nullable=True, index=True)
 
+    # Team association (nullable - agents can be domain-level)
+    team_key = Column(String(36), ForeignKey('teams.team_key'), nullable=True, index=True)
+    team_name = Column(String(200), nullable=True)  # Denormalized for display
+
+    # User display info (denormalized for performance)
+    user_name = Column(String(200), nullable=True)
+    user_initials = Column(String(10), nullable=True)
+
+    # Project/Repository context (optional)
+    project_key = Column(String(36), nullable=True, index=True)
+    project_name = Column(String(200), nullable=True)
+
     # Client type (claude-code, claude-desktop, codex, gemini-cli)
     client = Column(String(50), nullable=True, index=True)
 
@@ -55,7 +67,11 @@ class Agent(BaseModel):
 
     _default_fields = [
         'agent_key', 'agent_id', 'user_key', 'client', 'model_key', 'persona_key',
-        'focus', 'focused_mode', 'role', 'capabilities', 'status'
+        'focus', 'focused_mode', 'role', 'capabilities', 'status',
+        # Team and user display info
+        'team_key', 'team_name', 'user_name', 'user_initials',
+        # Project context
+        'project_key', 'project_name'
     ]
     _readonly_fields = ['agent_key', 'created_at']
 
@@ -64,36 +80,43 @@ class Agent(BaseModel):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 4  # Bumped for user_key field
+        return 5  # Bumped for team_key, user_name, user_initials, project_key fields
 
     @classmethod
     def migrate(cls) -> bool:
         """
-        Migrate existing Agent records to link to a user.
+        Migrate existing Agent records.
 
-        All existing agents without a user_key are linked to the first admin user.
-        This allows domain-based access control to work retroactively.
+        - Links agents without user_key to the first admin user
+        - Backfills user_name and user_initials from linked user
         """
         from api.models.user import User
 
         migrated = False
-        # Only migrate records that have NULL user_key
-        records = cls.query.filter(cls.user_key.is_(None)).all()
 
-        if not records:
-            return False
+        # Phase 1: Link orphaned agents to admin user
+        orphaned = cls.query.filter(cls.user_key.is_(None)).all()
+        if orphaned:
+            admin_user = User.query.filter_by(is_admin=True).order_by(User.created_at.asc()).first()
+            if admin_user:
+                for r in orphaned:
+                    r.user_key = admin_user.user_key
+                    db.session.add(r)
+                    migrated = True
 
-        # Find the first admin user to assign orphaned agents to
-        admin_user = User.query.filter_by(is_admin=True).order_by(User.created_at.asc()).first()
+        # Phase 2: Backfill user_name and user_initials for agents with user_key but no user_name
+        agents_needing_user_info = cls.query.filter(
+            cls.user_key.isnot(None),
+            cls.user_name.is_(None)
+        ).all()
 
-        if not admin_user:
-            # No admin user exists yet, can't migrate
-            return False
-
-        for r in records:
-            r.user_key = admin_user.user_key
-            db.session.add(r)
-            migrated = True
+        for agent in agents_needing_user_info:
+            user = User.query.filter_by(user_key=agent.user_key).first()
+            if user:
+                agent.user_name = user.display_name
+                agent.user_initials = user.initials
+                db.session.add(agent)
+                migrated = True
 
         if migrated:
             db.session.commit()

@@ -44,6 +44,8 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
   const personaName = agent.persona?.name || agent.role;
   const personaColor = agent.persona?.color;
   const modelName = agent.model?.name;
+  // User initials for avatar (fallback to first 2 chars of agent_id)
+  const avatarInitials = agent.user_initials?.toUpperCase() || agent.agent_id.slice(0, 2).toUpperCase();
 
   const cardClassName = cn(
     'block p-4 rounded-xl border border-cm-sand bg-cm-ivory transition-all',
@@ -59,7 +61,7 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
               className="w-10 h-10 rounded-lg flex items-center justify-center text-cm-ivory text-sm font-medium"
               style={{ backgroundColor: personaColor || '#2d2d2d' }}
             >
-              {agent.agent_id.slice(0, 2).toUpperCase()}
+              {avatarInitials}
             </div>
             <div
               className={cn(
@@ -70,7 +72,12 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
           </div>
           <div>
             <h3 className="font-medium text-cm-charcoal">{agent.agent_id}</h3>
-            <p className="text-xs text-cm-coffee">{personaName}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-cm-coffee">{personaName}</p>
+              {agent.user_name && (
+                <span className="text-xs text-cm-coffee/60">({agent.user_name})</span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -87,7 +94,7 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
         )}
       </div>
 
-      {/* Client and Model badges */}
+      {/* Client, Model, Team, and Project badges */}
       <div className="flex flex-wrap gap-1 mb-3">
         {clientLabel && (
           <span className={cn('px-2 py-0.5 text-xs rounded-full', clientColor)}>
@@ -97,6 +104,22 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
         {modelName && (
           <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
             {modelName}
+          </span>
+        )}
+        {/* Team or Domain badge */}
+        {agent.team_name ? (
+          <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">
+            {agent.team_name}
+          </span>
+        ) : (
+          <span className="px-2 py-0.5 text-xs bg-cm-sand/50 text-cm-coffee rounded-full">
+            Domain
+          </span>
+        )}
+        {/* Project badge */}
+        {agent.project_name && (
+          <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full">
+            {agent.project_name}
           </span>
         )}
       </div>

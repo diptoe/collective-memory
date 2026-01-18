@@ -158,6 +158,16 @@ export interface Agent {
   last_heartbeat: string;
   created_at: string;
   updated_at: string;
+  // User association
+  user_key?: string;
+  user_name?: string;      // Display name (denormalized)
+  user_initials?: string;  // Initials for avatar
+  // Team association
+  team_key?: string;
+  team_name?: string;      // Team name (denormalized)
+  // Project/Repository context
+  project_key?: string;
+  project_name?: string;   // Repository name (denormalized)
   // Resolved references (optional, populated by API)
   model?: Model;
   persona?: Persona;

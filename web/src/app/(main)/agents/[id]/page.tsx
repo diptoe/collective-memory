@@ -276,6 +276,57 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             </div>
 
             <div className="space-y-6">
+              {/* Context - Owner, Scope, Project */}
+              <div className="bg-cm-ivory rounded-xl border border-cm-sand p-6">
+                <h3 className="text-sm font-medium text-cm-coffee mb-4">Context</h3>
+
+                <div className="space-y-4">
+                  {/* Owner */}
+                  <div>
+                    <span className="text-xs text-cm-coffee uppercase tracking-wider">Owner</span>
+                    <div className="mt-1 flex items-center gap-2">
+                      <div
+                        className="w-6 h-6 rounded flex items-center justify-center text-cm-ivory text-xs font-medium"
+                        style={{ backgroundColor: agent?.persona?.color || '#2d2d2d' }}
+                      >
+                        {agent?.user_initials?.toUpperCase() || agent?.agent_id.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="text-sm text-cm-charcoal">
+                        {agent?.user_name || 'Unknown'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Scope */}
+                  <div>
+                    <span className="text-xs text-cm-coffee uppercase tracking-wider">Scope</span>
+                    <p className="mt-1">
+                      {agent?.team_name ? (
+                        <span className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-full border border-purple-200">
+                          {agent.team_name}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 text-xs bg-cm-sand/50 text-cm-coffee rounded-full border border-cm-sand">
+                          Domain
+                        </span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Project */}
+                  {agent?.project_name && (
+                    <div>
+                      <span className="text-xs text-cm-coffee uppercase tracking-wider">Project</span>
+                      <p className="mt-1">
+                        <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full border border-blue-200">
+                          {agent.project_name}
+                        </span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Metadata */}
               <div className="bg-cm-ivory rounded-xl border border-cm-sand p-6">
                 <h3 className="text-sm font-medium text-cm-coffee mb-4">Metadata</h3>

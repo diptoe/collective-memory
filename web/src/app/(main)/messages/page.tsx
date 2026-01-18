@@ -66,6 +66,13 @@ export default function MessagesPage() {
   const [activeAgents, setActiveAgents] = useState<Agent[]>([]);
   const [sending, setSending] = useState(false);
 
+  // Reply modal state
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+  const [replyContent, setReplyContent] = useState('');
+  const [replyType, setReplyType] = useState<typeof MESSAGE_TYPES[number]>('message');
+  const [replyPriority, setReplyPriority] = useState<typeof PRIORITIES[number]>('normal');
+  const [sendingReply, setSendingReply] = useState(false);
+
   // Calculate since timestamp based on time filter
   const getSinceTimestamp = (filter: TimeFilter): string | undefined => {
     if (filter === 'all') return undefined;
@@ -190,6 +197,49 @@ export default function MessagesPage() {
       alert('Failed to send message');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleReply = (message: Message, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation to detail page
+    e.stopPropagation();
+    setReplyToMessage(message);
+    setReplyContent('');
+    setReplyType('message');
+    setReplyPriority('normal');
+  };
+
+  const handleSendReply = async () => {
+    if (!replyContent.trim() || !replyToMessage) return;
+    if (!user?.user_key) {
+      alert('You must be logged in to send replies');
+      return;
+    }
+
+    setSendingReply(true);
+    try {
+      // Reply to the sender unless it's a self-message
+      const isSelfMessage = replyToMessage.from_key === user.user_key;
+      const toKey = isSelfMessage ? undefined : replyToMessage.from_key;
+
+      await api.messages.post({
+        channel: replyToMessage.channel,
+        from_key: user.user_key,
+        to_key: toKey,
+        reply_to_key: replyToMessage.message_key,
+        message_type: replyType,
+        content: { text: replyContent },
+        priority: replyPriority,
+        team_key: replyToMessage.team_key,
+      });
+      setReplyToMessage(null);
+      setReplyContent('');
+      loadMessages();
+    } catch (err) {
+      console.error('Failed to send reply:', err);
+      alert('Failed to send reply');
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -444,7 +494,18 @@ export default function MessagesPage() {
                       )}>
                         {message.message_type}
                       </span>
-                      <span>{formatDateTime(message.created_at)}</span>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => handleReply(message, e)}
+                          className="text-cm-terracotta hover:text-cm-sienna transition-colors flex items-center gap-1"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                          </svg>
+                          Reply
+                        </button>
+                        <span>{formatDateTime(message.created_at)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -587,6 +648,112 @@ export default function MessagesPage() {
                 className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors disabled:opacity-50"
               >
                 {sending ? 'Sending...' : 'Send Message'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reply Modal */}
+      {replyToMessage && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setReplyToMessage(null)}
+        >
+          <div
+            className="bg-cm-ivory rounded-xl shadow-xl max-w-lg w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-cm-sand">
+              <h2 className="font-serif text-xl font-semibold text-cm-charcoal">
+                Reply to Message
+              </h2>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Original message preview */}
+              <div className="p-3 bg-cm-sand/30 rounded-lg border border-cm-sand">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-cm-coffee/70">Replying to:</span>
+                  <span className="text-sm font-medium text-cm-charcoal">
+                    {replyToMessage.from_name || replyToMessage.from_key}
+                  </span>
+                  <span className="text-xs text-cm-coffee/50">
+                    #{replyToMessage.channel}
+                  </span>
+                </div>
+                <p className="text-sm text-cm-charcoal line-clamp-3">
+                  {typeof replyToMessage.content === 'object' && replyToMessage.content !== null
+                    ? (replyToMessage.content as { text?: string }).text || JSON.stringify(replyToMessage.content)
+                    : String(replyToMessage.content)}
+                </p>
+              </div>
+
+              {/* Type and Priority */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-cm-charcoal mb-1">
+                    Type
+                  </label>
+                  <select
+                    value={replyType}
+                    onChange={(e) => setReplyType(e.target.value as typeof MESSAGE_TYPES[number])}
+                    className="w-full px-3 py-2 border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta"
+                  >
+                    {MESSAGE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-cm-charcoal mb-1">
+                    Priority
+                  </label>
+                  <select
+                    value={replyPriority}
+                    onChange={(e) => setReplyPriority(e.target.value as typeof PRIORITIES[number])}
+                    className="w-full px-3 py-2 border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta"
+                  >
+                    {PRIORITIES.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Reply Content */}
+              <div>
+                <label className="block text-sm font-medium text-cm-charcoal mb-1">
+                  Your Reply
+                </label>
+                <textarea
+                  value={replyContent}
+                  onChange={(e) => setReplyContent(e.target.value)}
+                  placeholder="Enter your reply..."
+                  rows={4}
+                  autoFocus
+                  className="w-full px-3 py-2 border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-cm-sand flex justify-end gap-2">
+              <button
+                onClick={() => setReplyToMessage(null)}
+                className="px-4 py-2 text-cm-coffee hover:text-cm-charcoal transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendReply}
+                disabled={sendingReply || !replyContent.trim()}
+                className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors disabled:opacity-50"
+              >
+                {sendingReply ? 'Sending...' : 'Send Reply'}
               </button>
             </div>
           </div>
