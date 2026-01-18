@@ -7,6 +7,17 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { Team, TeamMembership, TeamMemberRole, User } from '@/types';
 
+function formatDateTime(dateStr?: string): string {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
 export default function TeamDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -307,7 +318,7 @@ export default function TeamDetailPage() {
             )}
             <div>
               <p className="text-sm text-cm-coffee">Created</p>
-              <p className="text-cm-charcoal">{new Date(team.created_at).toLocaleString()}</p>
+              <p className="text-cm-charcoal">{formatDateTime(team.created_at)}</p>
             </div>
           </div>
         )}

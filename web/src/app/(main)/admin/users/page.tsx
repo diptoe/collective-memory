@@ -7,6 +7,17 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { User } from '@/types';
 
+function formatDateTime(dateStr?: string): string {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
 export default function AdminUsersPage() {
   const router = useRouter();
   const { user: currentUser, isAuthenticated } = useAuthStore();
@@ -80,7 +91,8 @@ export default function AdminUsersPage() {
           className="px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
         >
           <option value="">All roles</option>
-          <option value="admin">Admin</option>
+          <option value="admin">System Admin</option>
+          <option value="domain_admin">Domain Admin</option>
           <option value="user">User</option>
         </select>
         <select
@@ -137,10 +149,12 @@ export default function AdminUsersPage() {
                       className={`px-2 py-1 text-xs rounded-full ${
                         user.role === 'admin'
                           ? 'bg-blue-100 text-blue-700'
+                          : user.role === 'domain_admin'
+                          ? 'bg-purple-100 text-purple-700'
                           : 'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {user.role}
+                      {user.role === 'domain_admin' ? 'Domain Admin' : user.role}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -156,7 +170,7 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3 text-sm text-cm-coffee">
                     {user.last_login_at
-                      ? new Date(user.last_login_at).toLocaleDateString()
+                      ? formatDateTime(user.last_login_at)
                       : 'Never'}
                   </td>
                   <td className="px-4 py-3 text-right">

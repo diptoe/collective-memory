@@ -7,6 +7,17 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { User, Session, Domain } from '@/types';
 
+function formatDateTime(dateStr?: string): string {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
 export default function UserDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -64,7 +75,7 @@ export default function UserDetailPage() {
     }
   };
 
-  const changeRole = async (newRole: 'admin' | 'user') => {
+  const changeRole = async (newRole: 'admin' | 'domain_admin' | 'user') => {
     if (!user) return;
     setActionInProgress('role');
     setError('');
@@ -224,28 +235,35 @@ export default function UserDetailPage() {
           </div>
           <div>
             <p className="text-sm text-cm-coffee">Role</p>
-            <div className="flex items-center gap-2">
-              <span
-                className={`px-2 py-1 text-xs rounded-full ${
-                  user.role === 'admin'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {user.role}
-              </span>
-              {!isSelf && (
-                <button
-                  onClick={() => changeRole(user.role === 'admin' ? 'user' : 'admin')}
-                  disabled={actionInProgress === 'role'}
-                  className="text-xs text-cm-terracotta hover:underline disabled:opacity-50"
+            <div className="flex items-center gap-2 mt-1">
+              {isSelf ? (
+                <span
+                  className={`px-2 py-1 text-xs rounded-full ${
+                    user.role === 'admin'
+                      ? 'bg-blue-100 text-blue-700'
+                      : user.role === 'domain_admin'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}
                 >
-                  {actionInProgress === 'role'
-                    ? 'Changing...'
-                    : user.role === 'admin'
-                    ? 'Demote to User'
-                    : 'Promote to Admin'}
-                </button>
+                  {user.role === 'domain_admin' ? 'Domain Admin' : user.role}
+                </span>
+              ) : (
+                <>
+                  <select
+                    value={user.role}
+                    onChange={(e) => changeRole(e.target.value as 'admin' | 'domain_admin' | 'user')}
+                    disabled={actionInProgress === 'role'}
+                    className="px-3 py-1.5 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 disabled:opacity-50"
+                  >
+                    <option value="user">User</option>
+                    <option value="domain_admin">Domain Admin</option>
+                    <option value="admin">System Admin</option>
+                  </select>
+                  {actionInProgress === 'role' && (
+                    <span className="text-xs text-cm-coffee">Updating...</span>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -280,13 +298,13 @@ export default function UserDetailPage() {
             <p className="text-sm text-cm-coffee">Last Login</p>
             <p className="text-cm-charcoal">
               {user.last_login_at
-                ? new Date(user.last_login_at).toLocaleString()
+                ? formatDateTime(user.last_login_at)
                 : 'Never'}
             </p>
           </div>
           <div>
             <p className="text-sm text-cm-coffee">Created</p>
-            <p className="text-cm-charcoal">{new Date(user.created_at).toLocaleString()}</p>
+            <p className="text-cm-charcoal">{formatDateTime(user.created_at)}</p>
           </div>
           <div className="col-span-2">
             <p className="text-sm text-cm-coffee">Domain</p>
@@ -352,7 +370,7 @@ export default function UserDetailPage() {
                   </p>
                   <p className="text-xs text-cm-coffee mt-1">
                     {session.ip_address && `${session.ip_address} • `}
-                    Last active: {new Date(session.last_activity_at).toLocaleString()}
+                    Last active: {formatDateTime(session.last_activity_at)}
                   </p>
                 </div>
               </div>
