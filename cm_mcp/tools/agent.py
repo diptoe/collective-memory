@@ -581,6 +581,7 @@ async def identify(
         membership_slug = None
         resolved_team_key = None
         resolved_team_name = None
+        team_detected_from_project = False  # Track how team was detected
         user_data = {}
         teams = []
         available_scopes = []
@@ -610,22 +611,46 @@ async def identify(
                             resolved_team_key = team.get('team_key')
                             resolved_team_name = team.get('name')
                             membership_slug = team.get('membership_slug')
-                    elif teams and agent_id:
-                        # Auto-detect from agent_id pattern matching team slugs or names
-                        agent_id_lower = agent_id.lower().replace('-', ' ').replace('_', ' ')
-                        for t in teams:
-                            team_slug = t.get('slug', '').lower().replace('-', ' ').replace('_', ' ')
-                            team_name = t.get('name', '').lower()
-                            if team_slug and team_slug in agent_id_lower:
-                                resolved_team_key = t.get('team_key')
-                                resolved_team_name = t.get('name')
-                                membership_slug = t.get('membership_slug')
-                                break
-                            elif team_name and team_name in agent_id_lower:
-                                resolved_team_key = t.get('team_key')
-                                resolved_team_name = t.get('name')
-                                membership_slug = t.get('membership_slug')
-                                break
+                    elif teams:
+                        # Auto-detect team from project name or agent_id
+                        # Priority: 1) detected project name, 2) agent_id pattern
+
+                        # First, try to match detected project name against team names/slugs
+                        if detected_project_name and not resolved_team_key:
+                            project_name_normalized = detected_project_name.lower().replace('-', ' ').replace('_', ' ')
+                            for t in teams:
+                                team_slug = t.get('slug', '').lower().replace('-', ' ').replace('_', ' ')
+                                team_name = t.get('name', '').lower().replace('-', ' ').replace('_', ' ')
+                                # Check if project name matches team slug or name
+                                if team_slug and (team_slug == project_name_normalized or project_name_normalized in team_slug or team_slug in project_name_normalized):
+                                    resolved_team_key = t.get('team_key')
+                                    resolved_team_name = t.get('name')
+                                    membership_slug = t.get('membership_slug')
+                                    team_detected_from_project = True
+                                    break
+                                elif team_name and (team_name == project_name_normalized or project_name_normalized in team_name or team_name in project_name_normalized):
+                                    resolved_team_key = t.get('team_key')
+                                    resolved_team_name = t.get('name')
+                                    membership_slug = t.get('membership_slug')
+                                    team_detected_from_project = True
+                                    break
+
+                        # Second, try to match agent_id against team names/slugs
+                        if agent_id and not resolved_team_key:
+                            agent_id_lower = agent_id.lower().replace('-', ' ').replace('_', ' ')
+                            for t in teams:
+                                team_slug = t.get('slug', '').lower().replace('-', ' ').replace('_', ' ')
+                                team_name = t.get('name', '').lower()
+                                if team_slug and team_slug in agent_id_lower:
+                                    resolved_team_key = t.get('team_key')
+                                    resolved_team_name = t.get('name')
+                                    membership_slug = t.get('membership_slug')
+                                    break
+                                elif team_name and team_name in agent_id_lower:
+                                    resolved_team_key = t.get('team_key')
+                                    resolved_team_name = t.get('name')
+                                    membership_slug = t.get('membership_slug')
+                                    break
             except Exception:
                 pass  # Continue without user info
 
@@ -737,6 +762,8 @@ async def identify(
                     session_state["active_team_method"] = "explicit_team_key"
                 elif explicit_team_slug:
                     session_state["active_team_method"] = "explicit_team_slug"
+                elif team_detected_from_project:
+                    session_state["active_team_method"] = f"auto (from project: {detected_project_name})"
                 else:
                     session_state["active_team_method"] = "auto (from agent_id)"
                 # Update default scope to team
