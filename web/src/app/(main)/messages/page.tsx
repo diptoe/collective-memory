@@ -500,7 +500,7 @@ export default function MessagesPage() {
                 >
                   <option value="broadcast">Broadcast (All Agents)</option>
                   {activeAgents.map((agent) => (
-                    <option key={agent.agent_key} value={agent.agent_id}>
+                    <option key={agent.agent_key} value={agent.agent_key}>
                       {agent.agent_id}
                     </option>
                   ))}
