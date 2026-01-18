@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, ArrowRight, Focus, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
+import { X, ArrowRight, Focus, ChevronDown, ChevronUp, Pencil, Copy, Check } from 'lucide-react';
 import { Entity, Relationship } from '@/types';
 import { TYPE_COLORS } from '@/lib/graph/layout';
 
@@ -28,7 +28,26 @@ export function NodeDetailsPanel({
 }: NodeDetailsPanelProps) {
   const router = useRouter();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
   const color = TYPE_COLORS[entity.entity_type] || TYPE_COLORS.Default;
+
+  const copyToClipboard = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
+
+  const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
+  };
 
   // Navigate to entity detail page
   const handleEdit = () => {
@@ -203,12 +222,19 @@ export function NodeDetailsPanel({
 
         {/* Metadata */}
         <div className="mt-4 pt-4 border-t border-cm-sand">
-          <p className="text-[10px] text-cm-coffee/60 uppercase tracking-wider">
+          <p className="text-[10px] text-cm-coffee/60 uppercase tracking-wider flex items-center gap-1">
             Key: {entity.entity_key}
+            <button
+              onClick={() => copyToClipboard(entity.entity_key)}
+              className="p-0.5 text-cm-coffee/40 hover:text-cm-coffee transition-colors"
+              title="Copy entity key"
+            >
+              {copiedKey ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+            </button>
           </p>
           {entity.created_at && (
             <p className="text-[10px] text-cm-coffee/60 mt-1">
-              Created: {new Date(entity.created_at).toLocaleDateString()}
+              Created: {formatDateTime(entity.created_at)}
             </p>
           )}
         </div>

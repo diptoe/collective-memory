@@ -20,6 +20,10 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Collective Memory',
   description: 'Multi-agent AI collaboration platform',
+  icons: {
+    icon: '/cm-logo.svg',
+    apple: '/cm-logo.svg',
+  },
 };
 
 export default function RootLayout({

@@ -76,10 +76,18 @@ export default function MainLayout({
     <div className="flex min-h-screen">
       {/* Sidebar Navigation */}
       <nav className="w-64 bg-cm-ivory border-r border-cm-sand flex flex-col h-screen sticky top-0">
-        <div className="p-6 border-b border-cm-sand">
-          <h1 className="font-serif text-xl font-semibold text-cm-charcoal">
-            Collective Memory
-          </h1>
+        <div className="p-4 border-b border-cm-sand">
+          <Link href="/" className="flex items-center gap-3 group">
+            <img
+              src="/cm-logo.svg"
+              alt="Collective Memory"
+              className="w-10 h-10 transition-transform group-hover:scale-105"
+            />
+            <div className="leading-tight">
+              <span className="block font-serif text-base font-semibold text-cm-charcoal">Collective</span>
+              <span className="block font-serif text-base font-semibold text-cm-charcoal">Memory</span>
+            </div>
+          </Link>
         </div>
 
         <div className="flex-1 py-4 overflow-y-auto">

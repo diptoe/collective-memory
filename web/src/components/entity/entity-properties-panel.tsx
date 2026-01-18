@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 import { Entity } from '@/types';
 
 interface EntityPropertiesPanelProps {
@@ -9,9 +10,25 @@ interface EntityPropertiesPanelProps {
 }
 
 export function EntityPropertiesPanel({ entity, excludeKeys = [] }: EntityPropertiesPanelProps) {
-  const formatDate = (dateStr?: string) => {
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  const copyToClipboard = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
+
+  const formatDateTime = (dateStr?: string) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString();
+    const date = new Date(dateStr);
+    // Format as YYYY-MM-DD HH:MM:SS UTC
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
   };
 
   const renderValue = (value: unknown): React.ReactNode => {
@@ -77,7 +94,7 @@ export function EntityPropertiesPanel({ entity, excludeKeys = [] }: EntityProper
 
     // Check if it looks like a date
     if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-      return formatDate(value);
+      return formatDateTime(value);
     }
 
     return String(value);
@@ -116,7 +133,16 @@ export function EntityPropertiesPanel({ entity, excludeKeys = [] }: EntityProper
         <div className="bg-cm-cream border border-cm-sand rounded-lg divide-y divide-cm-sand">
           <div className="flex px-4 py-3">
             <span className="text-cm-coffee min-w-[150px] font-medium">Entity Key</span>
-            <span className="text-cm-charcoal font-mono text-sm">{entity.entity_key}</span>
+            <span className="text-cm-charcoal font-mono text-sm flex items-center gap-2">
+              {entity.entity_key}
+              <button
+                onClick={() => copyToClipboard(entity.entity_key)}
+                className="p-1 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
+                title="Copy entity key"
+              >
+                {copiedKey ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </span>
           </div>
           <div className="flex px-4 py-3">
             <span className="text-cm-coffee min-w-[150px] font-medium">Type</span>
@@ -156,11 +182,11 @@ export function EntityPropertiesPanel({ entity, excludeKeys = [] }: EntityProper
           </div>
           <div className="flex px-4 py-3">
             <span className="text-cm-coffee min-w-[150px] font-medium">Created</span>
-            <span className="text-cm-charcoal">{formatDate(entity.created_at)}</span>
+            <span className="text-cm-charcoal">{formatDateTime(entity.created_at)}</span>
           </div>
           <div className="flex px-4 py-3">
             <span className="text-cm-coffee min-w-[150px] font-medium">Updated</span>
-            <span className="text-cm-charcoal">{formatDate(entity.updated_at)}</span>
+            <span className="text-cm-charcoal">{formatDateTime(entity.updated_at)}</span>
           </div>
         </div>
       </div>

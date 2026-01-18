@@ -309,15 +309,15 @@ export const api = {
 
   // Messages (inter-agent)
   messages: {
-    list: (channel?: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean; since?: string; entity_key?: string }) =>
+    list: (channel?: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean; since?: string; entity_key?: string; team_key?: string }) =>
       channel
         ? apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params: { ...params, include_readers: true, include_thread_info: true } })
         : apiClient.get<InterAgentMessagesResponse>('/messages', { params: { ...params, include_readers: true, include_thread_info: true } }),
-    byEntity: (entityKey: string, params?: { limit?: number }) =>
+    byEntity: (entityKey: string, params?: { limit?: number; team_key?: string }) =>
       apiClient.get<InterAgentMessagesResponse>('/messages', { params: { ...params, entity_key: entityKey, include_readers: true, include_thread_info: true } }),
-    post: (data: { channel: string; from_agent: string; to_agent?: string; reply_to_key?: string; message_type: string; content: unknown; priority?: string }) =>
+    post: (data: { channel: string; from_key: string; to_key?: string; reply_to_key?: string; message_type: string; content: unknown; priority?: string; scope?: string; team_key?: string }) =>
       apiClient.post('/messages', data),
-    getChannel: (channel: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean }) =>
+    getChannel: (channel: string, params?: { limit?: number; unread_only?: boolean; include_readers?: boolean; include_thread_info?: boolean; team_key?: string }) =>
       apiClient.get<InterAgentMessagesResponse>(`/messages/${channel}`, { params: { ...params, include_readers: true, include_thread_info: true } }),
     detail: (messageKey: string, params?: { include_thread?: boolean; include_readers?: boolean; include_entities?: boolean; for_agent?: string }) =>
       apiClient.get<Message>(`/messages/detail/${messageKey}`, { params: { include_thread: true, include_readers: true, include_entities: true, ...params } }),
@@ -391,7 +391,7 @@ export const api = {
       apiClient.put<UserResponse>(`/users/${userKey}`, data),
     delete: (userKey: string) =>
       apiClient.delete<UserResponse>(`/users/${userKey}`),
-    changeRole: (userKey: string, role: 'admin' | 'user') =>
+    changeRole: (userKey: string, role: 'admin' | 'domain_admin' | 'user') =>
       apiClient.post<UserResponse>(`/users/${userKey}/role`, { role }),
     sessions: (userKey: string) =>
       apiClient.get<SessionsResponse>(`/users/${userKey}/sessions`),
