@@ -2,11 +2,13 @@
 Collective Memory Platform - Persona Routes
 
 CRUD operations for AI personas (behavioral roles, decoupled from models).
+Persona modifications require system admin role.
 """
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Persona, is_valid_client
+from api.services.auth import require_admin
 
 
 def register_persona_routes(api: Api):
@@ -85,8 +87,9 @@ def register_persona_routes(api: Api):
         @ns.doc('create_persona')
         @ns.expect(persona_create)
         @ns.marshal_with(response_model, code=201)
+        @require_admin
         def post(self):
-            """Create a new persona."""
+            """Create a new persona. Requires admin role."""
             data = request.json
 
             if not data.get('name'):
@@ -150,8 +153,9 @@ def register_persona_routes(api: Api):
         @ns.doc('update_persona')
         @ns.expect(persona_create)
         @ns.marshal_with(response_model)
+        @require_admin
         def put(self, persona_key):
-            """Update a persona."""
+            """Update a persona. Requires admin role."""
             persona = Persona.get_by_key(persona_key)
             if not persona:
                 return {'success': False, 'msg': 'Persona not found'}, 404
@@ -171,8 +175,9 @@ def register_persona_routes(api: Api):
 
         @ns.doc('delete_persona')
         @ns.marshal_with(response_model)
+        @require_admin
         def delete(self, persona_key):
-            """Archive a persona (soft delete)."""
+            """Archive a persona (soft delete). Requires admin role."""
             persona = Persona.get_by_key(persona_key)
             if not persona:
                 return {'success': False, 'msg': 'Persona not found'}, 404
@@ -192,8 +197,9 @@ def register_persona_routes(api: Api):
     class PersonaActivate(Resource):
         @ns.doc('activate_persona')
         @ns.marshal_with(response_model)
+        @require_admin
         def post(self, persona_key):
-            """Reactivate an archived persona."""
+            """Reactivate an archived persona. Requires admin role."""
             persona = Persona.get_by_key(persona_key)
             if not persona:
                 return {'success': False, 'msg': 'Persona not found'}, 404

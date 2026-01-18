@@ -7,6 +7,7 @@ from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Model, db
+from api.services.auth import require_admin
 
 
 def register_model_routes(api: Api):
@@ -89,8 +90,9 @@ def register_model_routes(api: Api):
         @ns.doc('create_model')
         @ns.expect(model_create)
         @ns.marshal_with(response_model, code=201)
+        @require_admin
         def post(self):
-            """Create a new AI model."""
+            """Create a new AI model. Requires admin role."""
             data = request.json
 
             if not data.get('name'):
@@ -210,8 +212,9 @@ def register_model_routes(api: Api):
         @ns.doc('update_model')
         @ns.expect(model_create)
         @ns.marshal_with(response_model)
+        @require_admin
         def put(self, model_key):
-            """Update a model."""
+            """Update a model. Requires admin role."""
             model = Model.get_by_key(model_key)
             if not model:
                 return {'success': False, 'msg': 'Model not found'}, 404
@@ -238,8 +241,9 @@ def register_model_routes(api: Api):
 
         @ns.doc('delete_model')
         @ns.marshal_with(response_model)
+        @require_admin
         def delete(self, model_key):
-            """Delete a model."""
+            """Delete a model. Requires admin role."""
             model = Model.get_by_key(model_key)
             if not model:
                 return {'success': False, 'msg': 'Model not found'}, 404
@@ -259,8 +263,9 @@ def register_model_routes(api: Api):
     class ModelDeprecate(Resource):
         @ns.doc('deprecate_model')
         @ns.marshal_with(response_model)
+        @require_admin
         def post(self, model_key):
-            """Mark a model as deprecated."""
+            """Mark a model as deprecated. Requires admin role."""
             model = Model.get_by_key(model_key)
             if not model:
                 return {'success': False, 'msg': 'Model not found'}, 404
