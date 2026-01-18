@@ -1477,16 +1477,43 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         except Exception:
             pass  # Don't fail tool call if heartbeat fails
 
-    # Helper to append unread/autonomous notice to results
-    def maybe_append_unread_notice(result: list[types.TextContent]) -> list[types.TextContent]:
+    # Helper to append unread/autonomous notice to results with message preview
+    async def maybe_append_unread_notice(result: list[types.TextContent]) -> list[types.TextContent]:
         if name in message_tools:
             return result
-        if autonomous_count > 0:
-            notice = f"\n\n---\n🤖 **AUTONOMOUS TASK(S):** You have {autonomous_count} autonomous task(s) waiting. These require your immediate attention - work on them and reply when complete. Use `get_messages` to see details."
-            result.append(types.TextContent(type="text", text=notice))
-        elif unread_count > 0:
-            notice = f"\n\n---\n⚠️ **ACTION REQUIRED:** You have {unread_count} unread message(s). Use `get_messages` to check them."
-            result.append(types.TextContent(type="text", text=notice))
+        if unread_count > 0 or autonomous_count > 0:
+            # Fetch and preview unread messages so AI can act on them
+            try:
+                messages_result = await get_messages({"unread_only": True, "limit": 5}, config, _session_state)
+                if messages_result and len(messages_result) > 0:
+                    # Extract text content from the result
+                    messages_text = messages_result[0].text if hasattr(messages_result[0], 'text') else str(messages_result[0])
+
+                    if autonomous_count > 0:
+                        notice = f"\n\n---\n🤖 **AUTONOMOUS TASK(S) - IMMEDIATE ACTION REQUIRED**\n\n"
+                        notice += f"You have {autonomous_count} autonomous task(s) that require your immediate attention.\n"
+                        notice += "**You MUST:**\n"
+                        notice += "1. Read the task request below\n"
+                        notice += "2. Acknowledge with `send_message(reply_to=\"msg-key\", message_type=\"acknowledged\", content=\"Starting...\")`\n"
+                        notice += "3. Complete the work\n"
+                        notice += "4. Reply when done with `send_message(reply_to=\"msg-key\", content=\"Done: ...\")`\n\n"
+                    else:
+                        notice = f"\n\n---\n📬 **UNREAD MESSAGES - PLEASE REVIEW**\n\n"
+                        notice += f"You have {unread_count} unread message(s).\n"
+                        notice += "**Action:** Review and respond to any that need your attention.\n"
+                        notice += "Use `mark_message_read` for informational messages, or `send_message(reply_to=...)` to respond.\n\n"
+
+                    notice += "**Messages:**\n"
+                    notice += messages_text
+                    notice += "\n\n---"
+                    result.append(types.TextContent(type="text", text=notice))
+            except Exception:
+                # Fall back to simple notice if fetching fails
+                if autonomous_count > 0:
+                    notice = f"\n\n---\n🤖 **AUTONOMOUS TASK(S):** You have {autonomous_count} autonomous task(s) waiting. Use `get_messages` to see details and take action."
+                else:
+                    notice = f"\n\n---\n⚠️ **ACTION REQUIRED:** You have {unread_count} unread message(s). Use `get_messages` to check them."
+                result.append(types.TextContent(type="text", text=notice))
         return result
 
     # Dispatch to tool handler
@@ -1655,7 +1682,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
     # Append unread message notice if applicable
-    return maybe_append_unread_notice(result)
+    return await maybe_append_unread_notice(result)
 
 
 async def register_agent():
