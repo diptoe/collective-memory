@@ -1,0 +1,46 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle (optional, can be removed for transparent) -->
+
+  <!-- Connection lines - the relationships -->
+  <g stroke="#8B4513" stroke-width="2" stroke-opacity="0.6">
+    <!-- Central connections -->
+    <line x1="60" y1="60" x2="35" y2="30"/>
+    <line x1="60" y1="60" x2="85" y2="30"/>
+    <line x1="60" y1="60" x2="30" y2="70"/>
+    <line x1="60" y1="60" x2="90" y2="70"/>
+    <line x1="60" y1="60" x2="60" y2="95"/>
+
+    <!-- Outer connections - showing the network effect -->
+    <line x1="35" y1="30" x2="85" y2="30"/>
+    <line x1="30" y1="70" x2="60" y2="95"/>
+    <line x1="90" y1="70" x2="60" y2="95"/>
+  </g>
+
+  <!-- Outer nodes - the agents/entities -->
+  <g>
+    <!-- Top left node -->
+    <circle cx="35" cy="30" r="12" fill="#D2691E"/>
+    <circle cx="35" cy="30" r="6" fill="#FFF8F0"/>
+
+    <!-- Top right node -->
+    <circle cx="85" cy="30" r="12" fill="#D2691E"/>
+    <circle cx="85" cy="30" r="6" fill="#FFF8F0"/>
+
+    <!-- Left node -->
+    <circle cx="30" cy="70" r="10" fill="#CD853F"/>
+    <circle cx="30" cy="70" r="5" fill="#FFF8F0"/>
+
+    <!-- Right node -->
+    <circle cx="90" cy="70" r="10" fill="#CD853F"/>
+    <circle cx="90" cy="70" r="5" fill="#FFF8F0"/>
+
+    <!-- Bottom node -->
+    <circle cx="60" cy="95" r="10" fill="#CD853F"/>
+    <circle cx="60" cy="95" r="5" fill="#FFF8F0"/>
+  </g>
+
+  <!-- Central node - the collective memory hub -->
+  <circle cx="60" cy="60" r="18" fill="#2C2C2C"/>
+  <circle cx="60" cy="60" r="12" fill="#D2691E"/>
+  <circle cx="60" cy="60" r="6" fill="#FFF8F0"/>
+</svg>

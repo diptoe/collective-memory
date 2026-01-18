@@ -1,0 +1,19 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Version 4: Simple, iconic - works great at small sizes -->
+
+  <!-- Outer ring representing the collective -->
+  <circle cx="60" cy="60" r="50" fill="none" stroke="#2C2C2C" stroke-width="6"/>
+
+  <!-- Three overlapping circles - shared knowledge -->
+  <circle cx="48" cy="48" r="22" fill="#D2691E" fill-opacity="0.85"/>
+  <circle cx="72" cy="48" r="22" fill="#CD853F" fill-opacity="0.85"/>
+  <circle cx="60" cy="72" r="22" fill="#8B4513" fill-opacity="0.85"/>
+
+  <!-- Central intersection highlight - the "collective" -->
+  <circle cx="60" cy="56" r="10" fill="#FFF8F0"/>
+
+  <!-- Small dots in each circle - individual agents -->
+  <circle cx="40" cy="42" r="4" fill="#FFF8F0"/>
+  <circle cx="80" cy="42" r="4" fill="#FFF8F0"/>
+  <circle cx="60" cy="80" r="4" fill="#FFF8F0"/>
+</svg>

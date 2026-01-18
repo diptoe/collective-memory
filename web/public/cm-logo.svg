@@ -1,0 +1,14 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Three overlapping circles - shared knowledge (scaled up, no outer ring) -->
+  <circle cx="44" cy="42" r="32" fill="#D2691E" fill-opacity="0.85"/>
+  <circle cx="76" cy="42" r="32" fill="#CD853F" fill-opacity="0.85"/>
+  <circle cx="60" cy="78" r="32" fill="#8B4513" fill-opacity="0.85"/>
+
+  <!-- Central intersection highlight - the "collective" -->
+  <circle cx="60" cy="54" r="14" fill="#FFF8F0"/>
+
+  <!-- Small dots in each circle - individual agents -->
+  <circle cx="32" cy="34" r="6" fill="#FFF8F0"/>
+  <circle cx="88" cy="34" r="6" fill="#FFF8F0"/>
+  <circle cx="60" cy="92" r="6" fill="#FFF8F0"/>
+</svg>

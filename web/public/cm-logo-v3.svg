@@ -1,0 +1,28 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Version 3: Abstract "CM" with flowing connections - more modern/minimal -->
+
+  <!-- Flowing connection paths -->
+  <g fill="none" stroke="#D2691E" stroke-width="3" stroke-linecap="round">
+    <!-- C shape that flows into connections -->
+    <path d="M 55 30 Q 25 30 25 60 Q 25 90 55 90" stroke-width="8" stroke="#2C2C2C"/>
+
+    <!-- M shape integrated -->
+    <path d="M 55 30 L 55 90" stroke-width="4"/>
+    <path d="M 55 30 L 75 60 L 95 30" stroke-width="4"/>
+    <path d="M 95 30 L 95 90" stroke-width="4"/>
+  </g>
+
+  <!-- Connection nodes at key points -->
+  <circle cx="55" cy="30" r="8" fill="#D2691E"/>
+  <circle cx="55" cy="90" r="8" fill="#D2691E"/>
+  <circle cx="25" cy="60" r="6" fill="#CD853F"/>
+  <circle cx="75" cy="60" r="6" fill="#CD853F"/>
+  <circle cx="95" cy="30" r="8" fill="#D2691E"/>
+  <circle cx="95" cy="90" r="8" fill="#D2691E"/>
+
+  <!-- Inner highlights -->
+  <circle cx="55" cy="30" r="3" fill="#FFF8F0"/>
+  <circle cx="55" cy="90" r="3" fill="#FFF8F0"/>
+  <circle cx="95" cy="30" r="3" fill="#FFF8F0"/>
+  <circle cx="95" cy="90" r="3" fill="#FFF8F0"/>
+</svg>

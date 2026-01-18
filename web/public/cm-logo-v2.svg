@@ -1,0 +1,32 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Version 2: More organic/brain-like with overlapping circles -->
+
+  <!-- Subtle glow/shared space in center -->
+  <circle cx="60" cy="60" r="32" fill="#D2691E" fill-opacity="0.15"/>
+
+  <!-- Connection lines -->
+  <g stroke="#8B4513" stroke-width="2.5" stroke-linecap="round">
+    <line x1="38" y1="38" x2="82" y2="38"/>
+    <line x1="38" y1="38" x2="38" y2="82"/>
+    <line x1="82" y1="38" x2="82" y2="82"/>
+    <line x1="38" y1="82" x2="82" y2="82"/>
+    <line x1="38" y1="38" x2="82" y2="82"/>
+    <line x1="82" y1="38" x2="38" y2="82"/>
+  </g>
+
+  <!-- Four corner nodes representing agents -->
+  <circle cx="38" cy="38" r="14" fill="#D2691E"/>
+  <circle cx="82" cy="38" r="14" fill="#CD853F"/>
+  <circle cx="38" cy="82" r="14" fill="#CD853F"/>
+  <circle cx="82" cy="82" r="14" fill="#D2691E"/>
+
+  <!-- Inner dots - the "memory" core of each agent -->
+  <circle cx="38" cy="38" r="5" fill="#FFF8F0"/>
+  <circle cx="82" cy="38" r="5" fill="#FFF8F0"/>
+  <circle cx="38" cy="82" r="5" fill="#FFF8F0"/>
+  <circle cx="82" cy="82" r="5" fill="#FFF8F0"/>
+
+  <!-- Central shared memory point -->
+  <circle cx="60" cy="60" r="8" fill="#2C2C2C"/>
+  <circle cx="60" cy="60" r="4" fill="#FFF8F0"/>
+</svg>

@@ -1,0 +1,45 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Version 5: Hexagonal network - structured collective knowledge -->
+
+  <!-- Connection lines first (behind nodes) -->
+  <g stroke="#8B4513" stroke-width="2.5" stroke-opacity="0.7">
+    <!-- From center to all outer nodes -->
+    <line x1="60" y1="60" x2="60" y2="20"/>
+    <line x1="60" y1="60" x2="95" y2="40"/>
+    <line x1="60" y1="60" x2="95" y2="80"/>
+    <line x1="60" y1="60" x2="60" y2="100"/>
+    <line x1="60" y1="60" x2="25" y2="80"/>
+    <line x1="60" y1="60" x2="25" y2="40"/>
+
+    <!-- Outer hexagon connections -->
+    <line x1="60" y1="20" x2="95" y2="40"/>
+    <line x1="95" y1="40" x2="95" y2="80"/>
+    <line x1="95" y1="80" x2="60" y2="100"/>
+    <line x1="60" y1="100" x2="25" y2="80"/>
+    <line x1="25" y1="80" x2="25" y2="40"/>
+    <line x1="25" y1="40" x2="60" y2="20"/>
+  </g>
+
+  <!-- Outer hexagon nodes -->
+  <g>
+    <circle cx="60" cy="20" r="10" fill="#CD853F"/>
+    <circle cx="95" cy="40" r="10" fill="#D2691E"/>
+    <circle cx="95" cy="80" r="10" fill="#CD853F"/>
+    <circle cx="60" cy="100" r="10" fill="#D2691E"/>
+    <circle cx="25" cy="80" r="10" fill="#CD853F"/>
+    <circle cx="25" cy="40" r="10" fill="#D2691E"/>
+
+    <!-- Inner dots -->
+    <circle cx="60" cy="20" r="4" fill="#FFF8F0"/>
+    <circle cx="95" cy="40" r="4" fill="#FFF8F0"/>
+    <circle cx="95" cy="80" r="4" fill="#FFF8F0"/>
+    <circle cx="60" cy="100" r="4" fill="#FFF8F0"/>
+    <circle cx="25" cy="80" r="4" fill="#FFF8F0"/>
+    <circle cx="25" cy="40" r="4" fill="#FFF8F0"/>
+  </g>
+
+  <!-- Central hub - the collective memory -->
+  <circle cx="60" cy="60" r="16" fill="#2C2C2C"/>
+  <circle cx="60" cy="60" r="10" fill="#D2691E"/>
+  <circle cx="60" cy="60" r="4" fill="#FFF8F0"/>
+</svg>
