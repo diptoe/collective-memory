@@ -333,60 +333,8 @@ async def identify(
         detected_project_name = None
 
         if git_project:
-            # Try to sync Repository entity and find parent Project entity
-            repo_entity_key = None
-            project_entity_key = None
-
-            try:
-                # Step 1: Sync Repository entity from GitHub
-                repo_url = f"https://github.com/{git_project['owner']}/{git_project['repo']}"
-                sync_result = await _make_request(
-                    config,
-                    "POST",
-                    "/github/sync",
-                    json={"repository_url": repo_url}
-                )
-                if sync_result.get("success"):
-                    sync_data = sync_result.get("data", {})
-                    entity_data = sync_data.get("entity", {})
-                    repo_entity_key = entity_data.get("entity_key")
-                    detected_project_name = entity_data.get("name") or git_project['repo']
-
-                # Step 2: Search for a Project entity with matching name
-                # Project is the parent entity type for Repository
-                repo_name = git_project['repo']
-                search_result = await _make_request(
-                    config,
-                    "GET",
-                    "/entities/search",
-                    params={"query": repo_name, "entity_type": "Project", "limit": "5"}
-                )
-                if search_result.get("success"):
-                    entities = search_result.get("data", {}).get("entities", [])
-                    # Look for exact or close match
-                    for entity in entities:
-                        entity_name = entity.get("name", "").lower()
-                        if entity_name == repo_name.lower() or entity_name == repo_name.lower().replace("-", " "):
-                            project_entity_key = entity.get("entity_key")
-                            detected_project_name = entity.get("name")
-                            break
-
-                # Step 3: Use Project entity_key if found, otherwise use Repository entity_key
-                if project_entity_key:
-                    detected_project_key = project_entity_key
-                    git_project['entity_type'] = 'Project'
-                elif repo_entity_key:
-                    detected_project_key = repo_entity_key
-                    git_project['entity_type'] = 'Repository'
-
-                # Store both for reference
-                git_project['repo_entity_key'] = repo_entity_key
-                git_project['project_entity_key'] = project_entity_key
-
-            except Exception as e:
-                # If sync fails, just use repo name as project name
-                detected_project_name = git_project['repo']
-                git_project['sync_error'] = str(e)
+            # Use git remote info for project context (no API sync during registration)
+            detected_project_name = git_project['repo']
 
         # Resolve model_id to model_key if provided
         resolved_model_key = model_key
@@ -718,18 +666,6 @@ async def identify(
                     output += f"**GitHub:** {git_project.get('owner')}/{git_project.get('repo')}\n"
                 if detected_project_name:
                     output += f"**Name:** {detected_project_name}\n"
-                if detected_project_key:
-                    entity_type = git_project.get('entity_type', 'Unknown') if git_project else 'Unknown'
-                    output += f"**Entity:** {detected_project_key} ({entity_type})\n"
-                # Show both entity keys if different
-                if git_project:
-                    repo_key = git_project.get('repo_entity_key')
-                    proj_key = git_project.get('project_entity_key')
-                    if repo_key and proj_key and repo_key != proj_key:
-                        output += f"**Repository Entity:** {repo_key}\n"
-                        output += f"**Project Entity:** {proj_key}\n"
-                    if git_project.get('sync_error'):
-                        output += f"**Note:** {git_project.get('sync_error')}\n"
 
             if agent_data.get("affinity_warning"):
                 output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"
