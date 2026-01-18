@@ -4,7 +4,7 @@ Collective Memory Platform - Search Routes
 Semantic and hybrid search endpoints.
 """
 
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Entity, Document
@@ -15,6 +15,20 @@ from api.services.activity import activity_service
 def get_actor() -> str:
     """Get actor from X-Agent-Id header or return 'system'."""
     return request.headers.get('X-Agent-Id', 'system')
+
+
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for multi-tenancy filtering."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
+
+
+def get_user_key() -> str | None:
+    """Get the current user's user_key for activity tracking."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.user_key
+    return None
 
 
 def register_search_routes(api: Api):
@@ -67,13 +81,16 @@ def register_search_routes(api: Api):
                     'documents': [],
                 }
 
-                # Search entities
+                # Search entities (with scope filtering)
                 if include_entities:
                     try:
+                        user = g.current_user if hasattr(g, 'current_user') else None
                         entities = Entity.search_semantic(
                             query_embedding,
                             limit=limit,
-                            entity_type=entity_type
+                            entity_type=entity_type,
+                            user=user,
+                            domain_key=get_user_domain_key() if not user else None
                         )
                         results['entities'] = [e.to_dict() for e in entities]
                     except RuntimeError as e:
@@ -102,7 +119,9 @@ def register_search_routes(api: Api):
                     query=query,
                     search_type='semantic',
                     entity_type=entity_type,
-                    result_count=total_results
+                    result_count=total_results,
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {
@@ -138,11 +157,14 @@ def register_search_routes(api: Api):
                 # Generate query embedding
                 query_embedding = embedding_service.get_embedding(query)
 
-                # Hybrid search
+                # Hybrid search (with scope filtering)
+                user = g.current_user if hasattr(g, 'current_user') else None
                 entities = Entity.search_hybrid(
                     keyword=query,
                     query_embedding=query_embedding,
-                    limit=limit
+                    limit=limit,
+                    user=user,
+                    domain_key=get_user_domain_key() if not user else None
                 )
 
                 # Filter by type if specified
@@ -155,7 +177,9 @@ def register_search_routes(api: Api):
                     query=query,
                     search_type='hybrid',
                     entity_type=entity_type,
-                    result_count=len(entities)
+                    result_count=len(entities),
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {

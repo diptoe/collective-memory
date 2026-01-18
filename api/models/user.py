@@ -39,7 +39,7 @@ class User(BaseModel):
     last_name = Column(String(100), nullable=False)
 
     # Role and status
-    role = Column(String(20), default='user', nullable=False, index=True)  # admin, user
+    role = Column(String(20), default='user', nullable=False, index=True)  # admin, domain_admin, user
     status = Column(String(20), default='active', nullable=False, index=True)  # active, suspended, pending
 
     # Personal Access Token for MCP/API access
@@ -89,6 +89,11 @@ class User(BaseModel):
     def is_admin(self) -> bool:
         """Check if user has admin role."""
         return self.role == 'admin'
+
+    @property
+    def is_domain_admin(self) -> bool:
+        """Check if user has domain_admin or admin role."""
+        return self.role in ('admin', 'domain_admin')
 
     @property
     def is_active(self) -> bool:
@@ -143,11 +148,106 @@ class User(BaseModel):
         self.save()
 
     def set_role(self, role: str) -> None:
-        """Set user role (admin or user)."""
-        if role not in ('admin', 'user'):
+        """Set user role (admin, domain_admin, or user)."""
+        if role not in ('admin', 'domain_admin', 'user'):
             raise ValueError(f"Invalid role: {role}")
         self.role = role
         self.save()
+
+    def get_teams(self) -> list['Team']:
+        """Get all teams the user is a member of."""
+        from api.models.team import TeamMembership
+        memberships = TeamMembership.query.filter_by(user_key=self.user_key).all()
+        return [m.team for m in memberships if m.team and m.team.status == 'active']
+
+    def get_team_memberships(self) -> list['TeamMembership']:
+        """Get all team memberships for this user."""
+        from api.models.team import TeamMembership
+        return TeamMembership.query.filter_by(user_key=self.user_key).all()
+
+    def is_team_member(self, team_key: str) -> bool:
+        """Check if user is a member of a specific team."""
+        from api.models.team import TeamMembership
+        return TeamMembership.query.filter_by(
+            user_key=self.user_key,
+            team_key=team_key
+        ).count() > 0
+
+    def get_team_role(self, team_key: str) -> str | None:
+        """Get user's role in a specific team."""
+        from api.models.team import TeamMembership
+        membership = TeamMembership.query.filter_by(
+            user_key=self.user_key,
+            team_key=team_key
+        ).first()
+        return membership.role if membership else None
+
+    def ensure_person_entity(self) -> 'Entity':
+        """
+        Ensure this user has a linked Person entity in the knowledge graph.
+
+        Creates a new Person entity if one doesn't exist, or updates the existing one.
+        The entity stores user_key in properties for bidirectional linking.
+
+        Returns:
+            The linked Person entity
+        """
+        from api.models.entity import Entity
+
+        # Check if user already has a linked entity
+        if self.entity_key:
+            entity = Entity.get_by_key(self.entity_key)
+            if entity:
+                # Update entity with current user info
+                entity.name = self.display_name
+                props = entity.properties or {}
+                props['user_key'] = self.user_key
+                props['email'] = self.email
+                props['role'] = self.role
+                entity.properties = props
+                entity.save()
+                return entity
+
+        # Search for existing Person entity with this user_key
+        existing = Entity.query.filter(
+            Entity.entity_type == 'Person',
+            Entity.properties['user_key'].astext == self.user_key
+        ).first()
+
+        if existing:
+            # Link existing entity to user
+            self.entity_key = existing.entity_key
+            self.save()
+            return existing
+
+        # Create new Person entity
+        entity = Entity(
+            entity_type='Person',
+            name=self.display_name,
+            properties={
+                'user_key': self.user_key,
+                'email': self.email,
+                'role': self.role,
+            },
+            domain_key=self.domain_key,
+            source=f'user:{self.user_key}',
+            confidence=1.0
+        )
+        entity.save()
+
+        # Link entity to user
+        self.entity_key = entity.entity_key
+        self.save()
+
+        return entity
+
+    def get_person_entity(self) -> 'Entity | None':
+        """Get the linked Person entity if it exists."""
+        from api.models.entity import Entity
+
+        if not self.entity_key:
+            return None
+        return Entity.get_by_key(self.entity_key)
 
     def to_dict(self, include_pat: bool = False, include_domain: bool = False) -> dict:
         """

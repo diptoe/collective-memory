@@ -22,6 +22,7 @@ from .tools import (
     update_entity,
     search_entities_semantic,
     extract_entities_from_text,
+    move_entity_scope,
     # Relationship tools
     list_relationships,
     create_relationship,
@@ -37,6 +38,10 @@ from .tools import (
     list_agents,
     get_my_identity,
     update_my_identity,
+    # Team and scope tools
+    list_my_scopes,
+    set_active_team,
+    list_teams,
     # Message queue tools
     send_message,
     get_messages,
@@ -121,13 +126,18 @@ To stay active during a long session:
 - Use `list_agents()` to see who else is collaborating
 - Use `update_focus()` when your task changes
 
-## Available Tools (37 total)
+## Available Tools (40 total)
 
 ### IDENTITY & COLLABORATION (4 tools)
 - identify: FIRST tool to call - shows options or registers you with CM
 - list_agents: See who else is collaborating
 - get_my_identity: Check your current identity
 - update_my_identity: Change persona or register as new agent
+
+### TEAM & SCOPE TOOLS (3 tools)
+- list_my_scopes: See available scopes (domain, team, user) for entity visibility
+- set_active_team: Set active team for this session (new entities default to team scope)
+- list_teams: List teams you're a member of
 
 ### ENTITY OPERATIONS (6 tools)
 - search_entities: Keyword search by name or type
@@ -275,40 +285,55 @@ COMMON TYPES:
 - Document: Notes, specs, references
 - Concept: Ideas, patterns, methodologies
 
-EXAMPLES:
-- {"name": "React Dashboard", "entity_type": "Project", "properties": {"status": "active", "tech_stack": ["React", "TypeScript"]}}
-- {"name": "Sarah Chen", "entity_type": "Person", "properties": {"role": "Tech Lead", "team": "Platform"}}
+SCOPE (visibility):
+- domain: Visible to everyone in the domain (default if no active team)
+- team: Visible only to team members (default when active team is set)
+- user: Private to you only
 
-RETURNS: The created entity with its assigned entity_key.""",
+Use list_my_scopes to see available scopes, set_active_team to change the default.
+
+EXAMPLES:
+- {"name": "React Dashboard", "entity_type": "Project", "properties": {"status": "active"}}
+- {"name": "Sarah Chen", "entity_type": "Person", "scope_type": "team", "scope_key": "team-xyz"}
+- {"name": "My Notes", "entity_type": "Document", "scope_type": "user", "scope_key": "user-abc"}
+
+RETURNS: The created entity with its assigned entity_key and scope.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "name": {"type": "string", "description": "Entity name - should be clear and unique"},
                     "entity_type": {"type": "string", "description": "Type: Person, Project, Technology, Organization, Document, Concept, or custom"},
-                    "properties": {"type": "object", "description": "Additional properties as key-value pairs (flexible schema)"}
+                    "properties": {"type": "object", "description": "Additional properties as key-value pairs (flexible schema)"},
+                    "scope_type": {"type": "string", "description": "Scope type: 'domain', 'team', or 'user'. If omitted, uses session default."},
+                    "scope_key": {"type": "string", "description": "Scope key (team_key or user_key). Required if scope_type is set."}
                 },
                 "required": ["name", "entity_type"]
             }
         ),
         types.Tool(
             name="update_entity",
-            description="""Update an existing entity's name, type, or properties.
+            description="""Update an existing entity's name, type, properties, or scope.
 
-USE THIS WHEN: You need to correct, enrich, or modify existing entity data.
+USE THIS WHEN: You need to correct, enrich, or modify existing entity data, or move an entity to a different scope.
 
 EXAMPLES:
 - Update name: {"entity_key": "ent-abc123", "name": "React Dashboard v2"}
 - Change type: {"entity_key": "ent-abc123", "entity_type": "Application"}
 - Add properties: {"entity_key": "ent-abc123", "properties": {"status": "completed"}}
+- Move to team scope: {"entity_key": "ent-abc123", "scope_type": "team", "scope_key": "team-xyz789"}
+- Move to personal scope: {"entity_key": "ent-abc123", "scope_type": "user", "scope_key": "usr-abc123"}
 
-NOTE: Properties are merged, not replaced. To remove a property, set it to null.""",
+NOTE: Properties are merged, not replaced. To remove a property, set it to null.
+SCOPE: Use scope_type and scope_key together to move entity visibility between domain, team, or user.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "entity_key": {"type": "string", "description": "The entity key to update"},
                     "name": {"type": "string", "description": "New name (optional)"},
                     "entity_type": {"type": "string", "description": "New type (optional)"},
-                    "properties": {"type": "object", "description": "Properties to add/update (merged with existing)"}
+                    "properties": {"type": "object", "description": "Properties to add/update (merged with existing)"},
+                    "scope_type": {"type": "string", "enum": ["domain", "team", "user"], "description": "New scope type (optional)"},
+                    "scope_key": {"type": "string", "description": "New scope key - team_key or user_key (required if scope_type is set)"}
                 },
                 "required": ["entity_key"]
             }
@@ -358,6 +383,35 @@ RETURNS: List of extracted entities with their types. If auto_create=true, also 
                     "auto_create": {"type": "boolean", "description": "If true, automatically create entities that don't exist (default false)", "default": False}
                 },
                 "required": ["text"]
+            }
+        ),
+        types.Tool(
+            name="move_entity_scope",
+            description="""Move an entity and its related entities to a different scope. Requires domain_admin or admin role.
+
+USE THIS WHEN: You need to move a project or group of related entities from one scope to another
+(e.g., from domain to team, between teams, or to personal scope).
+
+EXAMPLES:
+- Move to team: {"entity_key": "ent-project", "scope_type": "team", "scope_key": "team-xyz"}
+- Move to domain (public): {"entity_key": "ent-project", "scope_type": "domain", "scope_key": "dom-abc"}
+- Move single entity: {"entity_key": "ent-abc", "scope_type": "team", "scope_key": "team-xyz", "include_related": false}
+
+BEHAVIOR:
+- Recursively updates all connected entities via relationships (unless include_related=false)
+- Only moves entities within your domain
+- Requires domain_admin or admin role
+
+RETURNS: Count and list of updated entities.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity_key": {"type": "string", "description": "The entity key to move"},
+                    "scope_type": {"type": "string", "enum": ["domain", "team", "user"], "description": "Target scope type"},
+                    "scope_key": {"type": "string", "description": "Target scope key (domain_key, team_key, or user_key)"},
+                    "include_related": {"type": "boolean", "description": "Include related entities recursively (default true)", "default": True}
+                },
+                "required": ["entity_key", "scope_type", "scope_key"]
             }
         ),
 
@@ -557,7 +611,9 @@ RETURNS: Either the identity guidance (options) or confirmation of registration.
                     "model_id": {"type": "string", "description": "REQUIRED: Your model identifier - you know this! (e.g., 'claude-opus-4-5-20251101')"},
                     "persona": {"type": "string", "description": "Persona role: backend-code, frontend-code, architect, consultant, etc."},
                     "model_key": {"type": "string", "description": "Model key from database (alternative to model_id)"},
-                    "focus": {"type": "string", "description": "What you're currently working on - describe your task"}
+                    "focus": {"type": "string", "description": "What you're currently working on - describe your task"},
+                    "team_key": {"type": "string", "description": "Explicit team key to set as active (optional - auto-detected from agent_id if not provided)"},
+                    "team_slug": {"type": "string", "description": "Team slug to set as active (optional - resolved to team_key)"}
                 }
             }
         ),
@@ -617,6 +673,51 @@ RETURNS: Your new identity details after the change.""",
                     "focus": {"type": "string", "description": "Current work focus"}
                 }
             }
+        ),
+
+        # ============================================================
+        # TEAM AND SCOPE TOOLS - Manage teams and entity scopes
+        # ============================================================
+        types.Tool(
+            name="list_my_scopes",
+            description="""List all scopes the current agent can access.
+
+USE THIS WHEN: You want to see what scopes are available for creating entities or understanding visibility.
+
+SCOPES determine entity visibility:
+- domain: Visible to everyone in the domain
+- team: Visible only to team members
+- user: Private to the user
+
+RETURNS: Available scopes grouped by type with your access level, plus your default scope for new entities.""",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
+            name="set_active_team",
+            description="""Set active team for this session. New entities will default to this team's scope.
+
+USE THIS WHEN: You want to focus work on a specific team and have new entities scoped to that team.
+
+EXAMPLES:
+- {"team_key": "team-abc123"} → Set team as active, new entities will be team-scoped
+- {} or {"team_key": null} → Clear active team, use domain scope instead
+
+RETURNS: Confirmation with the new default scope.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "team_key": {"type": "string", "description": "Team key to set as active (null/omit to clear)"}
+                }
+            }
+        ),
+        types.Tool(
+            name="list_teams",
+            description="""List teams the current user is a member of.
+
+USE THIS WHEN: You want to see available teams for scoping entities or collaboration.
+
+RETURNS: Teams with names, descriptions, and your role in each team.""",
+            inputSchema={"type": "object", "properties": {}}
         ),
 
         # ============================================================
@@ -694,7 +795,8 @@ RETURNS: Confirmation with message key.""",
                     "reply_to": {"type": "string", "description": "Optional: message_key to reply to (creates threaded conversation)"},
                     "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"},
                     "autonomous": {"type": "boolean", "description": "Set true to request autonomous work (receiver works independently and replies when done). Set false (default) when replying to signal task completion. See AUTONOMOUS COLLABORATION WORKFLOW above.", "default": False},
-                    "entity_keys": {"type": "array", "items": {"type": "string"}, "description": "Optional: entity keys to link this message to in the knowledge graph. Replies auto-inherit parent's entity_keys."}
+                    "entity_keys": {"type": "array", "items": {"type": "string"}, "description": "Optional: entity keys to link this message to in the knowledge graph. Replies auto-inherit parent's entity_keys."},
+                    "team_key": {"type": "string", "description": "Optional: team key to scope message to a specific team (null = domain-wide)"}
                 },
                 "required": ["content"]
             }
@@ -718,7 +820,8 @@ RETURNS: List of messages with sender, content, type, and read status.""",
                     "channel": {"type": "string", "description": "Filter by channel (optional)"},
                     "unread_only": {"type": "boolean", "description": "Only unread messages", "default": True},
                     "limit": {"type": "integer", "description": "Maximum messages to retrieve", "default": 20},
-                    "since": {"type": "string", "description": "Only return messages created after this ISO8601 timestamp (optional)"}
+                    "since": {"type": "string", "description": "Only return messages created after this ISO8601 timestamp (optional)"},
+                    "team_key": {"type": "string", "description": "Filter to a specific team's messages (optional, uses active team if set)"}
                 }
             }
         ),
@@ -759,7 +862,8 @@ RETURNS: Number of messages marked as read.""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "channel": {"type": "string", "description": "Only mark messages in this channel as read (optional)"}
+                    "channel": {"type": "string", "description": "Only mark messages in this channel as read (optional)"},
+                    "team_key": {"type": "string", "description": "Only mark messages in this team as read (optional)"}
                 }
             }
         ),
@@ -1233,6 +1337,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = await search_entities_semantic(arguments, config, _session_state)
     elif name == "extract_entities_from_text":
         result = await extract_entities_from_text(arguments, config, _session_state)
+    elif name == "move_entity_scope":
+        result = await move_entity_scope(arguments, config, _session_state)
 
     # Relationship tools
     elif name == "list_relationships":
@@ -1263,6 +1369,14 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = await get_my_identity(arguments, config, _session_state)
     elif name == "update_my_identity":
         result = await update_my_identity(arguments, config, _session_state)
+
+    # Team and scope tools
+    elif name == "list_my_scopes":
+        result = await list_my_scopes(arguments, config, _session_state)
+    elif name == "set_active_team":
+        result = await set_active_team(arguments, config, _session_state)
+    elif name == "list_teams":
+        result = await list_teams(arguments, config, _session_state)
 
     # Message queue tools
     elif name == "send_message":

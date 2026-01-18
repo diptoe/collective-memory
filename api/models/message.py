@@ -51,6 +51,7 @@ class Message(BaseModel):
     confirmed_at = Column(DateTime(timezone=True), nullable=True)  # When confirmed
     entity_keys = Column(JSONB, default=list)  # Linked entity keys for knowledge graph connection
     domain_key = Column(String(36), nullable=True, index=True)  # Domain for multi-tenancy isolation
+    team_key = Column(String(36), nullable=True, index=True)  # Team scope (null = domain-wide)
     read_at = Column(DateTime(timezone=True), nullable=True)  # Legacy - use MessageRead
     created_at = Column(DateTime(timezone=True), default=get_now)
 
@@ -61,12 +62,12 @@ class Message(BaseModel):
         Index('ix_messages_reply_to', 'reply_to_key'),
     )
 
-    _default_fields = ['message_key', 'channel', 'from_agent', 'user_key', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys', 'domain_key']
+    _default_fields = ['message_key', 'channel', 'from_agent', 'user_key', 'to_agent', 'reply_to_key', 'message_type', 'content', 'priority', 'autonomous', 'confirmed', 'confirmed_by', 'confirmed_at', 'entity_keys', 'domain_key', 'team_key']
     _readonly_fields = ['message_key', 'created_at']
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 8  # Bumped for domain_key rename
+        return 9  # Added team_key for team-scoped messages
 
     @classmethod
     def get_by_channel(cls, channel: str, limit: int = 50, since: str = None) -> list['Message']:
@@ -79,16 +80,42 @@ class Message(BaseModel):
         return query.order_by(cls.created_at.desc()).limit(limit).all()
 
     @classmethod
-    def get_for_agent(cls, agent_id: str, limit: int = 50, unread_only: bool = False) -> list['Message']:
+    def get_for_agent(
+        cls,
+        agent_id: str,
+        limit: int = 50,
+        unread_only: bool = False,
+        team_keys: list[str] = None,
+        team_key: str = None
+    ) -> list['Message']:
         """
         Get messages for a specific agent.
-        Includes direct messages TO this agent and all broadcasts (to_agent is null).
+        Includes direct messages TO this agent and broadcasts visible to them.
+
+        Args:
+            agent_id: The agent's identifier
+            limit: Maximum messages to return
+            unread_only: Only return unread messages
+            team_keys: List of team_keys the agent can access (for scope filtering)
+            team_key: Filter to a specific team only
         """
         from api.models.message_read import MessageRead
+        from sqlalchemy import or_
 
         query = cls.query.filter(
             (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
         )
+
+        # Apply team scope filtering
+        if team_key:
+            # Filter to specific team only
+            query = query.filter(cls.team_key == team_key)
+        elif team_keys:
+            # Show domain-wide (team_key is null) OR messages in agent's teams
+            query = query.filter(
+                or_(cls.team_key.is_(None), cls.team_key.in_(team_keys))
+            )
+        # If no team_keys provided, show all (backward compatible)
 
         if unread_only:
             # Subquery to find messages this agent has read
@@ -132,9 +159,26 @@ class Message(BaseModel):
         return query.count()
 
     @classmethod
-    def get_unread_for_agent(cls, agent_id: str, channel: str = None, limit: int = 50) -> list['Message']:
-        """Get unread messages for an agent, optionally filtered by channel."""
+    def get_unread_for_agent(
+        cls,
+        agent_id: str,
+        channel: str = None,
+        limit: int = 50,
+        team_keys: list[str] = None,
+        team_key: str = None
+    ) -> list['Message']:
+        """
+        Get unread messages for an agent, optionally filtered by channel and team.
+
+        Args:
+            agent_id: The agent's identifier
+            channel: Filter by channel (optional)
+            limit: Maximum messages to return
+            team_keys: List of team_keys the agent can access (for scope filtering)
+            team_key: Filter to a specific team only
+        """
         from api.models.message_read import MessageRead
+        from sqlalchemy import or_
 
         query = cls.query.filter(
             (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
@@ -142,6 +186,16 @@ class Message(BaseModel):
 
         if channel:
             query = query.filter(cls.channel == channel)
+
+        # Apply team scope filtering
+        if team_key:
+            # Filter to specific team only
+            query = query.filter(cls.team_key == team_key)
+        elif team_keys:
+            # Show domain-wide (team_key is null) OR messages in agent's teams
+            query = query.filter(
+                or_(cls.team_key.is_(None), cls.team_key.in_(team_keys))
+            )
 
         # Exclude messages they've read
         read_subquery = db.session.query(MessageRead.message_key).filter(
@@ -152,19 +206,34 @@ class Message(BaseModel):
         return query.order_by(cls.created_at.desc()).limit(limit).all()
 
     @classmethod
-    def get_unread_autonomous_count(cls, agent_id: str) -> int:
+    def get_unread_autonomous_count(
+        cls,
+        agent_id: str,
+        team_keys: list[str] = None
+    ) -> int:
         """
         Get count of unread autonomous messages for an agent.
 
         These are high-priority tasks that require the agent to act autonomously
         and reply when complete.
+
+        Args:
+            agent_id: The agent's identifier
+            team_keys: List of team_keys the agent can access (for scope filtering)
         """
         from api.models.message_read import MessageRead
+        from sqlalchemy import or_
 
         query = cls.query.filter(
             cls.autonomous == True,
             (cls.to_agent == agent_id) | (cls.to_agent.is_(None))
         )
+
+        # Apply team scope filtering
+        if team_keys:
+            query = query.filter(
+                or_(cls.team_key.is_(None), cls.team_key.in_(team_keys))
+            )
 
         # Exclude messages they've read
         read_subquery = db.session.query(MessageRead.message_key).filter(

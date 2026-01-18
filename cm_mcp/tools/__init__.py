@@ -11,6 +11,7 @@ from .entity import (
     update_entity,
     search_entities_semantic,
     extract_entities_from_text,
+    move_entity_scope,
 )
 
 from .relationship import (
@@ -34,6 +35,9 @@ from .agent import (
     list_agents,
     get_my_identity,
     update_my_identity,
+    list_my_scopes,
+    set_active_team,
+    list_teams,
 )
 
 from .message import (
@@ -76,6 +80,7 @@ __all__ = [
     'update_entity',
     'search_entities_semantic',
     'extract_entities_from_text',
+    'move_entity_scope',
     # Relationship tools
     'list_relationships',
     'create_relationship',
@@ -91,6 +96,10 @@ __all__ = [
     'list_agents',
     'get_my_identity',
     'update_my_identity',
+    # Team and scope tools
+    'list_my_scopes',
+    'set_active_team',
+    'list_teams',
     # Message queue tools
     'send_message',
     'get_messages',

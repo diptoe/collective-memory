@@ -13,6 +13,21 @@ from api.services.auth import (
     require_auth_strict, require_admin, get_user_from_request
 )
 from api.services.activity import activity_service
+from api.services.scope import scope_service
+
+
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for multi-tenancy filtering."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
+
+
+def get_user_key() -> str | None:
+    """Get the current user's user_key for activity tracking."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.user_key
+    return None
 
 
 def register_auth_routes(api: Api):
@@ -113,13 +128,18 @@ def register_auth_routes(api: Api):
                 # Update last login
                 user.update_last_login()
 
+                # Ensure user has a linked Person entity in the knowledge graph
+                user.ensure_person_entity()
+
                 # Record activity
                 activity_service.record_create(
                     actor=user.user_key,
                     entity_type='User',
                     entity_key=user.user_key,
                     entity_name=user.display_name,
-                    changes={'email': email, 'role': role}
+                    changes={'email': email, 'role': role},
+                    domain_key=user.domain_key,
+                    user_key=user.user_key
                 )
 
                 # Build response with cookie
@@ -197,13 +217,18 @@ def register_auth_routes(api: Api):
                 # Update last login
                 user.update_last_login()
 
+                # Ensure user has a linked Person entity in the knowledge graph
+                user.ensure_person_entity()
+
                 # Record activity
                 activity_service.record_read(
                     actor=user.user_key,
                     entity_type='User',
                     entity_key=user.user_key,
                     entity_name=user.display_name,
-                    query='login'
+                    query='login',
+                    domain_key=user.domain_key,
+                    user_key=user.user_key
                 )
 
                 # Build response with cookie
@@ -250,11 +275,31 @@ def register_auth_routes(api: Api):
         @ns.doc('get_current_user')
         @ns.marshal_with(response_model)
         def get(self):
-            """Get current authenticated user."""
+            """Get current authenticated user with teams and scopes."""
             user, session = get_user_from_request()
 
             if not user:
                 return {'success': False, 'msg': 'Not authenticated'}, 401
+
+            # Get user's teams with membership info
+            teams_data = []
+            for team in user.get_teams():
+                membership = user.get_team_memberships()
+                team_membership = next(
+                    (m for m in membership if m.team_key == team.team_key),
+                    None
+                )
+                teams_data.append({
+                    'team_key': team.team_key,
+                    'name': team.name,
+                    'slug': team.slug,
+                    'description': team.description,
+                    'role': team_membership.role if team_membership else 'member',
+                })
+
+            # Get available scopes and default scope
+            available_scopes = scope_service.get_user_accessible_scopes(user)
+            default_scope = scope_service.get_default_scope(user)
 
             return {
                 'success': True,
@@ -262,6 +307,9 @@ def register_auth_routes(api: Api):
                 'data': {
                     'user': user.to_dict(include_pat=True, include_domain=True),
                     'session': session.to_dict() if session else None,
+                    'teams': teams_data,
+                    'available_scopes': available_scopes,
+                    'default_scope': default_scope,
                 }
             }
 
@@ -282,7 +330,9 @@ def register_auth_routes(api: Api):
                     entity_type='User',
                     entity_key=user.user_key,
                     entity_name=user.display_name,
-                    changes={'pat': 'regenerated'}
+                    changes={'pat': 'regenerated'},
+                    domain_key=user.domain_key,
+                    user_key=user.user_key
                 )
 
                 return {
@@ -342,7 +392,9 @@ def register_auth_routes(api: Api):
                     entity_type='User',
                     entity_key=user.user_key,
                     entity_name=user.display_name,
-                    changes=changes
+                    changes=changes,
+                    domain_key=user.domain_key,
+                    user_key=user.user_key
                 )
 
                 return {
@@ -388,7 +440,9 @@ def register_auth_routes(api: Api):
                     entity_type='User',
                     entity_key=user.user_key,
                     entity_name=user.display_name,
-                    changes={'password': 'changed'}
+                    changes={'password': 'changed'},
+                    domain_key=user.domain_key,
+                    user_key=user.user_key
                 )
 
                 return {
@@ -541,7 +595,9 @@ def register_auth_routes(api: Api):
                     actor=g.current_user.user_key,
                     entity_type='Session',
                     entity_key=session_key,
-                    entity_name=f'Session for user {user_key}'
+                    entity_name=f'Session for user {user_key}',
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {

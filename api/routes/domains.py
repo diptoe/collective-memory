@@ -11,6 +11,20 @@ from api.services.auth import require_admin
 from api.services.activity import activity_service
 
 
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for multi-tenancy filtering."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
+
+
+def get_user_key() -> str | None:
+    """Get the current user's user_key for activity tracking."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.user_key
+    return None
+
+
 def register_domain_routes(api: Api):
     """Register domain routes with the API."""
 
@@ -123,7 +137,9 @@ def register_domain_routes(api: Api):
                     entity_type='Domain',
                     entity_key=domain.domain_key,
                     entity_name=domain.name,
-                    changes={'slug': slug, 'owner_key': owner_key}
+                    changes={'slug': slug, 'owner_key': owner_key},
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {
@@ -214,7 +230,9 @@ def register_domain_routes(api: Api):
                         entity_type='Domain',
                         entity_key=domain.domain_key,
                         entity_name=domain.name,
-                        changes=changes
+                        changes=changes,
+                        domain_key=get_user_domain_key(),
+                        user_key=get_user_key()
                     )
 
                 return {

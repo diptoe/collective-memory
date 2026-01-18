@@ -4,11 +4,25 @@ import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { X, Search, Focus, ChevronDown } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Entity, Relationship } from '@/types';
+import { Entity, Relationship, Scope } from '@/types';
 import { KnowledgeGraph } from '@/components/graph';
+import { cn } from '@/lib/utils';
 
 // Entity types that can be used as project/scope filters
 const SCOPE_ENTITY_TYPES = ['Project', 'Repository'];
+
+// Scope display helpers
+const SCOPE_ICONS: Record<string, string> = {
+  domain: '🌐',
+  team: '👥',
+  user: '👤',
+};
+
+const SCOPE_COLORS: Record<string, string> = {
+  domain: 'bg-blue-100 text-blue-700 border-blue-200',
+  team: 'bg-green-100 text-green-700 border-green-200',
+  user: 'bg-purple-100 text-purple-700 border-purple-200',
+};
 
 function GraphPageContent() {
   const searchParams = useSearchParams();
@@ -20,6 +34,11 @@ function GraphPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Scope filtering state
+  const [availableScopes, setAvailableScopes] = useState<Scope[]>([]);
+  const [selectedScope, setSelectedScope] = useState<Scope | null>(null);
+  const [scopesLoading, setScopesLoading] = useState(true);
+
   // Read focus from URL on mount
   const urlFocus = searchParams.get('focus');
   const [focusedEntityKey, setFocusedEntityKey] = useState<string | null>(urlFocus);
@@ -27,12 +46,38 @@ function GraphPageContent() {
   // Get scope entities (Projects, Repositories) for dropdown
   const scopeEntities = entities.filter(e => SCOPE_ENTITY_TYPES.includes(e.entity_type));
 
+  // Load available scopes from /auth/me on mount
+  useEffect(() => {
+    async function loadScopes() {
+      try {
+        const res = await api.auth.me();
+        if (res.data?.available_scopes) {
+          setAvailableScopes(res.data.available_scopes);
+        }
+      } catch (err) {
+        console.error('Failed to load scopes:', err);
+      } finally {
+        setScopesLoading(false);
+      }
+    }
+    loadScopes();
+  }, []);
+
+  // Load graph data when scope changes
   useEffect(() => {
     async function loadGraph() {
+      setLoading(true);
       try {
-        // Fetch more entities for the graph (default is 100)
+        // Build params with scope filter
+        const params: Record<string, string> = { limit: '1000' };
+        if (selectedScope) {
+          params.scope_type = selectedScope.scope_type;
+          params.scope_key = selectedScope.scope_key;
+        }
+
+        // Fetch entities and relationships
         const [entRes, relRes] = await Promise.all([
-          api.entities.list({ limit: '1000' }),
+          api.entities.list(params),
           api.relationships.list({ limit: 5000 }),
         ]);
         setEntities(entRes.data?.entities || []);
@@ -46,7 +91,7 @@ function GraphPageContent() {
     }
 
     loadGraph();
-  }, []);
+  }, [selectedScope]);
 
   const handleEntitySelect = useCallback((entity: Entity | null) => {
     // Future: could sync with URL or global state
@@ -113,7 +158,41 @@ function GraphPageContent() {
           </p>
         </div>
 
-        {/* Project/Repository scope dropdown */}
+        {/* Scope filter dropdown */}
+        <div className="relative flex-shrink-0">
+          <select
+            value={selectedScope ? `${selectedScope.scope_type}:${selectedScope.scope_key}` : ''}
+            onChange={(e) => {
+              if (e.target.value === '') {
+                setSelectedScope(null);
+              } else {
+                const [scopeType, scopeKey] = e.target.value.split(':');
+                const scope = availableScopes.find(
+                  s => s.scope_type === scopeType && s.scope_key === scopeKey
+                );
+                setSelectedScope(scope || null);
+              }
+            }}
+            className={cn(
+              "px-3 py-2 pr-8 rounded-lg border transition-colors text-sm appearance-none cursor-pointer min-w-[140px]",
+              "focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta",
+              selectedScope
+                ? SCOPE_COLORS[selectedScope.scope_type] || 'border-cm-sand bg-white'
+                : 'border-cm-sand text-cm-coffee bg-white'
+            )}
+            disabled={scopesLoading}
+          >
+            <option value="">All Scopes</option>
+            {availableScopes.map((scope) => (
+              <option key={`${scope.scope_type}:${scope.scope_key}`} value={`${scope.scope_type}:${scope.scope_key}`}>
+                {SCOPE_ICONS[scope.scope_type]} {scope.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50 pointer-events-none" />
+        </div>
+
+        {/* Project/Repository focus dropdown */}
         {scopeEntities.length > 0 && (
           <div className="relative flex-shrink-0">
             <select

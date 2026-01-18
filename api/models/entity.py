@@ -18,6 +18,11 @@ except ImportError:
 
 from api.models.base import BaseModel, db, get_key, get_now
 
+# TYPE_CHECKING import to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from api.models.user import User
+
 # Enable pgvector-backed VECTOR columns only when the DB extension is available.
 PGVECTOR_ENABLED = (
     PGVECTOR_AVAILABLE
@@ -38,6 +43,13 @@ class Entity(BaseModel):
     name = Column(String(255), nullable=False)
     properties = Column(JSONB, default=dict)
     domain_key = Column(String(100), nullable=True, index=True)
+
+    # Scope columns for fine-grained visibility control
+    # scope_type: 'domain', 'team', 'user', or NULL (NULL = domain-scoped for backward compatibility)
+    # scope_key: team_key or user_key depending on scope_type
+    scope_type = Column(String(20), nullable=True, index=True)
+    scope_key = Column(String(36), nullable=True, index=True)
+
     confidence = Column(Float, default=1.0)
     source = Column(String(100), nullable=True)
 
@@ -54,6 +66,7 @@ class Entity(BaseModel):
     __table_args__ = (
         Index('ix_entities_type_domain', 'entity_type', 'domain_key'),
         Index('ix_entities_name_search', 'name'),
+        Index('ix_entities_scope', 'scope_type', 'scope_key'),
     )
 
     _default_fields = ['entity_key', 'entity_type', 'name', 'properties', 'domain_key']
@@ -61,7 +74,7 @@ class Entity(BaseModel):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 1
+        return 2  # Added scope_type, scope_key for flexible scoping
 
     @classmethod
     def get_by_type(cls, entity_type: str, limit: int = 100) -> list['Entity']:
@@ -69,11 +82,36 @@ class Entity(BaseModel):
         return cls.query.filter_by(entity_type=entity_type).limit(limit).all()
 
     @classmethod
-    def search_by_name(cls, name_query: str, limit: int = 20) -> list['Entity']:
-        """Search entities by name (case-insensitive contains)."""
-        return cls.query.filter(
-            cls.name.ilike(f'%{name_query}%')
-        ).limit(limit).all()
+    def search_by_name(
+        cls,
+        name_query: str,
+        limit: int = 20,
+        user: 'User' = None,
+        domain_key: str = None
+    ) -> list['Entity']:
+        """
+        Search entities by name (case-insensitive contains).
+
+        Args:
+            name_query: Search string
+            limit: Maximum results
+            user: Optional user for scope filtering
+            domain_key: Optional domain filter (used if user not provided)
+
+        Returns:
+            List of matching entities
+        """
+        query = cls.query.filter(cls.name.ilike(f'%{name_query}%'))
+
+        # Apply scope filtering if user provided
+        if user:
+            from api.services.scope import scope_service
+            query = scope_service.filter_query_by_scope(query, user, cls)
+        elif domain_key:
+            # Fall back to domain filter if no user
+            query = query.filter(cls.domain_key == domain_key)
+
+        return query.limit(limit).all()
 
     @classmethod
     def get_by_domain(cls, domain_key: str, limit: int = 100) -> list['Entity']:
@@ -86,7 +124,9 @@ class Entity(BaseModel):
         query_embedding: List[float],
         limit: int = 10,
         entity_type: str = None,
-        threshold: float = None
+        threshold: float = None,
+        user: 'User' = None,
+        domain_key: str = None
     ) -> List['Entity']:
         """
         Semantic similarity search using cosine distance.
@@ -96,6 +136,8 @@ class Entity(BaseModel):
             limit: Maximum results
             entity_type: Filter by entity type
             threshold: Optional similarity threshold (0-1, higher is more similar)
+            user: Optional user for scope filtering
+            domain_key: Optional domain filter (used if user not provided)
 
         Returns:
             List of entities ordered by similarity
@@ -111,6 +153,14 @@ class Entity(BaseModel):
         if entity_type:
             query = query.filter(cls.entity_type == entity_type)
 
+        # Apply scope filtering if user provided
+        if user:
+            from api.services.scope import scope_service
+            query = scope_service.filter_query_by_scope(query, user, cls)
+        elif domain_key:
+            # Fall back to domain filter if no user
+            query = query.filter(cls.domain_key == domain_key)
+
         # Order by cosine distance (smaller = more similar)
         query = query.order_by(
             cls.embedding.cosine_distance(query_embedding)
@@ -124,7 +174,9 @@ class Entity(BaseModel):
         keyword: str,
         query_embedding: List[float],
         limit: int = 10,
-        keyword_weight: float = 0.3
+        keyword_weight: float = 0.3,
+        user: 'User' = None,
+        domain_key: str = None
     ) -> List['Entity']:
         """
         Hybrid search combining keyword and semantic search.
@@ -134,20 +186,22 @@ class Entity(BaseModel):
             query_embedding: Query embedding vector
             limit: Maximum results
             keyword_weight: Weight for keyword results (0-1)
+            user: Optional user for scope filtering
+            domain_key: Optional domain filter (used if user not provided)
 
         Returns:
             List of entities with combined ranking
         """
         if not PGVECTOR_ENABLED:
             # Fall back to keyword search only
-            return cls.search_by_name(keyword, limit=limit)
+            return cls.search_by_name(keyword, limit=limit, user=user, domain_key=domain_key)
 
-        # Get keyword matches
-        keyword_results = cls.search_by_name(keyword, limit=limit * 2)
+        # Get keyword matches (with scope filtering)
+        keyword_results = cls.search_by_name(keyword, limit=limit * 2, user=user, domain_key=domain_key)
         keyword_keys = {e.entity_key for e in keyword_results}
 
-        # Get semantic matches
-        semantic_results = cls.search_semantic(query_embedding, limit=limit * 2)
+        # Get semantic matches (with scope filtering)
+        semantic_results = cls.search_semantic(query_embedding, limit=limit * 2, user=user, domain_key=domain_key)
 
         # Combine results with simple fusion
         seen = set()
@@ -213,6 +267,12 @@ class Entity(BaseModel):
             # Remove raw embedding from result (it's included by super().to_dict())
             result.pop('embedding', None)
 
+        # Resolve scope_name for human-readable display
+        if self.scope_type and self.scope_key:
+            result['scope_name'] = self._resolve_scope_name()
+        else:
+            result['scope_name'] = None
+
         if include_relationships:
             from api.models.relationship import Relationship
             # Get relationships where this entity is the source or target
@@ -224,3 +284,23 @@ class Entity(BaseModel):
             }
 
         return result
+
+    def _resolve_scope_name(self) -> str | None:
+        """Resolve the scope_key to a human-readable name."""
+        if not self.scope_type or not self.scope_key:
+            return None
+
+        if self.scope_type == 'domain':
+            from api.models.domain import Domain
+            domain = Domain.get_by_key(self.scope_key)
+            return domain.name if domain else None
+        elif self.scope_type == 'team':
+            from api.models.team import Team
+            team = Team.get_by_key(self.scope_key)
+            return team.name if team else None
+        elif self.scope_type == 'user':
+            from api.models.user import User
+            user = User.get_by_key(self.scope_key)
+            return user.display_name if user else None
+
+        return None

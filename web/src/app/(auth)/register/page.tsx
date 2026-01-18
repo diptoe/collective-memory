@@ -73,7 +73,6 @@ export default function RegisterPage() {
           <h1 className="font-serif text-3xl font-semibold text-cm-charcoal">
             Collective Memory
           </h1>
-          <p className="text-sm text-cm-coffee mt-2">by Diptoe</p>
         </div>
 
         {/* Register Card */}

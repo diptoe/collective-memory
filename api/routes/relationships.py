@@ -3,16 +3,31 @@ Collective Memory Platform - Relationship Routes
 
 CRUD operations for entity relationships.
 """
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Relationship, Entity
 from api.services.activity import activity_service
+from api.services.auth import require_auth
 
 
 def get_actor() -> str:
     """Get actor from X-Agent-Id header or return 'system'."""
     return request.headers.get('X-Agent-Id', 'system')
+
+
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for multi-tenancy filtering."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
+
+
+def get_user_key() -> str | None:
+    """Get the current user's user_key for activity tracking."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.user_key
+    return None
 
 
 def register_relationship_routes(api: Api):
@@ -137,7 +152,9 @@ def register_relationship_routes(api: Api):
                     from_entity_name=from_entity.name,
                     to_entity_key=to_entity.entity_key,
                     to_entity_name=to_entity.name,
-                    relationship_type=relationship.relationship_type
+                    relationship_type=relationship.relationship_type,
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
                 return {
                     'success': True,
@@ -208,7 +225,9 @@ def register_relationship_routes(api: Api):
                     relationship_key=relationship_key,
                     from_entity_key=from_key,
                     to_entity_key=to_key,
-                    relationship_type=rel_type
+                    relationship_type=rel_type,
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {

@@ -3,10 +3,11 @@ Collective Memory Platform - Context Routes
 
 Context injection queries for the knowledge graph.
 """
-from flask import request
+from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
 from api.utils.graph import GraphTraversal
+from api.services.auth import require_auth
 
 
 def register_context_routes(api: Api):
@@ -46,13 +47,14 @@ def register_context_routes(api: Api):
         @ns.doc('query_context')
         @ns.expect(context_query)
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self):
             """
             Get relevant context for a query.
 
             Searches the knowledge graph for entities and relationships
             relevant to the query text. Returns a context suitable for
-            injection into AI model prompts.
+            injection into AI model prompts. Results filtered by user's scopes.
             """
             data = request.json
 
@@ -62,10 +64,14 @@ def register_context_routes(api: Api):
             max_entities = data.get('max_entities', 20)
             max_tokens = data.get('max_tokens', 4000)
 
+            # Get user for scope filtering
+            user = g.current_user if hasattr(g, 'current_user') else None
+
             result = GraphTraversal.get_context_for_query(
                 data['query'],
                 max_entities=max_entities,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                user=user
             )
 
             return {
@@ -79,11 +85,13 @@ def register_context_routes(api: Api):
         @ns.doc('get_subgraph')
         @ns.expect(subgraph_query)
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self):
             """
             Get a subgraph containing specific entities.
 
             Returns the specified entities and their relationships.
+            Results filtered by user's accessible scopes.
             """
             data = request.json
 
@@ -92,9 +100,13 @@ def register_context_routes(api: Api):
 
             include_relationships = data.get('include_relationships', True)
 
+            # Get user for scope filtering
+            user = g.current_user if hasattr(g, 'current_user') else None
+
             result = GraphTraversal.get_subgraph(
                 data['entity_keys'],
-                include_relationships=include_relationships
+                include_relationships=include_relationships,
+                user=user
             )
 
             return {
@@ -108,12 +120,14 @@ def register_context_routes(api: Api):
         @ns.doc('get_neighbors')
         @ns.expect(neighbors_query)
         @ns.marshal_with(response_model)
+        @require_auth
         def post(self):
             """
             Get neighboring entities within N hops.
 
             Traverses the graph from the starting entity and returns
             all entities and relationships within the specified hop distance.
+            Results filtered by user's accessible scopes.
             """
             data = request.json
 
@@ -122,9 +136,13 @@ def register_context_routes(api: Api):
 
             max_hops = data.get('max_hops', 1)
 
+            # Get user for scope filtering
+            user = g.current_user if hasattr(g, 'current_user') else None
+
             result = GraphTraversal.get_neighbors(
                 data['entity_key'],
-                max_hops=max_hops
+                max_hops=max_hops,
+                user=user
             )
 
             return {

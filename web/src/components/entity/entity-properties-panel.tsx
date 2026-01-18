@@ -131,6 +131,30 @@ export function EntityPropertiesPanel({ entity, excludeKeys = [] }: EntityProper
             <span className="text-cm-charcoal">{entity.source || '-'}</span>
           </div>
           <div className="flex px-4 py-3">
+            <span className="text-cm-coffee min-w-[150px] font-medium">Scope</span>
+            <span className="text-cm-charcoal">
+              {entity.scope_type ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className={`px-2 py-0.5 text-xs rounded-full ${
+                    entity.scope_type === 'domain' ? 'bg-blue-100 text-blue-700' :
+                    entity.scope_type === 'team' ? 'bg-green-100 text-green-700' :
+                    'bg-purple-100 text-purple-700'
+                  }`}>
+                    {entity.scope_type}
+                  </span>
+                  {entity.scope_name && (
+                    <span className="text-cm-coffee">{entity.scope_name}</span>
+                  )}
+                  {!entity.scope_name && entity.scope_key && (
+                    <span className="text-cm-coffee/50 text-xs font-mono">{entity.scope_key}</span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-cm-coffee/50 italic">Domain (default)</span>
+              )}
+            </span>
+          </div>
+          <div className="flex px-4 py-3">
             <span className="text-cm-coffee min-w-[150px] font-medium">Created</span>
             <span className="text-cm-charcoal">{formatDate(entity.created_at)}</span>
           </div>

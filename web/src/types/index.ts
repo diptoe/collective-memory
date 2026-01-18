@@ -13,6 +13,9 @@ export interface Entity {
   context_domain?: string;
   confidence: number;
   source?: string;
+  scope_type?: 'domain' | 'team' | 'user' | null;
+  scope_key?: string | null;
+  scope_name?: string; // Resolved name of the scope (team name, user name, etc.)
   created_at: string;
   updated_at: string;
   relationships?: {
@@ -257,7 +260,7 @@ export interface ActivityTimelinePoint {
 }
 
 // User authentication types
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'domain_admin' | 'user';
 export type UserStatus = 'active' | 'suspended' | 'pending';
 
 export interface User {
@@ -325,4 +328,56 @@ export interface Domain {
     display_name: string;
     email: string;
   };
+}
+
+// Team types (flexible scoping within domains)
+export type TeamStatus = 'active' | 'archived';
+export type TeamMemberRole = 'owner' | 'admin' | 'member' | 'viewer';
+
+export interface Team {
+  team_key: string;
+  domain_key: string;
+  name: string;
+  slug: string;
+  description?: string;
+  status: TeamStatus;
+  settings: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  // Extended fields from API
+  member_count?: number;
+  domain?: {
+    domain_key: string;
+    name: string;
+  };
+}
+
+export interface TeamMembership {
+  membership_key: string;
+  team_key: string;
+  user_key: string;
+  role: TeamMemberRole;
+  joined_at: string;
+  // Extended fields from API
+  user?: {
+    user_key: string;
+    display_name: string;
+    email: string;
+    initials: string;
+  };
+  team?: {
+    team_key: string;
+    name: string;
+  };
+}
+
+// Scope types for entity visibility control
+export type ScopeType = 'domain' | 'team' | 'user';
+export type ScopeAccessLevel = 'owner' | 'admin' | 'member' | 'viewer';
+
+export interface Scope {
+  scope_type: ScopeType;
+  scope_key: string;
+  name: string;
+  access_level: ScopeAccessLevel;
 }

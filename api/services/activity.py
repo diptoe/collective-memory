@@ -75,7 +75,9 @@ class ActivityService:
         actor: str,
         message_key: str,
         channel: Optional[str] = None,
-        recipient: Optional[str] = None
+        recipient: Optional[str] = None,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a message_sent activity."""
         return self.record(
@@ -86,7 +88,9 @@ class ActivityService:
             extra_data={
                 'channel': channel,
                 'recipient': recipient
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_agent_heartbeat(
@@ -95,7 +99,9 @@ class ActivityService:
         agent_key: str,
         status: Optional[str] = None,
         unread_messages: int = 0,
-        autonomous_tasks: int = 0
+        autonomous_tasks: int = 0,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record an agent_heartbeat activity."""
         return self.record(
@@ -107,7 +113,9 @@ class ActivityService:
                 'status': status,
                 'unread_messages': unread_messages,
                 'autonomous_tasks': autonomous_tasks
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_agent_registered(
@@ -117,7 +125,9 @@ class ActivityService:
         client: Optional[str] = None,
         persona: Optional[str] = None,
         model: Optional[str] = None,
-        is_reconnect: bool = False
+        is_reconnect: bool = False,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record an agent_registered activity."""
         return self.record(
@@ -130,7 +140,9 @@ class ActivityService:
                 'persona': persona,
                 'model': model,
                 'is_reconnect': is_reconnect
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_entity_created(
@@ -138,7 +150,9 @@ class ActivityService:
         actor: str,
         entity_key: str,
         entity_type: str,
-        entity_name: str
+        entity_name: str,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record an entity_created activity."""
         return self.record(
@@ -149,7 +163,9 @@ class ActivityService:
             extra_data={
                 'entity_type': entity_type,
                 'entity_name': entity_name
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_entity_updated(
@@ -157,7 +173,9 @@ class ActivityService:
         actor: str,
         entity_key: str,
         entity_type: str,
-        entity_name: str
+        entity_name: str,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record an entity_updated activity."""
         return self.record(
@@ -168,7 +186,9 @@ class ActivityService:
             extra_data={
                 'entity_type': entity_type,
                 'entity_name': entity_name
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_entity_deleted(
@@ -176,7 +196,9 @@ class ActivityService:
         actor: str,
         entity_key: str,
         entity_type: str,
-        entity_name: str
+        entity_name: str,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record an entity_deleted activity."""
         return self.record(
@@ -187,7 +209,9 @@ class ActivityService:
             extra_data={
                 'entity_type': entity_type,
                 'entity_name': entity_name
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_entity_read(
@@ -195,7 +219,9 @@ class ActivityService:
         actor: str,
         entity_key: str,
         entity_type: str,
-        entity_name: str
+        entity_name: str,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record an entity_read activity."""
         return self.record(
@@ -206,7 +232,9 @@ class ActivityService:
             extra_data={
                 'entity_type': entity_type,
                 'entity_name': entity_name
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_search(
@@ -215,7 +243,9 @@ class ActivityService:
         query: Optional[str] = None,
         search_type: str = 'entity',
         entity_type: Optional[str] = None,
-        result_count: int = 0
+        result_count: int = 0,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a search_performed activity."""
         return self.record(
@@ -228,7 +258,9 @@ class ActivityService:
                 'search_type': search_type,
                 'entity_type': entity_type,
                 'result_count': result_count
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_relationship_created(
@@ -239,7 +271,9 @@ class ActivityService:
         from_entity_name: str,
         to_entity_key: str,
         to_entity_name: str,
-        relationship_type: str
+        relationship_type: str,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a relationship_created activity."""
         return self.record(
@@ -253,7 +287,9 @@ class ActivityService:
                 'to_entity_key': to_entity_key,
                 'to_entity_name': to_entity_name,
                 'relationship_type': relationship_type
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_relationship_deleted(
@@ -262,7 +298,9 @@ class ActivityService:
         relationship_key: str,
         from_entity_key: Optional[str] = None,
         to_entity_key: Optional[str] = None,
-        relationship_type: Optional[str] = None
+        relationship_type: Optional[str] = None,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a relationship_deleted activity."""
         return self.record(
@@ -274,7 +312,9 @@ class ActivityService:
                 'from_entity_key': from_entity_key,
                 'to_entity_key': to_entity_key,
                 'relationship_type': relationship_type
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     # Generic CRUD activity methods (for User and other non-entity types)
@@ -284,7 +324,9 @@ class ActivityService:
         entity_type: str,
         entity_key: str,
         entity_name: str,
-        changes: Optional[Dict[str, Any]] = None
+        changes: Optional[Dict[str, Any]] = None,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a generic create activity."""
         return self.record(
@@ -296,7 +338,9 @@ class ActivityService:
                 'entity_type': entity_type,
                 'entity_name': entity_name,
                 'changes': changes
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_update(
@@ -305,7 +349,9 @@ class ActivityService:
         entity_type: str,
         entity_key: str,
         entity_name: str,
-        changes: Optional[Dict[str, Any]] = None
+        changes: Optional[Dict[str, Any]] = None,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a generic update activity."""
         return self.record(
@@ -317,7 +363,9 @@ class ActivityService:
                 'entity_type': entity_type,
                 'entity_name': entity_name,
                 'changes': changes
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_delete(
@@ -325,7 +373,9 @@ class ActivityService:
         actor: str,
         entity_type: str,
         entity_key: str,
-        entity_name: str
+        entity_name: str,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a generic delete activity."""
         return self.record(
@@ -336,7 +386,9 @@ class ActivityService:
             extra_data={
                 'entity_type': entity_type,
                 'entity_name': entity_name
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def record_read(
@@ -345,7 +397,9 @@ class ActivityService:
         entity_type: str,
         entity_key: str,
         entity_name: str,
-        query: Optional[str] = None
+        query: Optional[str] = None,
+        domain_key: Optional[str] = None,
+        user_key: Optional[str] = None
     ) -> Activity:
         """Record a generic read activity."""
         return self.record(
@@ -357,7 +411,9 @@ class ActivityService:
                 'entity_type': entity_type,
                 'entity_name': entity_name,
                 'query': query
-            }
+            },
+            domain_key=domain_key,
+            user_key=user_key
         )
 
     def get_recent(

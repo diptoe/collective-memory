@@ -12,6 +12,20 @@ from api.services.activity import activity_service
 from api.services.auth import require_auth
 
 
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for activity tracking."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
+
+
+def get_user_key() -> str | None:
+    """Get the current user's user_key for activity tracking."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.user_key
+    return None
+
+
 def register_agent_routes(api: Api):
     """Register agent routes with the API."""
 
@@ -206,7 +220,9 @@ def register_agent_routes(api: Api):
                     client=existing.client,
                     persona=existing.persona_key,
                     model=existing.model_key,
-                    is_reconnect=True
+                    is_reconnect=True,
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 # Create or update session for this agent connection
@@ -255,7 +271,9 @@ def register_agent_routes(api: Api):
                     agent_key=agent.agent_key,
                     client=agent.client,
                     persona=agent.persona_key,
-                    model=agent.model_key
+                    model=agent.model_key,
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 # Create session for this agent connection
@@ -449,7 +467,9 @@ def register_agent_routes(api: Api):
                     agent_key=agent.agent_key,
                     status=agent.status.get('progress') if agent.status else None,
                     unread_messages=unread_count,
-                    autonomous_tasks=autonomous_count
+                    autonomous_tasks=autonomous_count,
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 # Build response with message notification and focused mode info

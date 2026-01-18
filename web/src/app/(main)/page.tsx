@@ -142,8 +142,10 @@ export default function ActivityPage() {
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
     const centerX = width / 2;
-    const centerY = height / 2;
-    const maxRadius = Math.min(width, height) / 2 - 40;
+    // Use a fixed size for the graph and position at top, not centered
+    const graphSize = Math.min(width, height, 500); // Cap at 500px
+    const maxRadius = graphSize / 2 - 40;
+    const centerY = maxRadius + 50; // Position graph near the top
 
     // Build nodes and links from timeline data
     const nodes: RadialNode[] = [];
@@ -499,16 +501,16 @@ export default function ActivityPage() {
       </div>
 
       {/* Main content: Radial graph + Activity stream */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Radial Network Graph */}
-        <div className="flex-1 bg-cm-cream p-4 min-h-0">
+        <div className="flex-1 bg-cm-cream p-4 h-full min-h-0">
           <div className="w-full h-full bg-cm-ivory rounded-lg border border-cm-sand">
             <svg ref={svgRef} className="w-full h-full" />
           </div>
         </div>
 
         {/* Activity Stream */}
-        <div className="w-80 bg-cm-ivory border-l border-cm-sand flex flex-col min-h-0">
+        <div className="w-80 h-full bg-cm-ivory border-l border-cm-sand flex flex-col min-h-0">
           <div className="p-3 border-b border-cm-sand flex-shrink-0">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium text-cm-charcoal">Recent Activity</h2>

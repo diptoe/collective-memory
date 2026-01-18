@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, Session, Domain } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
@@ -32,7 +32,7 @@ interface ActivityTimelineResponse { timeline: ActivityTimelinePoint[]; hours: n
 interface ActivityTypesResponse { types: string[] }
 
 // Auth response types
-interface AuthUserResponse { user: User; session?: Session; session_expires_at?: string }
+interface AuthUserResponse { user: User; session?: Session; session_expires_at?: string; available_scopes?: Scope[]; default_scope?: Scope }
 interface SessionsResponse { sessions: Session[] }
 interface PatResponse { pat: string; pat_created_at: string }
 interface UsersResponse { users: User[]; total: number; limit: number; offset: number }
@@ -44,6 +44,12 @@ interface DomainsResponse { domains: Domain[] }
 interface DomainResponse { domain: Domain }
 interface DomainUsersResponse { domain: Domain; users: User[] }
 interface DomainStatsResponse { total: number; active: number; suspended: number; with_owner: number; users_with_domain: number; users_without_domain: number }
+
+// Team response types
+interface TeamsResponse { teams: Team[]; total: number }
+interface TeamResponse { team: Team }
+interface TeamMembersResponse { team: Team; members: TeamMembership[] }
+interface TeamStatsResponse { total: number; active: number; archived: number }
 
 /**
  * API Response type from the backend
@@ -192,8 +198,10 @@ export const api = {
       apiClient.put<EntityResponse>(`/entities/${key}`, data),
     delete: (key: string) =>
       apiClient.delete(`/entities/${key}`),
-    types: () =>
-      apiClient.get<EntityTypesResponse>('/entities/types'),
+    types: (params?: { scope_type?: string; scope_key?: string }) =>
+      apiClient.get<EntityTypesResponse>('/entities/types', { params }),
+    moveScope: (key: string, data: { scope_type: string; scope_key: string; include_related?: boolean }) =>
+      apiClient.post<{ entity_key: string; scope_type: string; scope_key: string; updated_entities: string[]; total_updated: number }>(`/entities/${key}/move-scope`, data),
   },
 
   // Relationships
@@ -419,5 +427,29 @@ export const api = {
       apiClient.get<DomainUsersResponse>(`/domains/${domainKey}/users`),
     stats: () =>
       apiClient.get<DomainStatsResponse>('/domains/stats'),
+  },
+
+  // Teams (domain_admin or admin)
+  teams: {
+    list: (params?: { status?: string }) =>
+      apiClient.get<TeamsResponse>('/teams', { params }),
+    get: (teamKey: string) =>
+      apiClient.get<TeamResponse>(`/teams/${teamKey}`),
+    create: (data: { name: string; slug: string; description?: string; domain_key?: string }) =>
+      apiClient.post<TeamResponse>('/teams', data),
+    update: (teamKey: string, data: { name?: string; description?: string; status?: string }) =>
+      apiClient.put<TeamResponse>(`/teams/${teamKey}`, data),
+    delete: (teamKey: string) =>
+      apiClient.delete(`/teams/${teamKey}`),
+    members: (teamKey: string) =>
+      apiClient.get<TeamMembersResponse>(`/teams/${teamKey}/members`),
+    addMember: (teamKey: string, data: { user_key: string; role?: TeamMemberRole }) =>
+      apiClient.post<TeamMembersResponse>(`/teams/${teamKey}/members`, data),
+    updateMember: (teamKey: string, userKey: string, data: { role: TeamMemberRole }) =>
+      apiClient.put<TeamMembersResponse>(`/teams/${teamKey}/members/${userKey}`, data),
+    removeMember: (teamKey: string, userKey: string) =>
+      apiClient.delete(`/teams/${teamKey}/members/${userKey}`),
+    stats: () =>
+      apiClient.get<TeamStatsResponse>('/teams/stats'),
   },
 };

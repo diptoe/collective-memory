@@ -136,6 +136,25 @@ def require_admin(f):
     return decorated
 
 
+def require_domain_admin(f):
+    """
+    Decorator to require domain_admin or admin role.
+
+    Use this for operations that should be restricted to domain administrators,
+    such as managing teams within a domain.
+
+    Implies require_auth_strict.
+    """
+    @wraps(f)
+    @require_auth_strict
+    def decorated(*args, **kwargs):
+        if not g.current_user.is_domain_admin:
+            return {'success': False, 'msg': 'Domain admin access required'}, 403
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 def set_session_cookie(response, session, secure: bool = None):
     """
     Set session cookie on response.

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Entity } from '@/types';
+import { Entity, Scope } from '@/types';
 import { EntityCard } from '@/components/entity-card';
 import { cn } from '@/lib/utils';
 import { TYPE_COLORS } from '@/lib/graph/layout';
@@ -14,6 +14,19 @@ interface EntityTypeInfo {
   count: number;
 }
 
+// Scope display helpers
+const SCOPE_ICONS: Record<string, string> = {
+  domain: '🌐',
+  team: '👥',
+  user: '👤',
+};
+
+const SCOPE_COLORS: Record<string, string> = {
+  domain: 'bg-blue-100 text-blue-700 border-blue-200',
+  team: 'bg-green-100 text-green-700 border-green-200',
+  user: 'bg-purple-100 text-purple-700 border-purple-200',
+};
+
 function EntitiesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -21,6 +34,11 @@ function EntitiesContent() {
   const [entityTypes, setEntityTypes] = useState<EntityTypeInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Scope filtering state
+  const [availableScopes, setAvailableScopes] = useState<Scope[]>([]);
+  const [selectedScope, setSelectedScope] = useState<Scope | null>(null);
+  const [scopesLoading, setScopesLoading] = useState(true);
 
   // Read filter from URL query param - null means show types summary
   const filterType = searchParams.get('type');
@@ -34,20 +52,43 @@ function EntitiesContent() {
     router.push(`/entities/${encodeURIComponent(typeLower)}/${entity.entity_key}`);
   };
 
-  // Load entity types on mount
+  // Load available scopes from /auth/me on mount
+  useEffect(() => {
+    async function loadScopes() {
+      try {
+        const res = await api.auth.me();
+        if (res.data?.available_scopes) {
+          setAvailableScopes(res.data.available_scopes);
+          // Don't auto-select a scope - show all accessible entities by default
+        }
+      } catch (err) {
+        console.error('Failed to load scopes:', err);
+      } finally {
+        setScopesLoading(false);
+      }
+    }
+    loadScopes();
+  }, []);
+
+  // Load entity types when scope changes
   useEffect(() => {
     async function loadTypes() {
       try {
-        const res = await api.entities.types();
+        const params: { scope_type?: string; scope_key?: string } = {};
+        if (selectedScope) {
+          params.scope_type = selectedScope.scope_type;
+          params.scope_key = selectedScope.scope_key;
+        }
+        const res = await api.entities.types(params);
         setEntityTypes(res.data?.types || []);
       } catch (err) {
         console.error('Failed to load entity types:', err);
       }
     }
     loadTypes();
-  }, []);
+  }, [selectedScope]);
 
-  // Load entities when filter changes (only if a type is selected or browse all)
+  // Load entities when filter or scope changes (only if a type is selected or browse all)
   useEffect(() => {
     async function loadEntities() {
       if (showTypesSummary) {
@@ -59,6 +100,11 @@ function EntitiesContent() {
         if (!browseAll && filterType) {
           params.type = filterType;
         }
+        // Add scope filter if selected
+        if (selectedScope) {
+          params.scope_type = selectedScope.scope_type;
+          params.scope_key = selectedScope.scope_key;
+        }
         const res = await api.entities.list(params);
         setEntities(res.data?.entities || []);
       } catch (err) {
@@ -69,7 +115,7 @@ function EntitiesContent() {
     }
 
     loadEntities();
-  }, [filterType, showTypesSummary, browseAll]);
+  }, [filterType, showTypesSummary, browseAll, selectedScope]);
 
   const filteredEntities = entities.filter((entity) =>
     entity.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -85,6 +131,47 @@ function EntitiesContent() {
     );
   }
 
+  // Scope filter dropdown component
+  const ScopeFilter = () => (
+    <div className="relative">
+      <select
+        value={selectedScope ? `${selectedScope.scope_type}:${selectedScope.scope_key}` : ''}
+        onChange={(e) => {
+          if (e.target.value === '') {
+            setSelectedScope(null);
+          } else {
+            const [scopeType, scopeKey] = e.target.value.split(':');
+            const scope = availableScopes.find(
+              s => s.scope_type === scopeType && s.scope_key === scopeKey
+            );
+            setSelectedScope(scope || null);
+          }
+          setLoading(true);
+        }}
+        className={cn(
+          "px-3 py-2 pr-8 rounded-lg border transition-colors text-sm appearance-none bg-cm-cream cursor-pointer",
+          "focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta",
+          selectedScope
+            ? SCOPE_COLORS[selectedScope.scope_type] || 'border-cm-sand'
+            : 'border-cm-sand text-cm-coffee'
+        )}
+        disabled={scopesLoading}
+      >
+        <option value="">All Scopes</option>
+        {availableScopes.map((scope) => (
+          <option key={`${scope.scope_type}:${scope.scope_key}`} value={`${scope.scope_type}:${scope.scope_key}`}>
+            {SCOPE_ICONS[scope.scope_type]} {scope.name}
+          </option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-cm-coffee">
+        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+          <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+        </svg>
+      </div>
+    </div>
+  );
+
   // Types summary view (default)
   if (showTypesSummary) {
     return (
@@ -98,12 +185,15 @@ function EntitiesContent() {
               Browse and manage entities in the knowledge graph
             </p>
           </div>
-          <Link
-            href="/entities?type=all"
-            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
-          >
-            Browse All
-          </Link>
+          <div className="flex items-center gap-3">
+            <ScopeFilter />
+            <Link
+              href="/entities?type=all"
+              className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
+            >
+              Browse All
+            </Link>
+          </div>
         </div>
 
         {/* Summary stats */}
@@ -230,15 +320,16 @@ function EntitiesContent() {
         )}
       </div>
 
-      {/* Search */}
-      <div className="mb-6">
+      {/* Search and Scope Filter */}
+      <div className="mb-6 flex items-center gap-4">
         <input
           type="text"
           placeholder={searchPlaceholder}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full max-w-md px-4 py-2 bg-cm-cream border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta text-cm-charcoal"
+          className="flex-1 max-w-md px-4 py-2 bg-cm-cream border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta text-cm-charcoal"
         />
+        <ScopeFilter />
       </div>
 
       {/* Entity grid */}

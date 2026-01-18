@@ -30,6 +30,7 @@ async def send_message(
         priority: Priority level: 'normal', 'high', 'urgent' (default: 'normal')
         autonomous: Mark as autonomous task - receiver should work on it independently and reply when complete
         entity_keys: Optional list of entity keys to link this message to in the knowledge graph
+        team_key: Optional team key to scope message to a specific team (null = domain-wide)
     """
     channel = arguments.get("channel", "general")
     content = arguments.get("content")
@@ -39,6 +40,7 @@ async def send_message(
     priority = arguments.get("priority", "normal")
     autonomous = arguments.get("autonomous", False)
     entity_keys = arguments.get("entity_keys", [])
+    team_key = arguments.get("team_key")
 
     if not content:
         return [types.TextContent(type="text", text="Error: content is required")]
@@ -86,6 +88,14 @@ async def send_message(
         if entity_keys:
             payload["entity_keys"] = entity_keys
 
+        # Team scoping - if specified, restrict message visibility to team members
+        # If not specified, use active team from session (if set) or send domain-wide
+        if team_key:
+            payload["team_key"] = team_key
+        elif session_state.get("active_team_key"):
+            # Use session's active team if set
+            payload["team_key"] = session_state.get("active_team_key")
+
         # Include domain context for multi-tenancy if available
         domain_key = session_state.get("domain_key")
         if domain_key:
@@ -117,6 +127,12 @@ async def send_message(
             else:
                 output += f"**To:** (broadcast)\n"
             output += f"**Priority:** {priority}\n"
+            # Show team scope
+            msg_team_key = msg_data.get('team_key')
+            if msg_team_key:
+                output += f"**Team Scope:** {msg_team_key}\n"
+            else:
+                output += f"**Team Scope:** Domain-wide\n"
             if autonomous:
                 output += f"**Autonomous:** Yes - receiver should work on this and reply when complete\n"
             msg_entity_keys = msg_data.get('entity_keys') or []
@@ -148,11 +164,13 @@ async def get_messages(
         unread_only: Only get unread messages (default: True)
         limit: Maximum messages to retrieve (default: 20)
         since: Only return messages created after this ISO8601 timestamp (optional)
+        team_key: Filter to a specific team's messages (optional, uses active team if set)
     """
     channel = arguments.get("channel")
     unread_only = arguments.get("unread_only", True)
     limit = arguments.get("limit", 20)
     since = arguments.get("since")
+    team_key = arguments.get("team_key")
 
     # Get agent ID for per-agent read tracking
     my_agent_id = session_state.get("agent_id")
@@ -175,6 +193,12 @@ async def get_messages(
         # Add time filter if specified
         if since:
             params["since"] = since
+
+        # Team scope filtering - use explicit team_key or active team from session
+        if team_key:
+            params["team_key"] = team_key
+        elif session_state.get("active_team_key"):
+            params["team_key"] = session_state.get("active_team_key")
 
         # Add domain filter for multi-tenancy
         domain_key = session_state.get("domain_key")
@@ -242,7 +266,11 @@ async def get_messages(
                 if is_autonomous and not is_mine:
                     output += f"   🤖 **AUTONOMOUS TASK** - Work on this and reply when complete\n"
 
-                output += f"   *{msg.get('message_type')}* in #{msg.get('channel')}\n"
+                output += f"   *{msg.get('message_type')}* in #{msg.get('channel')}"
+                # Show team scope if set
+                if msg.get('team_key'):
+                    output += f" 👥 (team)"
+                output += "\n"
 
                 # Content
                 content = msg.get("content", {})
@@ -374,8 +402,10 @@ async def mark_all_messages_read(
 
     Args:
         channel: Only mark messages in this channel as read (optional)
+        team_key: Only mark messages in this team as read (optional)
     """
     channel = arguments.get("channel")
+    team_key = arguments.get("team_key")
 
     # Get agent ID for per-agent read tracking (required)
     agent_id = session_state.get("agent_id")
@@ -390,6 +420,11 @@ async def mark_all_messages_read(
         params = {"agent_id": agent_id}
         if channel:
             params["channel"] = channel
+        # Team scope filtering - use explicit team_key or active team from session
+        if team_key:
+            params["team_key"] = team_key
+        elif session_state.get("active_team_key"):
+            params["team_key"] = session_state.get("active_team_key")
 
         result = await _make_request(
             config,
@@ -400,7 +435,12 @@ async def mark_all_messages_read(
 
         if result.get("success"):
             count = result.get("data", {}).get("marked_count", 0)
-            filter_str = f" in #{channel}" if channel else ""
+            filter_parts = []
+            if channel:
+                filter_parts.append(f"#{channel}")
+            if params.get("team_key"):
+                filter_parts.append(f"team:{params.get('team_key')}")
+            filter_str = f" in {', '.join(filter_parts)}" if filter_parts else ""
             return [types.TextContent(type="text", text=f"Marked {count} messages as read{filter_str}.")]
         else:
             return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to mark messages read')}")]

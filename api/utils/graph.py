@@ -3,10 +3,13 @@ Collective Memory Platform - Graph Traversal Utilities
 
 Utilities for traversing the knowledge graph and building context.
 """
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from collections import deque
 
 from api.models import Entity, Relationship
+
+if TYPE_CHECKING:
+    from api.models.user import User
 
 
 class GraphTraversal:
@@ -20,13 +23,20 @@ class GraphTraversal:
     """
 
     @staticmethod
-    def get_neighbors(entity_key: str, max_hops: int = 1) -> dict:
+    def get_neighbors(entity_key: str, max_hops: int = 1, user: 'User' = None) -> dict:
         """
         Get entities within N hops of the given entity.
+
+        Args:
+            entity_key: Starting entity key
+            max_hops: Maximum hops to traverse
+            user: Optional user for scope filtering
 
         Returns:
             dict with 'entities' and 'relationships' lists
         """
+        from api.services.scope import scope_service
+
         visited_entities = {entity_key}
         visited_relationships = set()
         entities = []
@@ -59,6 +69,14 @@ class GraphTraversal:
                     visited_entities.add(other_key)
                     entity = Entity.get_by_key(other_key)
                     if entity:
+                        # Check scope access if user provided
+                        if user:
+                            if not scope_service.can_access_scope(
+                                user,
+                                entity.scope_type,
+                                entity.scope_key or entity.domain_key
+                            ):
+                                continue  # Skip entities user can't access
                         entities.append(entity)
                         queue.append((other_key, depth + 1))
 
@@ -68,7 +86,12 @@ class GraphTraversal:
         }
 
     @staticmethod
-    def get_context_for_query(query_text: str, max_entities: int = 20, max_tokens: int = 4000) -> dict:
+    def get_context_for_query(
+        query_text: str,
+        max_entities: int = 20,
+        max_tokens: int = 4000,
+        user: 'User' = None
+    ) -> dict:
         """
         Get relevant context for a query.
 
@@ -81,6 +104,7 @@ class GraphTraversal:
             query_text: The query to find context for
             max_entities: Maximum number of entities to return
             max_tokens: Approximate token budget (for future use)
+            user: Optional user for scope filtering
 
         Returns:
             dict with 'entities', 'relationships', and 'context_text'
@@ -88,10 +112,10 @@ class GraphTraversal:
         # Simple keyword extraction (split by spaces, filter short words)
         keywords = [w.lower() for w in query_text.split() if len(w) > 3]
 
-        # Search for matching entities
+        # Search for matching entities (with scope filtering)
         matching_entities = []
         for keyword in keywords[:5]:  # Limit keywords to prevent too many queries
-            matches = Entity.search_by_name(keyword, limit=5)
+            matches = Entity.search_by_name(keyword, limit=5, user=user)
             matching_entities.extend(matches)
 
         # Deduplicate
@@ -136,28 +160,46 @@ class GraphTraversal:
         }
 
     @staticmethod
-    def get_subgraph(entity_keys: list[str], include_relationships: bool = True) -> dict:
+    def get_subgraph(
+        entity_keys: list[str],
+        include_relationships: bool = True,
+        user: 'User' = None
+    ) -> dict:
         """
         Get a subgraph containing the specified entities and their relationships.
 
         Args:
             entity_keys: List of entity keys to include
             include_relationships: Whether to include relationships between entities
+            user: Optional user for scope filtering
 
         Returns:
             dict with 'entities' and 'relationships'
         """
+        from api.services.scope import scope_service
+
         entities = []
+        accessible_keys = []
+
         for key in entity_keys:
             entity = Entity.get_by_key(key)
             if entity:
+                # Check scope access if user provided
+                if user:
+                    if not scope_service.can_access_scope(
+                        user,
+                        entity.scope_type,
+                        entity.scope_key or entity.domain_key
+                    ):
+                        continue  # Skip entities user can't access
                 entities.append(entity)
+                accessible_keys.append(key)
 
         relationships = []
-        if include_relationships:
+        if include_relationships and accessible_keys:
             relationships = Relationship.query.filter(
-                (Relationship.from_entity_key.in_(entity_keys)) &
-                (Relationship.to_entity_key.in_(entity_keys))
+                (Relationship.from_entity_key.in_(accessible_keys)) &
+                (Relationship.to_entity_key.in_(accessible_keys))
             ).all()
 
         return {

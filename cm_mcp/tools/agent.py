@@ -92,6 +92,8 @@ async def identify(
         model_id: Your model identifier - you know this! (e.g., "claude-opus-4-5-20251101")
         model_key: Model key from database (alternative to model_id)
         focus: What you're currently working on - describe your task
+        team_key: Explicit team key to set as active (optional - auto-detected if not provided)
+        team_slug: Team slug to set as active (optional - resolved to team_key)
     """
     agent_id = arguments.get("agent_id")
     persona = arguments.get("persona")
@@ -99,6 +101,8 @@ async def identify(
     model_id = arguments.get("model_id")
     model_key = arguments.get("model_key")
     focus = arguments.get("focus")
+    explicit_team_key = arguments.get("team_key")
+    explicit_team_slug = arguments.get("team_slug")
 
     # If no identity parameters provided, show the challenge/options
     if not agent_id and not persona:
@@ -385,13 +389,81 @@ async def identify(
                 try:
                     me_result = await _make_request(config, "GET", "/auth/me")
                     if me_result.get("success"):
-                        user_data = me_result.get("data", {}).get("user", {})
+                        me_data = me_result.get("data", {})
+                        user_data = me_data.get("user", {})
                         session_state["user_key"] = user_data.get("user_key")
                         session_state["user_email"] = user_data.get("email")
                         session_state["user_display_name"] = user_data.get("display_name")
+                        session_state["user_first_name"] = user_data.get("first_name")
+                        session_state["user_last_name"] = user_data.get("last_name")
+                        session_state["user_role"] = user_data.get("role")
+                        session_state["user_status"] = user_data.get("status")
                         domain_key = user_data.get("domain_key")
                         if domain_key:
                             session_state["domain_key"] = domain_key
+                        # Store domain details if available
+                        domain_data = user_data.get("domain")
+                        if domain_data:
+                            session_state["domain_name"] = domain_data.get("name")
+
+                        # Store teams info
+                        teams = me_data.get("teams", [])
+                        session_state["teams"] = teams
+
+                        # Store scopes info
+                        available_scopes = me_data.get("available_scopes", [])
+                        default_scope = me_data.get("default_scope", {})
+                        session_state["available_scopes"] = available_scopes
+                        session_state["default_scope"] = default_scope
+
+                        # Auto-detect or set active team
+                        detected_team = None
+                        detected_method = None
+
+                        if explicit_team_key:
+                            # Explicit team_key provided - validate and use
+                            team = next((t for t in teams if t.get('team_key') == explicit_team_key), None)
+                            if team:
+                                detected_team = team
+                                detected_method = "explicit_team_key"
+                            # else: invalid team_key, will be noted in output
+
+                        elif explicit_team_slug:
+                            # Explicit team_slug provided - resolve to team_key
+                            team = next((t for t in teams if t.get('slug') == explicit_team_slug), None)
+                            if team:
+                                detected_team = team
+                                detected_method = "explicit_team_slug"
+                            # else: team slug not found, will be noted in output
+
+                        elif teams and agent_id:
+                            # Auto-detect from agent_id pattern matching team slugs or names
+                            agent_id_lower = agent_id.lower().replace('-', ' ').replace('_', ' ')
+
+                            for t in teams:
+                                team_slug = t.get('slug', '').lower().replace('-', ' ').replace('_', ' ')
+                                team_name = t.get('name', '').lower()
+
+                                # Check if team slug or name is contained in agent_id
+                                if team_slug and team_slug in agent_id_lower:
+                                    detected_team = t
+                                    detected_method = f"auto (matched slug: {t.get('slug')})"
+                                    break
+                                elif team_name and team_name in agent_id_lower:
+                                    detected_team = t
+                                    detected_method = f"auto (matched name: {t.get('name')})"
+                                    break
+
+                        # Set active team if detected
+                        if detected_team:
+                            session_state["active_team_key"] = detected_team.get('team_key')
+                            session_state["active_team_name"] = detected_team.get('name')
+                            session_state["active_team_method"] = detected_method
+                            # Update default scope to team
+                            session_state["default_scope"] = {
+                                "scope_type": "team",
+                                "scope_key": detected_team.get('team_key')
+                            }
                 except Exception:
                     pass  # If auth lookup fails, continue without domain
 
@@ -414,10 +486,53 @@ async def identify(
             output = "# Identity Confirmed\n\n"
             output += f"Welcome to Collective Memory (CM)!\n\n"
 
-            # Show authenticated user if available
-            if session_state.get("user_display_name"):
-                output += f"**User:** {session_state.get('user_display_name')}\n"
+            # Show authenticated user details prominently
+            if session_state.get("user_display_name") or session_state.get("user_email"):
+                output += "## Authenticated User\n"
+                if session_state.get("user_display_name"):
+                    output += f"**Name:** {session_state.get('user_display_name')}\n"
+                if session_state.get("user_email"):
+                    output += f"**Email:** {session_state.get('user_email')}\n"
+                if session_state.get("user_role"):
+                    output += f"**Role:** {session_state.get('user_role')}\n"
+                if session_state.get("user_key"):
+                    output += f"**User Key:** {session_state.get('user_key')}\n"
+                output += "\n"
 
+            # Show domain context
+            if session_state.get("domain_key"):
+                output += "## Domain\n"
+                if session_state.get("domain_name"):
+                    output += f"**Name:** {session_state.get('domain_name')}\n"
+                output += f"**Domain Key:** {session_state.get('domain_key')}\n"
+                output += "\n"
+
+            # Show teams if any
+            teams = session_state.get("teams", [])
+            if teams:
+                output += "## Teams\n"
+                for t in teams:
+                    output += f"- **{t.get('name')}** ({t.get('role')})\n"
+                output += "\n"
+
+            # Show scopes info
+            available_scopes = session_state.get("available_scopes", [])
+            default_scope = session_state.get("default_scope", {})
+            if available_scopes:
+                output += "## Available Scopes\n"
+                for s in available_scopes:
+                    scope_type = s.get('scope_type', 'unknown')
+                    scope_name = s.get('name', 'Unknown')
+                    access_level = s.get('access_level', 'member')
+                    is_default = (
+                        s.get('scope_type') == default_scope.get('scope_type') and
+                        s.get('scope_key') == default_scope.get('scope_key')
+                    )
+                    default_marker = " ← default" if is_default else ""
+                    output += f"- **{scope_name}** ({scope_type}, {access_level}){default_marker}\n"
+                output += "\n*Use scope_type/scope_key in create_entity to target specific scopes*\n\n"
+
+            output += "## Agent Registration\n"
             output += f"**Agent ID:** {agent_id}\n"
             output += f"**Agent Key:** {agent_data.get('agent_key')}\n"
             output += f"**Client:** {client_type}\n"
@@ -437,13 +552,15 @@ async def identify(
             if focus:
                 output += f"**Focus:** {focus}\n"
 
+            # Show active team if set
+            if session_state.get("active_team_key"):
+                output += f"**Active Team:** {session_state.get('active_team_name', session_state.get('active_team_key'))}"
+                if session_state.get("active_team_method"):
+                    output += f" ({session_state.get('active_team_method')})"
+                output += "\n"
+
             if agent_data.get("affinity_warning"):
                 output += f"\n⚠️ {agent_data.get('affinity_warning')}\n"
-
-            # Show domain context if set
-            if session_state.get("domain_key"):
-                output += f"\n**Domain:** {session_state.get('domain_key')}\n"
-                output += f"*Data operations will be scoped to this domain*\n"
 
             output += "\nYou are now registered and can collaborate in CM.\n"
             output += "Use `update_focus` to let others know what you're working on.\n\n"
@@ -593,6 +710,54 @@ async def get_my_identity(
         return [types.TextContent(type="text", text=output)]
 
     output = "## My Identity in CM\n\n"
+
+    # Show authenticated user details first
+    if session_state.get("user_display_name") or session_state.get("user_email"):
+        output += "### Authenticated User\n"
+        if session_state.get("user_display_name"):
+            output += f"**Name:** {session_state.get('user_display_name')}\n"
+        if session_state.get("user_email"):
+            output += f"**Email:** {session_state.get('user_email')}\n"
+        if session_state.get("user_role"):
+            output += f"**Role:** {session_state.get('user_role')}\n"
+        if session_state.get("user_key"):
+            output += f"**User Key:** {session_state.get('user_key')}\n"
+        output += "\n"
+
+    # Show domain context
+    if session_state.get("domain_key"):
+        output += "### Domain\n"
+        if session_state.get("domain_name"):
+            output += f"**Name:** {session_state.get('domain_name')}\n"
+        output += f"**Domain Key:** {session_state.get('domain_key')}\n"
+        output += "\n"
+
+    # Show teams if any
+    teams = session_state.get("teams", [])
+    if teams:
+        output += "### Teams\n"
+        for t in teams:
+            output += f"- **{t.get('name')}** ({t.get('role')})\n"
+        output += "\n"
+
+    # Show scopes info
+    available_scopes = session_state.get("available_scopes", [])
+    default_scope = session_state.get("default_scope", {})
+    if available_scopes:
+        output += "### Available Scopes\n"
+        for s in available_scopes:
+            scope_type = s.get('scope_type', 'unknown')
+            scope_name = s.get('name', 'Unknown')
+            access_level = s.get('access_level', 'member')
+            is_default = (
+                s.get('scope_type') == default_scope.get('scope_type') and
+                s.get('scope_key') == default_scope.get('scope_key')
+            )
+            default_marker = " ← default" if is_default else ""
+            output += f"- **{scope_name}** ({scope_type}, {access_level}){default_marker}\n"
+        output += "\n"
+
+    output += "### Agent\n"
     output += f"**Agent ID:** {session_state.get('agent_id')}\n"
     output += f"**Agent Key:** {session_state.get('agent_key')}\n"
 
@@ -825,3 +990,212 @@ async def update_my_identity(
             type="text",
             text=f"Error updating identity: {str(e)}"
         )]
+
+
+async def list_my_scopes(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    List all scopes the current agent can access.
+
+    Returns available scopes (domain, team, personal) with descriptions
+    and shows the current default scope.
+    """
+    if not session_state.get("registered"):
+        return [types.TextContent(
+            type="text",
+            text="Not registered. Use `identify` to register with Collective Memory first."
+        )]
+
+    available_scopes = session_state.get("available_scopes", [])
+    default_scope = session_state.get("default_scope", {})
+    active_team = session_state.get("active_team_key")
+
+    output = "# My Available Scopes\n\n"
+
+    if not available_scopes:
+        output += "No scopes available. Try re-identifying to refresh scope data.\n"
+        return [types.TextContent(type="text", text=output)]
+
+    # Group scopes by type
+    domain_scopes = [s for s in available_scopes if s.get('scope_type') == 'domain']
+    team_scopes = [s for s in available_scopes if s.get('scope_type') == 'team']
+    user_scopes = [s for s in available_scopes if s.get('scope_type') == 'user']
+
+    if domain_scopes:
+        output += "## Domain Scopes\n"
+        for s in domain_scopes:
+            is_default = (
+                s.get('scope_type') == default_scope.get('scope_type') and
+                s.get('scope_key') == default_scope.get('scope_key')
+            )
+            default_marker = " ← **default**" if is_default else ""
+            output += f"- **{s.get('name')}** ({s.get('access_level')}){default_marker}\n"
+            output += f"  Key: `{s.get('scope_key')}`\n"
+        output += "\n"
+
+    if team_scopes:
+        output += "## Team Scopes\n"
+        for s in team_scopes:
+            is_default = (
+                s.get('scope_type') == default_scope.get('scope_type') and
+                s.get('scope_key') == default_scope.get('scope_key')
+            )
+            is_active = s.get('scope_key') == active_team
+            default_marker = " ← **default**" if is_default else ""
+            active_marker = " 🎯 **active**" if is_active else ""
+            output += f"- **{s.get('name')}** ({s.get('access_level')}){default_marker}{active_marker}\n"
+            output += f"  Key: `{s.get('scope_key')}`\n"
+        output += "\n"
+
+    if user_scopes:
+        output += "## Personal Scope\n"
+        for s in user_scopes:
+            is_default = (
+                s.get('scope_type') == default_scope.get('scope_type') and
+                s.get('scope_key') == default_scope.get('scope_key')
+            )
+            default_marker = " ← **default**" if is_default else ""
+            output += f"- **{s.get('name')}** ({s.get('access_level')}){default_marker}\n"
+            output += f"  Key: `{s.get('scope_key')}`\n"
+        output += "\n"
+
+    output += "---\n\n"
+    output += "## Usage\n"
+    output += "Use `scope_type` and `scope_key` in `create_entity` to target specific scopes:\n"
+    output += "```\n"
+    output += 'create_entity(\n'
+    output += '    name="My Entity",\n'
+    output += '    entity_type="Concept",\n'
+    output += '    scope_type="team",\n'
+    output += '    scope_key="team-xxx"\n'
+    output += ')\n'
+    output += "```\n\n"
+    output += "Use `set_active_team` to change your default scope for new entities.\n"
+
+    return [types.TextContent(type="text", text=output)]
+
+
+async def set_active_team(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Set active team for this session.
+
+    New entities will default to this team's scope.
+
+    Args:
+        team_key: Team key to set as active (optional - omit to clear active team)
+    """
+    if not session_state.get("registered"):
+        return [types.TextContent(
+            type="text",
+            text="Not registered. Use `identify` to register with Collective Memory first."
+        )]
+
+    team_key = arguments.get("team_key")
+    teams = session_state.get("teams", [])
+
+    if team_key:
+        # Validate team access
+        team = next((t for t in teams if t.get('team_key') == team_key), None)
+        if not team:
+            output = f"Error: Not a member of team `{team_key}`\n\n"
+            if teams:
+                output += "Your teams:\n"
+                for t in teams:
+                    output += f"- **{t.get('name')}** - `{t.get('team_key')}`\n"
+            else:
+                output += "You are not a member of any teams.\n"
+            return [types.TextContent(type="text", text=output)]
+
+        # Set active team
+        session_state["active_team_key"] = team_key
+
+        # Update default scope to use this team
+        session_state["default_scope"] = {
+            "scope_type": "team",
+            "scope_key": team_key
+        }
+
+        output = f"# Active Team Set\n\n"
+        output += f"**Team:** {team.get('name')}\n"
+        output += f"**Key:** `{team_key}`\n"
+        output += f"**Your Role:** {team.get('role')}\n\n"
+        output += "New entities will be created in this team's scope by default.\n"
+    else:
+        # Clear active team
+        previous = session_state.pop("active_team_key", None)
+
+        # Reset default scope
+        domain_key = session_state.get("domain_key")
+        if domain_key:
+            session_state["default_scope"] = {
+                "scope_type": "domain",
+                "scope_key": domain_key
+            }
+        else:
+            user_key = session_state.get("user_key")
+            session_state["default_scope"] = {
+                "scope_type": "user",
+                "scope_key": user_key
+            }
+
+        output = "# Active Team Cleared\n\n"
+        if previous:
+            output += f"Previously active team `{previous}` has been cleared.\n\n"
+        output += "Default scope has been reset to: "
+        default_scope = session_state.get("default_scope", {})
+        output += f"{default_scope.get('scope_type')} ({default_scope.get('scope_key')})\n"
+
+    return [types.TextContent(type="text", text=output)]
+
+
+async def list_teams(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    List teams the current user is a member of.
+
+    Returns team names, keys, descriptions, and the user's role in each team.
+    """
+    if not session_state.get("registered"):
+        return [types.TextContent(
+            type="text",
+            text="Not registered. Use `identify` to register with Collective Memory first."
+        )]
+
+    teams = session_state.get("teams", [])
+    active_team = session_state.get("active_team_key")
+
+    output = "# My Teams\n\n"
+
+    if not teams:
+        output += "You are not a member of any teams.\n\n"
+        output += "Teams are managed by domain administrators.\n"
+        return [types.TextContent(type="text", text=output)]
+
+    output += f"You are a member of **{len(teams)}** team(s):\n\n"
+
+    for t in teams:
+        is_active = t.get('team_key') == active_team
+        active_marker = " 🎯 **active**" if is_active else ""
+
+        output += f"## {t.get('name')}{active_marker}\n"
+        output += f"**Key:** `{t.get('team_key')}`\n"
+        output += f"**Your Role:** {t.get('role')}\n"
+        if t.get('description'):
+            output += f"**Description:** {t.get('description')}\n"
+        output += "\n"
+
+    output += "---\n\n"
+    output += "Use `set_active_team(team_key=\"...\")` to set your active team.\n"
+    output += "Entities created without explicit scope will use the active team's scope.\n"
+
+    return [types.TextContent(type="text", text=output)]

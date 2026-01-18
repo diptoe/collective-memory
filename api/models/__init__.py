@@ -26,6 +26,7 @@ from api.models.activity import Activity, ActivityType
 from api.models.user import User
 from api.models.session import Session
 from api.models.domain import Domain
+from api.models.team import Team, TeamMembership
 
 __all__ = [
     'db',
@@ -61,4 +62,6 @@ __all__ = [
     'User',
     'Session',
     'Domain',
+    'Team',
+    'TeamMembership',
 ]

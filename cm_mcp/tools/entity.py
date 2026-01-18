@@ -48,7 +48,10 @@ async def search_entities(
         if result.get("success"):
             entities = result.get("data", {}).get("entities", [])
             if entities:
-                output = f"Found {len(entities)} entities:\n\n"
+                output = f"Found {len(entities)} entities"
+                if domain_key:
+                    output += f" (domain: {domain_key})"
+                output += ":\n\n"
                 for e in entities:
                     output += f"- **{e['name']}** ({e['entity_type']})\n"
                     output += f"  Key: {e['entity_key']}\n"
@@ -56,7 +59,11 @@ async def search_entities(
                         output += f"  Properties: {json.dumps(e['properties'])}\n"
                 return [types.TextContent(type="text", text=output)]
             else:
-                return [types.TextContent(type="text", text="No entities found matching your query.")]
+                msg = "No entities found matching your query"
+                if domain_key:
+                    msg += f" (domain: {domain_key})"
+                msg += "."
+                return [types.TextContent(type="text", text=msg)]
         else:
             return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Unknown error')}")]
 
@@ -91,6 +98,26 @@ async def get_entity(
             output = f"# {entity.get('name', 'Unknown')}\n\n"
             output += f"**Type:** {entity.get('entity_type', 'Unknown')}\n"
             output += f"**Key:** {entity.get('entity_key')}\n"
+
+            # Show domain and source attribution
+            if entity.get('domain_key'):
+                output += f"**Domain:** {entity.get('domain_key')}\n"
+            if entity.get('source'):
+                output += f"**Source:** {entity.get('source')}\n"
+
+            # Show scope information
+            scope_type = entity.get('scope_type')
+            scope_key = entity.get('scope_key')
+            scope_name = entity.get('scope_name')
+            if scope_type:
+                scope_display = f"{scope_type}"
+                if scope_name:
+                    scope_display += f" ({scope_name})"
+                elif scope_key:
+                    scope_display += f" ({scope_key})"
+                output += f"**Scope:** {scope_display}\n"
+            else:
+                output += f"**Scope:** domain (default)\n"
 
             props = entity.get('properties', {})
             if props:
@@ -145,10 +172,14 @@ async def create_entity(
         name: Entity name
         entity_type: Type (Person, Project, Technology, etc.)
         properties: Optional properties dictionary
+        scope_type: Optional scope type ('domain', 'team', 'user')
+        scope_key: Optional scope key (team_key or user_key)
     """
     name = arguments.get("name")
     entity_type = arguments.get("entity_type")
     properties = arguments.get("properties", {})
+    scope_type = arguments.get("scope_type")
+    scope_key = arguments.get("scope_key")
 
     if not name:
         return [types.TextContent(type="text", text="Error: name is required")]
@@ -158,6 +189,38 @@ async def create_entity(
     # Track which agent created this entity
     agent_id = session_state.get("agent_id") or "unknown"
     domain_key = session_state.get("domain_key")
+
+    # Validate scope parameters
+    if scope_type and not scope_key:
+        return [types.TextContent(type="text", text="Error: scope_key is required when scope_type is set")]
+    if scope_key and not scope_type:
+        return [types.TextContent(type="text", text="Error: scope_type is required when scope_key is set")]
+
+    valid_scope_types = ('domain', 'team', 'user')
+    if scope_type and scope_type not in valid_scope_types:
+        return [types.TextContent(
+            type="text",
+            text=f"Error: Invalid scope_type '{scope_type}'. Must be one of: {', '.join(valid_scope_types)}"
+        )]
+
+    # Validate scope access if specified
+    if scope_type and scope_key:
+        available_scopes = session_state.get("available_scopes", [])
+        has_access = any(
+            s.get("scope_type") == scope_type and s.get("scope_key") == scope_key
+            for s in available_scopes
+        )
+        if not has_access and available_scopes:
+            return [types.TextContent(
+                type="text",
+                text=f"Error: You don't have access to scope ({scope_type}: {scope_key})"
+            )]
+    else:
+        # Use default scope from session if not specified
+        default_scope = session_state.get("default_scope", {})
+        if default_scope:
+            scope_type = default_scope.get("scope_type")
+            scope_key = default_scope.get("scope_key")
 
     try:
         payload = {
@@ -170,6 +233,11 @@ async def create_entity(
         # Include domain context for multi-tenancy if available
         if domain_key:
             payload["domain_key"] = domain_key
+
+        # Include scope information
+        if scope_type and scope_key:
+            payload["scope_type"] = scope_type
+            payload["scope_key"] = scope_key
 
         result = await _make_request(
             config,
@@ -185,6 +253,16 @@ async def create_entity(
             output += f"**Name:** {entity.get('name')}\n"
             output += f"**Type:** {entity.get('entity_type')}\n"
             output += f"**Key:** {entity.get('entity_key')}\n"
+            if entity.get('domain_key'):
+                output += f"**Domain:** {entity.get('domain_key')}\n"
+            # Show scope info
+            if entity.get('scope_type') or scope_type:
+                output += f"**Scope:** {entity.get('scope_type') or scope_type}"
+                if entity.get('scope_key') or scope_key:
+                    output += f" ({entity.get('scope_key') or scope_key})"
+                output += "\n"
+            if entity.get('source'):
+                output += f"**Source:** {entity.get('source')}\n"
             return [types.TextContent(type="text", text=output)]
         else:
             return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to create entity')}")]
@@ -206,6 +284,8 @@ async def update_entity(
         name: New name (optional)
         entity_type: New type (optional)
         properties: New properties (optional)
+        scope_type: New scope type - 'domain', 'team', or 'user' (optional)
+        scope_key: New scope key - team_key or user_key (optional)
     """
     entity_key = arguments.get("entity_key")
 
@@ -219,6 +299,40 @@ async def update_entity(
         update_data["entity_type"] = arguments["entity_type"]
     if "properties" in arguments:
         update_data["properties"] = arguments["properties"]
+
+    # Handle scope updates
+    scope_type = arguments.get("scope_type")
+    scope_key = arguments.get("scope_key")
+
+    if scope_type is not None or scope_key is not None:
+        # Both must be provided together, or both must be None/empty to clear scope
+        if scope_type and not scope_key:
+            return [types.TextContent(type="text", text="Error: scope_key is required when scope_type is set")]
+        if scope_key and not scope_type:
+            return [types.TextContent(type="text", text="Error: scope_type is required when scope_key is set")]
+
+        valid_scope_types = ('domain', 'team', 'user')
+        if scope_type and scope_type not in valid_scope_types:
+            return [types.TextContent(
+                type="text",
+                text=f"Error: Invalid scope_type '{scope_type}'. Must be one of: {', '.join(valid_scope_types)}"
+            )]
+
+        # Validate scope access
+        if scope_type and scope_key:
+            available_scopes = session_state.get("available_scopes", [])
+            has_access = any(
+                s.get("scope_type") == scope_type and s.get("scope_key") == scope_key
+                for s in available_scopes
+            )
+            if not has_access and available_scopes:
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: You don't have access to scope ({scope_type}: {scope_key})"
+                )]
+
+        update_data["scope_type"] = scope_type
+        update_data["scope_key"] = scope_key
 
     if not update_data:
         return [types.TextContent(type="text", text="Error: No update fields provided")]
@@ -240,6 +354,17 @@ async def update_entity(
             output += f"**Name:** {entity.get('name')}\n"
             output += f"**Type:** {entity.get('entity_type')}\n"
             output += f"**Key:** {entity.get('entity_key')}\n"
+            # Show scope info
+            ent_scope_type = entity.get('scope_type')
+            ent_scope_key = entity.get('scope_key')
+            ent_scope_name = entity.get('scope_name')
+            if ent_scope_type:
+                scope_display = f"{ent_scope_type}"
+                if ent_scope_name:
+                    scope_display += f" ({ent_scope_name})"
+                elif ent_scope_key:
+                    scope_display += f" ({ent_scope_key})"
+                output += f"**Scope:** {scope_display}\n"
             return [types.TextContent(type="text", text=output)]
         else:
             return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to update entity')}")]
@@ -384,3 +509,107 @@ async def extract_entities_from_text(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error extracting entities: {str(e)}")]
+
+
+async def move_entity_scope(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Move an entity and its related entities to a different scope.
+
+    Requires domain_admin or admin role. When include_related is True, also moves
+    entities that are:
+    - Connected via OUTGOING relationships (where this entity is the source)
+    - Currently in the SAME scope as this entity
+
+    This prevents accidentally moving unrelated entities that share common
+    connections (like technologies used by multiple projects).
+
+    Args:
+        entity_key: The entity key to move
+        scope_type: Target scope type ('domain', 'team', 'user')
+        scope_key: Target scope key (domain_key, team_key, or user_key)
+        include_related: Include related entities (default True, but conservative)
+    """
+    entity_key = arguments.get("entity_key")
+    scope_type = arguments.get("scope_type")
+    scope_key = arguments.get("scope_key")
+    include_related = arguments.get("include_related", True)
+
+    if not entity_key:
+        return [types.TextContent(type="text", text="Error: entity_key is required")]
+    if not scope_type:
+        return [types.TextContent(type="text", text="Error: scope_type is required")]
+    if not scope_key:
+        return [types.TextContent(type="text", text="Error: scope_key is required")]
+
+    valid_scope_types = ('domain', 'team', 'user')
+    if scope_type not in valid_scope_types:
+        return [types.TextContent(
+            type="text",
+            text=f"Error: Invalid scope_type '{scope_type}'. Must be one of: {', '.join(valid_scope_types)}"
+        )]
+
+    # Validate scope access
+    available_scopes = session_state.get("available_scopes", [])
+    has_access = any(
+        s.get("scope_type") == scope_type and s.get("scope_key") == scope_key
+        for s in available_scopes
+    )
+    if not has_access and available_scopes:
+        return [types.TextContent(
+            type="text",
+            text=f"Error: You don't have access to scope ({scope_type}: {scope_key})"
+        )]
+
+    # Check if user is domain_admin
+    user_role = session_state.get("user_role")
+    if user_role not in ('admin', 'domain_admin'):
+        return [types.TextContent(
+            type="text",
+            text="Error: This operation requires domain_admin or admin role"
+        )]
+
+    agent_id = session_state.get("agent_id")
+
+    try:
+        result = await _make_request(
+            config,
+            "POST",
+            f"/entities/{entity_key}/move-scope",
+            json={
+                "scope_type": scope_type,
+                "scope_key": scope_key,
+                "include_related": include_related,
+            },
+            agent_id=agent_id,
+        )
+
+        if result.get("success"):
+            data = result.get("data", {})
+            updated_count = data.get("total_updated", 0)
+            updated_keys = data.get("updated_entities", [])
+
+            output = f"# Entity Scope Move Successful\n\n"
+            output += f"**Target Entity:** {entity_key}\n"
+            output += f"**New Scope:** {scope_type} ({scope_key})\n"
+            output += f"**Entities Updated:** {updated_count}\n\n"
+
+            if updated_keys and len(updated_keys) <= 20:
+                output += "## Updated Entities\n"
+                for key in updated_keys:
+                    output += f"- {key}\n"
+            elif updated_keys:
+                output += "## Updated Entities (first 20)\n"
+                for key in updated_keys[:20]:
+                    output += f"- {key}\n"
+                output += f"\n... and {len(updated_keys) - 20} more\n"
+
+            return [types.TextContent(type="text", text=output)]
+        else:
+            return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to move entity scope')}")]
+
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error moving entity scope: {str(e)}")]

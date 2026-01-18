@@ -11,6 +11,20 @@ from api.services.auth import require_admin, hash_password
 from api.services.activity import activity_service
 
 
+def get_user_domain_key() -> str | None:
+    """Get the current user's domain_key for multi-tenancy filtering."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.domain_key
+    return None
+
+
+def get_user_key() -> str | None:
+    """Get the current user's user_key for activity tracking."""
+    if hasattr(g, 'current_user') and g.current_user:
+        return g.current_user.user_key
+    return None
+
+
 def register_user_routes(api: Api):
     """Register user admin routes with the API."""
 
@@ -156,7 +170,9 @@ def register_user_routes(api: Api):
                         entity_type='User',
                         entity_key=user.user_key,
                         entity_name=user.display_name,
-                        changes=changes
+                        changes=changes,
+                        domain_key=get_user_domain_key(),
+                        user_key=get_user_key()
                     )
 
                 return {
@@ -192,7 +208,9 @@ def register_user_routes(api: Api):
                     actor=g.current_user.user_key,
                     entity_type='User',
                     entity_key=user.user_key,
-                    entity_name=user.display_name
+                    entity_name=user.display_name,
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {
@@ -245,7 +263,9 @@ def register_user_routes(api: Api):
                     entity_type='User',
                     entity_key=user.user_key,
                     entity_name=user.display_name,
-                    changes={'role': {'from': old_role, 'to': new_role}}
+                    changes={'role': {'from': old_role, 'to': new_role}},
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {
@@ -299,7 +319,9 @@ def register_user_routes(api: Api):
                     entity_type='User',
                     entity_key=user.user_key,
                     entity_name=user.display_name,
-                    changes={'domain_key': {'from': old_domain_key, 'to': new_domain_key}}
+                    changes={'domain_key': {'from': old_domain_key, 'to': new_domain_key}},
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {
@@ -349,7 +371,9 @@ def register_user_routes(api: Api):
                     actor=g.current_user.user_key,
                     entity_type='Session',
                     entity_key=user.user_key,
-                    entity_name=f'{count} sessions for {user.display_name}'
+                    entity_name=f'{count} sessions for {user.display_name}',
+                    domain_key=get_user_domain_key(),
+                    user_key=get_user_key()
                 )
 
                 return {
