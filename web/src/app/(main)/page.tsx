@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import * as d3 from 'd3';
 import { api } from '@/lib/api';
@@ -66,7 +66,51 @@ const TILE_CATEGORIES: TileCategory[] = [
   { label: 'Deletes', color: '#c45c5c', types: ['entity_deleted', 'relationship_deleted'] },
 ];
 
-type TimeRange = '1h' | '24h' | '7d';
+type TimeRange = 'period' | 'today' | 'week';
+
+// Get the current period of day label based on local time
+function getCurrentPeriodLabel(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Morning';
+  if (hour < 18) return 'Afternoon';
+  return 'Evening';
+}
+
+// Get time range parameters based on user's local timezone
+function getTimeRangeParams(range: TimeRange): { hours: number; bucketMinutes: number; since: Date } {
+  const now = new Date();
+
+  if (range === 'period') {
+    // Current period: Morning (0-11:59), Afternoon (12-17:59), Evening (18-23:59)
+    const hour = now.getHours();
+    let periodStart: Date;
+
+    if (hour < 12) {
+      // Morning: midnight to now
+      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    } else if (hour < 18) {
+      // Afternoon: noon to now
+      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+    } else {
+      // Evening: 6pm to now
+      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0);
+    }
+
+    const hoursSincePeriodStart = Math.max(1, Math.ceil((now.getTime() - periodStart.getTime()) / (1000 * 60 * 60)));
+    return { hours: hoursSincePeriodStart, bucketMinutes: 30, since: periodStart };
+  }
+
+  if (range === 'today') {
+    // Today: from midnight local time
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const hoursSinceStartOfDay = Math.max(1, Math.ceil((now.getTime() - startOfDay.getTime()) / (1000 * 60 * 60)));
+    return { hours: hoursSinceStartOfDay, bucketMinutes: 60, since: startOfDay };
+  }
+
+  // Week: today + previous 6 days
+  const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0);
+  return { hours: 168, bucketMinutes: 360, since: startOfWeek };
+}
 
 interface RadialNode {
   id: string;
@@ -76,6 +120,7 @@ interface RadialNode {
   count?: number;
   x?: number;
   y?: number;
+  timestamp?: string;  // For filtering activities
 }
 
 interface RadialLink {
@@ -89,20 +134,34 @@ export default function ActivityPage() {
   const [timeline, setTimeline] = useState<ActivityTimelinePoint[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
+  const [timeRange, setTimeRange] = useState<TimeRange>('today');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [hideHeartbeats, setHideHeartbeats] = useState(true);
+  const [selectedActivity, setSelectedActivity] = useState<{
+    timestamp: string;
+    activityType: ActivityType;
+    count: number;
+    activities: Activity[];
+    loading: boolean;
+  } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const hours = timeRange === '1h' ? 1 : timeRange === '24h' ? 24 : 168;
-  const bucketMinutes = timeRange === '1h' ? 1 : timeRange === '24h' ? 60 : 360;
+  // Memoize time range params to prevent infinite re-renders
+  // Only recalculate when timeRange changes
+  const { bucketMinutes, sinceISO } = useMemo(() => {
+    const params = getTimeRangeParams(timeRange);
+    return {
+      bucketMinutes: params.bucketMinutes,
+      sinceISO: params.since.toISOString(),
+    };
+  }, [timeRange]);
 
   const loadData = useCallback(async () => {
     try {
       const [summaryRes, timelineRes, activitiesRes] = await Promise.all([
-        api.activities.summary({ hours }),
-        api.activities.timeline({ hours, bucket_minutes: bucketMinutes }),
-        api.activities.list({ limit: 30, hours }),
+        api.activities.summary({ since: sinceISO }),
+        api.activities.timeline({ since: sinceISO, bucket_minutes: bucketMinutes }),
+        api.activities.list({ limit: 30, since: sinceISO }),
       ]);
 
       if (summaryRes.data) {
@@ -124,13 +183,128 @@ export default function ActivityPage() {
     } finally {
       setLoading(false);
     }
-  }, [hours, bucketMinutes]);
+  }, [sinceISO, bucketMinutes]);
 
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
   }, [loadData]);
+
+  // Fetch activities for a specific time bucket and type (called on click)
+  const fetchActivitiesForBucket = useCallback(async (
+    timestamp: string,
+    activityType: ActivityType,
+    count: number
+  ) => {
+    // Show popup immediately with loading state
+    setSelectedActivity({
+      timestamp,
+      activityType,
+      count,
+      activities: [],
+      loading: true,
+    });
+
+    try {
+      const bucketStart = new Date(timestamp);
+      // Since we aggregate by hour (or day for week), use 60 minutes (or 24 hours) for the bucket
+      // For period/today views, nodes are aggregated by hour so use 60 minutes
+      // For week view, nodes are aggregated by day so use 24 hours (1440 minutes)
+      const bucketDurationMs = timeRange === 'week' ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+      const bucketEnd = new Date(bucketStart.getTime() + bucketDurationMs);
+
+      const res = await api.activities.list({
+        type: activityType,
+        since: bucketStart.toISOString(),
+        until: bucketEnd.toISOString(),
+        limit: 100,
+      });
+
+      setSelectedActivity({
+        timestamp,
+        activityType,
+        count,
+        activities: res.data?.activities || [],
+        loading: false,
+      });
+    } catch (err) {
+      console.error('Failed to fetch activities:', err);
+      setSelectedActivity({
+        timestamp,
+        activityType,
+        count,
+        activities: [],
+        loading: false,
+      });
+    }
+  }, [timeRange]);
+
+  // Aggregate timeline points by local hour to prevent duplicate labels
+  const aggregateTimelineByLocalHour = useCallback((timelineData: ActivityTimelinePoint[]): ActivityTimelinePoint[] => {
+    if (timeRange === 'week') {
+      // For week view, aggregate by day instead
+      const dayMap = new Map<string, ActivityTimelinePoint>();
+
+      timelineData.forEach(point => {
+        const date = new Date(point.timestamp);
+        const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+
+        if (!dayMap.has(dayKey)) {
+          // Create new aggregated point with the day start as timestamp
+          const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
+          dayMap.set(dayKey, {
+            timestamp: dayStart.toISOString(),
+            total: 0,
+          });
+        }
+
+        const existing = dayMap.get(dayKey)!;
+        existing.total += point.total;
+
+        // Sum all activity type counts
+        Object.keys(ACTIVITY_COLORS).forEach(type => {
+          const count = (point[type] as number) || 0;
+          existing[type] = ((existing[type] as number) || 0) + count;
+        });
+      });
+
+      return Array.from(dayMap.values()).sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+    }
+
+    // For period and today views, aggregate by local hour
+    const hourMap = new Map<string, ActivityTimelinePoint>();
+
+    timelineData.forEach(point => {
+      const date = new Date(point.timestamp);
+      // Create a key based on local date and hour
+      const hourKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}`;
+
+      if (!hourMap.has(hourKey)) {
+        // Create new aggregated point with the hour start as timestamp
+        const hourStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), 0, 0);
+        hourMap.set(hourKey, {
+          timestamp: hourStart.toISOString(),
+          total: 0,
+        });
+      }
+
+      const existing = hourMap.get(hourKey)!;
+      existing.total += point.total;
+
+      // Sum all activity type counts
+      Object.keys(ACTIVITY_COLORS).forEach(type => {
+        const count = (point[type] as number) || 0;
+        existing[type] = ((existing[type] as number) || 0) + count;
+      });
+    });
+
+    return Array.from(hourMap.values()).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  }, [timeRange]);
 
   // Build radial graph data
   useEffect(() => {
@@ -142,17 +316,21 @@ export default function ActivityPage() {
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
     const centerX = width / 2;
-    // Use a fixed size for the graph and position at top, not centered
-    const graphSize = Math.min(width, height, 500); // Cap at 500px
-    const maxRadius = graphSize / 2 - 40;
-    const centerY = maxRadius + 50; // Position graph near the top
+    const centerY = height / 2;
+    // Use available space - no cap, fits container
+    const graphSize = Math.min(width, height);
+    const maxRadius = graphSize / 2 - 60;
 
-    // Build nodes and links from timeline data
+    // Aggregate timeline by local hour/day to prevent duplicate labels
+    const aggregatedTimeline = aggregateTimelineByLocalHour(timeline);
+
+    // Build nodes and links from aggregated timeline data
     const nodes: RadialNode[] = [];
     const links: RadialLink[] = [];
 
-    // Center node
-    const centerLabel = timeRange === '1h' ? 'Hour' : timeRange === '24h' ? 'Today' : 'Week';
+    // Center node - always show day and month
+    const now = new Date();
+    const centerLabel = now.toLocaleDateString([], { day: 'numeric', month: 'short' });
     nodes.push({
       id: 'center',
       label: centerLabel,
@@ -161,7 +339,7 @@ export default function ActivityPage() {
 
     // Time nodes (hours or days) arranged in a circle
     // Filter out time points that only have heartbeat activity
-    const timePoints = timeline.filter(t => {
+    const timePoints = aggregatedTimeline.filter(t => {
       const nonHeartbeatTotal = Object.keys(ACTIVITY_COLORS)
         .filter(type => type !== 'agent_heartbeat')
         .reduce((sum, type) => sum + ((t[type] as number) || 0), 0);
@@ -172,15 +350,21 @@ export default function ActivityPage() {
     timePoints.forEach((point, i) => {
       const date = new Date(point.timestamp);
       let label: string;
-      if (timeRange === '1h') {
-        label = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else if (timeRange === '24h') {
-        label = date.toLocaleTimeString([], { hour: '2-digit' });
+      if (timeRange === 'period') {
+        // Show am/pm hours for current period
+        const hour = date.getHours();
+        const ampm = hour >= 12 ? 'pm' : 'am';
+        const hour12 = hour % 12 || 12;
+        label = `${hour12}${ampm}`;
+      } else if (timeRange === 'today') {
+        // Show am/pm hours for today
+        const hour = date.getHours();
+        const ampm = hour >= 12 ? 'pm' : 'am';
+        const hour12 = hour % 12 || 12;
+        label = `${hour12}${ampm}`;
       } else {
-        // Include day number to distinguish between same weekdays (e.g., "Fri 10" vs "Fri 17")
-        const weekday = date.toLocaleDateString([], { weekday: 'short' });
-        const day = date.getDate();
-        label = `${weekday} ${day}`;
+        // Week view: show day and month (e.g., "12 Jan")
+        label = date.toLocaleDateString([], { day: 'numeric', month: 'short' });
       }
 
       const angle = i * angleStep - Math.PI / 2;
@@ -219,6 +403,7 @@ export default function ActivityPage() {
             count: actCount,
             x: centerX + Math.cos(actAngle) * activityRadius,
             y: centerY + Math.sin(actAngle) * activityRadius,
+            timestamp: point.timestamp,  // Store for click filtering
           });
 
           links.push({ source: timeNodeId, target: actNodeId });
@@ -304,16 +489,20 @@ export default function ActivityPage() {
         .text(node.label);
     });
 
-    // Draw activity nodes
+    // Draw activity nodes with click handlers
     const actNodes = nodes.filter(n => n.type === 'activity');
     actNodes.forEach(node => {
       const color = ACTIVITY_COLORS[node.activityType!];
       const radius = 6 + Math.min((node.count || 0) * 1.5, 12);
-      const tooltip = `${ACTIVITY_LABELS[node.activityType!]}: ${node.count}`;
+      const tooltip = `${ACTIVITY_LABELS[node.activityType!]}: ${node.count} - Click to view`;
 
-      // Group for circle and text so tooltip works on both
+      // Group for circle and text so tooltip and click work on both
       const g = svg.append('g')
-        .attr('cursor', 'pointer');
+        .attr('cursor', 'pointer')
+        .on('click', () => {
+          // Fetch activities via API for this time bucket and type
+          fetchActivitiesForBucket(node.timestamp!, node.activityType!, node.count || 0);
+        });
 
       g.append('title')
         .text(tooltip);
@@ -340,7 +529,7 @@ export default function ActivityPage() {
       }
     });
 
-  }, [timeline, timeRange]);
+  }, [timeline, timeRange, bucketMinutes, aggregateTimelineByLocalHour, fetchActivitiesForBucket]);
 
   const getActivityLink = (activity: Activity): string | null => {
     const meta = activity.extra_data || {};
@@ -459,40 +648,17 @@ export default function ActivityPage() {
             })}
           </div>
 
-          {/* Time range toggle */}
+          {/* Time range dropdown */}
           <div className="flex items-center gap-3">
-            <div className="flex rounded-lg bg-cm-sand/50 p-0.5">
-              <button
-                onClick={() => setTimeRange('1h')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  timeRange === '1h'
-                    ? 'bg-cm-ivory text-cm-charcoal shadow-sm'
-                    : 'text-cm-coffee hover:text-cm-charcoal'
-                }`}
-              >
-                1h
-              </button>
-              <button
-                onClick={() => setTimeRange('24h')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  timeRange === '24h'
-                    ? 'bg-cm-ivory text-cm-charcoal shadow-sm'
-                    : 'text-cm-coffee hover:text-cm-charcoal'
-                }`}
-              >
-                24h
-              </button>
-              <button
-                onClick={() => setTimeRange('7d')}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  timeRange === '7d'
-                    ? 'bg-cm-ivory text-cm-charcoal shadow-sm'
-                    : 'text-cm-coffee hover:text-cm-charcoal'
-                }`}
-              >
-                7d
-              </button>
-            </div>
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+              className="px-3 py-1.5 text-sm rounded-lg bg-cm-cream border border-cm-sand text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+            >
+              <option value="period">{getCurrentPeriodLabel()}</option>
+              <option value="today">Today</option>
+              <option value="week">Week</option>
+            </select>
             <span className="text-[10px] text-cm-coffee/70">
               {lastUpdate.toLocaleTimeString()}
             </span>
@@ -564,6 +730,116 @@ export default function ActivityPage() {
           </div>
         </div>
       </div>
+
+      {/* Activity Detail Popup */}
+      {selectedActivity && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setSelectedActivity(null)}
+        >
+          <div
+            className="bg-cm-ivory rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-cm-sand flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-cm-ivory text-sm font-bold"
+                  style={{ backgroundColor: ACTIVITY_COLORS[selectedActivity.activityType] }}
+                >
+                  {ACTIVITY_ICONS[selectedActivity.activityType]}
+                </div>
+                <div>
+                  <h2 className="font-serif text-lg font-semibold text-cm-charcoal">
+                    {ACTIVITY_LABELS[selectedActivity.activityType]}
+                  </h2>
+                  <p className="text-xs text-cm-coffee">
+                    {new Date(selectedActivity.timestamp).toLocaleString([], {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true,
+                    })}
+                    {' '}&bull;{' '}
+                    {selectedActivity.count} {selectedActivity.count === 1 ? 'activity' : 'activities'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedActivity(null)}
+                className="text-cm-coffee hover:text-cm-charcoal p-1"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {selectedActivity.loading ? (
+                <div className="text-center text-cm-coffee/70 py-8">
+                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-cm-terracotta border-t-transparent mb-3" />
+                  <p>Loading activities...</p>
+                </div>
+              ) : selectedActivity.activities.length > 0 ? (
+                selectedActivity.activities.map((activity) => {
+                  const link = getActivityLink(activity);
+                  const content = (
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-cm-cream/50 hover:bg-cm-cream transition-colors">
+                      <div
+                        className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-cm-ivory text-[10px] font-bold"
+                        style={{ backgroundColor: ACTIVITY_COLORS[activity.activity_type] }}
+                      >
+                        {ACTIVITY_ICONS[activity.activity_type]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-cm-charcoal">
+                          {getActivityDescription(activity)}
+                        </p>
+                        <p className="text-xs text-cm-coffee/70 mt-1">
+                          {activity.actor} &bull;{' '}
+                          {new Date(activity.created_at).toLocaleTimeString([], {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+
+                  return link ? (
+                    <Link
+                      key={activity.activity_key}
+                      href={link}
+                      className="block cursor-pointer"
+                      onClick={() => setSelectedActivity(null)}
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <div key={activity.activity_key}>{content}</div>
+                  );
+                })
+              ) : (
+                <div className="text-center text-cm-coffee/70 py-8">
+                  <p>No activities found for this time bucket.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 border-t border-cm-sand flex-shrink-0">
+              <button
+                onClick={() => setSelectedActivity(null)}
+                className="w-full px-4 py-2 text-sm bg-cm-sand text-cm-coffee rounded-lg hover:bg-cm-sand/80 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
