@@ -284,6 +284,11 @@ async def start_session(
     if not project_key:
         project_key = session_state.get("project_key") or session_state.get("db_project_key")
 
+    # Auto-detect team_key from session state if not provided
+    # This comes from the identify tool's team detection (stored as active_team_key)
+    if not team_key:
+        team_key = session_state.get("active_team_key") or session_state.get("team_key")
+
     if not project_key:
         output = "Error: `project_key` is required.\n\n"
         # Check if we have repository info but no project
