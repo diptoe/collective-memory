@@ -376,6 +376,88 @@ _session_state = {
 }
 ```
 
+#### Milestone Recording Pattern (IMPORTANT)
+
+**AI agents MUST record milestones** when completing significant work. This is critical for:
+- Tracking AI agent contributions and productivity
+- Building institutional memory of what was accomplished
+- Understanding work patterns and collaboration quality
+
+**When to Record Milestones:**
+
+| Situation | Action |
+|-----------|--------|
+| Starting a major task | `record_milestone(name="...", status="started", goal="...")` |
+| Completing a feature/fix | `record_milestone(name="...", status="completed", outcome="...", files_touched=N)` |
+| Hitting a blocker | `record_milestone(name="...", status="blocked", summary="...")` |
+| Before making a commit | Record milestone FIRST, then commit |
+
+**Integration with Todo System:**
+
+When using the TodoWrite tool, follow this pattern:
+
+1. **Plan phase:** Create todos for the task
+2. **Work phase:** Mark todos as `in_progress` → `completed`
+3. **Milestone phase:** When ALL todos are completed, record a milestone
+
+```
+# Example workflow:
+1. TodoWrite: [todo1, todo2, todo3]
+2. Work through todos, marking as completed
+3. When done: record_milestone(
+     name="Implemented feature X",
+     status="completed",
+     outcome="Added A, B, C functionality",
+     summary="User requested X. I proposed Y approach...",
+     files_touched=5,
+     lines_added=150
+   )
+```
+
+**Pre-Commit Milestone Pattern:**
+
+Before creating a git commit, consider recording a milestone:
+
+```
+# Workflow:
+1. Complete the work
+2. record_milestone(name="Feature X", status="completed", ...)
+3. git add . && git commit -m "..."
+```
+
+This ensures work is tracked even if the session ends unexpectedly.
+
+**Self-Assessment Metrics (1-5 scale):**
+
+When recording completed milestones, include self-assessment:
+
+| Metric | Description |
+|--------|-------------|
+| `human_guidance_level` | 1=fully autonomous, 5=heavy guidance needed |
+| `model_understanding` | 1=low understanding, 5=high understanding |
+| `model_accuracy` | 1=many errors, 5=very accurate |
+| `collaboration_rating` | 1=poor collaboration, 5=excellent |
+| `complexity_rating` | 1=trivial task, 5=very complex task |
+
+**Example Complete Milestone:**
+
+```python
+record_milestone(
+    name="Knowledge Route Implementation",
+    status="completed",
+    goal="Replace Entities/Graph nav with unified Knowledge route",
+    outcome="Created /knowledge page with treemap, 5 components, updated nav",
+    summary="User provided plan. Implemented in 4 phases: backend API, types, components, navigation. User requested UI fixes which I addressed.",
+    files_touched=12,
+    lines_added=450,
+    human_guidance_level=2,
+    model_understanding=5,
+    model_accuracy=4,
+    collaboration_rating=4,
+    complexity_rating=4
+)
+```
+
 ### 4. Frontend Development (web/)
 
 #### TypeScript Types

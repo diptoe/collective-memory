@@ -46,6 +46,8 @@ WHAT IT DOES:
 - Session auto-closes after 1 hour of inactivity
 - Only one active session per project allowed
 
+IMPORTANT: Record milestones during the session using `record_milestone` when you complete significant work (features, bug fixes, refactors). Sessions without milestones lose valuable tracking data.
+
 EXAMPLES:
 - {"project_key": "ent-project-xyz"}
 - {"project_key": "ent-dashboard", "name": "Implementing auth feature"}
@@ -171,9 +173,22 @@ async def get_active_session(
                 output += "Use `start_session` to begin a new work session."
                 return [types.TextContent(type="text", text=output)]
 
+            # Fetch session stats (milestone count, etc.)
+            session_key = session.get('session_key')
+            stats = None
+            try:
+                stats_result = await _make_request(
+                    config, "GET", f"/work-sessions/{session_key}",
+                    params={"include_stats": "true"}, agent_id=agent_id
+                )
+                if stats_result.get("success"):
+                    stats = stats_result.get("data", {}).get("session", {}).get("stats")
+            except Exception:
+                pass  # Stats are optional
+
             # Format session details
             output = "## Active Work Session\n\n"
-            output += f"**Session:** `{session.get('session_key')}`\n"
+            output += f"**Session:** `{session_key}`\n"
             if session.get('name'):
                 output += f"**Name:** {session.get('name')}\n"
             else:
@@ -209,6 +224,20 @@ async def get_active_session(
                     output += f"**Auto-closes:** {dt.strftime('%Y-%m-%d %H:%M')}\n"
                 except:
                     pass
+
+            # Session stats nudge (Approach #3)
+            if stats:
+                milestone_count = stats.get('milestone_count', 0)
+                entity_count = stats.get('other_entity_count', 0)
+                output += f"\n**📊 Session Stats:** {milestone_count} milestones | {entity_count} entities\n"
+
+                # Nudge if no milestones recorded
+                if milestone_count == 0:
+                    output += "\n### 💡 Milestone Reminder\n"
+                    output += "No milestones recorded yet. As you complete significant work, use `record_milestone` to track:\n"
+                    output += "- Feature implementations\n"
+                    output += "- Bug fixes\n"
+                    output += "- Refactoring efforts\n"
 
             return [types.TextContent(type="text", text=output)]
         else:
@@ -277,6 +306,7 @@ async def start_session(
                 output += "- \"Refactoring database queries\"\n"
 
             output += "\n### Tips\n"
+            output += "- **Record milestones** with `record_milestone` when completing significant work\n"
             output += "- Entities and messages created will be linked to this session\n"
             output += "- Use `update_session` to name or update the session\n"
             output += "- Use `extend_session` if you need more time\n"
@@ -338,6 +368,18 @@ async def end_session(
             else:
                 return [types.TextContent(type="text", text=f"Error finding active session: {active_result.get('msg')}")]
 
+        # Fetch session stats BEFORE closing (Approach #1: Completion Prompts)
+        stats = None
+        try:
+            stats_result = await _make_request(
+                config, "GET", f"/work-sessions/{session_key}",
+                params={"include_stats": "true"}, agent_id=agent_id
+            )
+            if stats_result.get("success"):
+                stats = stats_result.get("data", {}).get("session", {}).get("stats")
+        except Exception:
+            pass  # Stats are optional
+
         body = {}
         if summary:
             body["summary"] = summary
@@ -372,6 +414,32 @@ async def end_session(
 
             if session.get('summary'):
                 output += f"**Summary:** {session.get('summary')}\n"
+
+            # Session stats and milestone warning (Approach #1)
+            if stats:
+                milestone_count = stats.get('milestone_count', 0)
+                entity_count = stats.get('other_entity_count', 0)
+                output += f"\n**📊 Session Summary:** {milestone_count} milestones | {entity_count} entities\n"
+
+                # Warning if no milestones recorded
+                if milestone_count == 0:
+                    output += "\n---\n"
+                    output += "### ⚠️ No Milestones Recorded\n\n"
+                    output += "This session closed without any milestones. If you completed significant work, "
+                    output += "consider recording it for future reference:\n\n"
+                    output += "```\n"
+                    output += "record_milestone(\n"
+                    output += "  name=\"Brief description of work\",\n"
+                    output += "  status=\"completed\",\n"
+                    output += "  outcome=\"What was accomplished\",\n"
+                    output += "  files_touched=N,\n"
+                    output += "  lines_added=N\n"
+                    output += ")\n"
+                    output += "```\n\n"
+                    output += "**Why record milestones?**\n"
+                    output += "- Track AI agent contributions\n"
+                    output += "- Build institutional memory\n"
+                    output += "- Understand work patterns\n"
 
             return [types.TextContent(type="text", text=output)]
         else:
