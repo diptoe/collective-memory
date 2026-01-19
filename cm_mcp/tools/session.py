@@ -102,6 +102,33 @@ RETURNS: Updated session with new auto-close time.""",
             }
         }
     ),
+    types.Tool(
+        name="update_session",
+        description="""Update a work session's name or summary.
+
+USE THIS WHEN:
+- You want to name an unnamed session (sessions should always have descriptive names!)
+- The work focus has evolved and the session name should reflect that
+- You want to add or update the session summary
+
+IMPORTANT: Sessions should ALWAYS have a descriptive name that reflects the work being done.
+If you start a session without a name, update it as soon as the work focus becomes clear.
+
+EXAMPLES:
+- {"name": "Implementing authentication system"}
+- {"name": "Bug fixes for checkout flow", "summary": "Addressing 3 critical bugs reported by QA"}
+- {"session_key": "sess-xyz", "name": "Updated focus: refactoring auth"}
+
+RETURNS: Updated session details.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_key": {"type": "string", "description": "Optional: Specific session to update (defaults to active session)"},
+                "name": {"type": "string", "description": "New name for the session (descriptive of the work being done)"},
+                "summary": {"type": "string", "description": "Optional: Summary or notes about the session"}
+            }
+        }
+    ),
 ]
 
 
@@ -149,6 +176,8 @@ async def get_active_session(
             output += f"**Session:** `{session.get('session_key')}`\n"
             if session.get('name'):
                 output += f"**Name:** {session.get('name')}\n"
+            else:
+                output += f"**Name:** _(unnamed - use `update_session` to name it!)_\n"
             output += f"**Project:** `{session.get('project_key')}`\n"
 
             # Time info
@@ -228,6 +257,8 @@ async def start_session(
             output += f"**Session Key:** `{session.get('session_key')}`\n"
             if session.get('name'):
                 output += f"**Name:** {session.get('name')}\n"
+            else:
+                output += f"**Name:** _(unnamed - please name this session!)_\n"
             output += f"**Project:** `{session.get('project_key')}`\n"
             output += f"**Status:** {session.get('status')}\n"
 
@@ -236,8 +267,18 @@ async def start_session(
                 mins = remaining // 60
                 output += f"**Auto-closes in:** {mins} minutes\n"
 
+            # Add prompt to name the session if unnamed
+            if not session.get('name'):
+                output += "\n### ⚠️ Session Naming Required\n"
+                output += "This session doesn't have a name yet. As the work focus becomes clear, "
+                output += "use `update_session` to give it a descriptive name like:\n"
+                output += "- \"Implementing authentication system\"\n"
+                output += "- \"Bug fixes for checkout flow\"\n"
+                output += "- \"Refactoring database queries\"\n"
+
             output += "\n### Tips\n"
             output += "- Entities and messages created will be linked to this session\n"
+            output += "- Use `update_session` to name or update the session\n"
             output += "- Use `extend_session` if you need more time\n"
             output += "- Use `end_session` when you're done\n"
             output += "- The session will auto-close after 1 hour of inactivity\n"
@@ -406,6 +447,79 @@ async def extend_session(
         return [types.TextContent(type="text", text=f"Error extending session: {str(e)}")]
 
 
+async def update_session(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Update a work session's name or summary.
+
+    Args:
+        session_key: Optional - specific session to update (defaults to active session)
+        name: Optional - new name for the session
+        summary: Optional - summary or notes about the session
+    """
+    session_key = arguments.get("session_key")
+    name = arguments.get("name")
+    summary = arguments.get("summary")
+
+    if not name and not summary:
+        return [types.TextContent(type="text", text="Error: Provide at least `name` or `summary` to update.")]
+
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
+    try:
+        # If no session_key provided, get the active session first
+        if not session_key:
+            active_result = await _make_request(config, "GET", "/work-sessions/active", agent_id=agent_id)
+            if active_result.get("success"):
+                active_session = active_result.get("data", {}).get("session")
+                if active_session:
+                    session_key = active_session.get("session_key")
+                else:
+                    return [types.TextContent(type="text", text="No active session to update.")]
+            else:
+                return [types.TextContent(type="text", text=f"Error finding active session: {active_result.get('msg')}")]
+
+        body = {}
+        if name:
+            body["name"] = name
+        if summary:
+            body["summary"] = summary
+
+        result = await _make_request(config, "PUT", f"/work-sessions/{session_key}", json=body, agent_id=agent_id)
+
+        if result.get("success"):
+            session = result.get("data", {}).get("session", {})
+
+            output = "## Work Session Updated\n\n"
+            output += f"**Session:** `{session.get('session_key')}`\n"
+            output += f"**Name:** {session.get('name') or '(unnamed)'}\n"
+            output += f"**Project:** `{session.get('project_key')}`\n"
+
+            if session.get('summary'):
+                output += f"**Summary:** {session.get('summary')}\n"
+
+            remaining = session.get('time_remaining_seconds')
+            if remaining:
+                if remaining > 3600:
+                    hours = remaining // 3600
+                    mins = (remaining % 3600) // 60
+                    output += f"**Time Remaining:** {hours}h {mins}m\n"
+                else:
+                    mins = remaining // 60
+                    output += f"**Time Remaining:** {mins} minutes\n"
+
+            return [types.TextContent(type="text", text=output)]
+        else:
+            return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to update session')}")]
+
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error updating session: {str(e)}")]
+
+
 # ============================================================
 # TOOL HANDLERS MAPPING
 # ============================================================
@@ -415,4 +529,5 @@ TOOL_HANDLERS = {
     "start_session": start_session,
     "end_session": end_session,
     "extend_session": extend_session,
+    "update_session": update_session,
 }

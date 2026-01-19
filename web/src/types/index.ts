@@ -23,6 +23,7 @@ export interface Entity {
     outgoing: Relationship[];
     incoming: Relationship[];
   };
+  metrics?: Metric[]; // Populated for Milestone entities when include_metrics=true
 }
 
 // Relationship types
@@ -490,7 +491,10 @@ export interface WorkSession {
   };
   // Stats (when include_stats=true)
   stats?: {
-    entity_count: number;
+    milestone_count: number;
     message_count: number;
+    other_entity_count: number;
+    total_entity_count: number;
+    entity_count: number; // Legacy, same as total_entity_count
   };
 }

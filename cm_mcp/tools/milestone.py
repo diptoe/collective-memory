@@ -16,6 +16,49 @@ from .utils import _make_request
 
 TOOL_DEFINITIONS = [
     types.Tool(
+        name="update_milestone",
+        description="""Update metrics on the current active milestone (status="started").
+
+USE THIS WHEN: You want to track running metrics during an active milestone before completing it.
+
+IMPORTANT: This tool updates metrics on the CURRENT milestone (the one with status="started").
+It does NOT change the milestone status. Use `record_milestone` with status="completed" to finish.
+
+This allows you to:
+- Track progress incrementally (files touched, lines changed) as you work
+- Update metrics periodically without waiting until completion
+- Provide real-time visibility into work progress
+
+AUTO-CAPTURE METRICS (incremental or cumulative):
+- files_touched: Number of files touched so far
+- lines_added: Lines of code added so far
+- lines_removed: Lines of code removed so far
+- commits_made: Number of commits made so far
+
+SELF-ASSESSMENT METRICS (1-5 scale, can be updated as work progresses):
+- complexity_rating: 1=trivial, 5=very complex
+
+EXAMPLES:
+- {"files_touched": 5, "lines_added": 120, "lines_removed": 30}
+- {"files_touched": 8, "lines_added": 250} → Update totals as work continues
+- {"complexity_rating": 4} → This is turning out to be more complex than expected
+
+RETURNS: Updated milestone with current metrics.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "milestone_key": {"type": "string", "description": "Optional: Specific milestone to update (defaults to current active milestone)"},
+                # Auto-capture metrics
+                "files_touched": {"type": "integer", "description": "Number of files touched so far"},
+                "lines_added": {"type": "integer", "description": "Lines of code added so far"},
+                "lines_removed": {"type": "integer", "description": "Lines of code removed so far"},
+                "commits_made": {"type": "integer", "description": "Number of commits made so far"},
+                # Self-assessment
+                "complexity_rating": {"type": "integer", "description": "1=trivial, 5=very complex", "minimum": 1, "maximum": 5}
+            }
+        }
+    ),
+    types.Tool(
         name="record_milestone",
         description="""Record a milestone during a work session.
 
@@ -88,6 +131,107 @@ RETURNS: Created Milestone entity details with metrics recorded.""",
 # ============================================================
 # TOOL IMPLEMENTATIONS
 # ============================================================
+
+async def update_milestone(
+    arguments: dict,
+    config: Any,
+    session_state: dict,
+) -> list[types.TextContent]:
+    """
+    Update metrics on the current active milestone (status="started").
+
+    Args:
+        milestone_key: Optional - specific milestone to update (defaults to current active milestone)
+        files_touched: Optional - number of files touched so far
+        lines_added: Optional - lines of code added so far
+        lines_removed: Optional - lines of code removed so far
+        commits_made: Optional - number of commits made so far
+        complexity_rating: Optional - 1=trivial, 5=very complex
+    """
+    milestone_key = arguments.get("milestone_key")
+
+    # Collect metrics from arguments
+    files_touched = arguments.get("files_touched")
+    lines_added = arguments.get("lines_added")
+    lines_removed = arguments.get("lines_removed")
+    commits_made = arguments.get("commits_made")
+    complexity_rating = arguments.get("complexity_rating")
+
+    # Check if any metrics provided
+    has_metrics = any(v is not None for v in [files_touched, lines_added, lines_removed, commits_made, complexity_rating])
+    if not has_metrics:
+        return [types.TextContent(type="text", text="Error: Provide at least one metric to update.")]
+
+    # Get agent_id from session state or fall back to config
+    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
+
+    try:
+        # If no milestone_key provided, get the current milestone from session_state
+        if not milestone_key:
+            current_milestone = session_state.get("current_milestone")
+            if current_milestone and current_milestone.get("key"):
+                milestone_key = current_milestone.get("key")
+            else:
+                # Try to find it from the agent's current milestone via API
+                if agent_id:
+                    try:
+                        agent_result = await _make_request(config, "GET", f"/agents/{agent_id}", agent_id=agent_id)
+                        if agent_result.get("success"):
+                            agent_data = agent_result.get("data", {}).get("agent", {})
+                            milestone_key = agent_data.get("current_milestone_key")
+                    except Exception:
+                        pass
+
+        if not milestone_key:
+            return [types.TextContent(type="text", text="No active milestone found. Start a milestone first with `record_milestone` (status='started').")]
+
+        # Build metrics batch - these will REPLACE existing values for the same metric type
+        metrics = []
+
+        if files_touched is not None:
+            metrics.append({"metric_type": "milestone_files_touched", "value": files_touched})
+        if lines_added is not None:
+            metrics.append({"metric_type": "milestone_lines_added", "value": lines_added})
+        if lines_removed is not None:
+            metrics.append({"metric_type": "milestone_lines_removed", "value": lines_removed})
+        if commits_made is not None:
+            metrics.append({"metric_type": "milestone_commits_made", "value": commits_made})
+        if complexity_rating is not None:
+            metrics.append({"metric_type": "milestone_complexity_rating", "value": complexity_rating})
+
+        # Record metrics via batch API (this creates new records - for running totals, just use latest)
+        metrics_result = await _make_request(
+            config, "POST", "/metrics/batch",
+            json={"entity_key": milestone_key, "metrics": metrics},
+            agent_id=agent_id
+        )
+
+        if metrics_result.get("success"):
+            output = "## Milestone Metrics Updated\n\n"
+            output += f"**Milestone:** `{milestone_key}`\n"
+            output += "\n**Updated Metrics:**\n"
+
+            if files_touched is not None:
+                output += f"- Files touched: {files_touched}\n"
+            if lines_added is not None:
+                output += f"- Lines added: +{lines_added}\n"
+            if lines_removed is not None:
+                output += f"- Lines removed: -{lines_removed}\n"
+            if commits_made is not None:
+                output += f"- Commits made: {commits_made}\n"
+            if complexity_rating is not None:
+                output += f"- Complexity rating: {complexity_rating}/5\n"
+
+            output += "\nThese metrics are now visible in the milestone display. "
+            output += "Continue updating as work progresses, then use `record_milestone` with status='completed' when done."
+
+            return [types.TextContent(type="text", text=output)]
+        else:
+            return [types.TextContent(type="text", text=f"Error: {metrics_result.get('msg', 'Failed to update metrics')}")]
+
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error updating milestone metrics: {str(e)}")]
+
 
 async def record_milestone(
     arguments: dict,
@@ -238,6 +382,13 @@ async def record_milestone(
                 # Store current tool count for later calculation
                 session_state["milestone_start_tool_count"] = session_state.get("tool_call_count", 0)
 
+                # Store current milestone in session_state for update_milestone
+                session_state["current_milestone"] = {
+                    "key": entity_key,
+                    "name": name,
+                    "status": status
+                }
+
                 # Update agent's current milestone via API
                 if agent_id:
                     try:
@@ -316,6 +467,9 @@ async def record_milestone(
                     except Exception:
                         pass  # Non-critical
 
+                # Clear current milestone from session_state
+                session_state["current_milestone"] = None
+
                 # Reset milestone start count
                 session_state["milestone_start_tool_count"] = 0
 
@@ -367,6 +521,7 @@ async def record_interaction(
 # ============================================================
 
 TOOL_HANDLERS = {
+    "update_milestone": update_milestone,
     "record_milestone": record_milestone,
     # Legacy alias
     "record_interaction": record_interaction,

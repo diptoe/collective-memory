@@ -7,10 +7,12 @@ import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface MilestoneMetricsProps {
-  entityKey: string;
+  entityKey?: string;
+  metrics?: Metric[];  // Can pass metrics directly instead of fetching
   className?: string;
   compact?: boolean;
   expandable?: boolean;  // If true, compact view can expand to full view on click
+  showImpactSummary?: boolean;  // Show net line change summary badge
 }
 
 // Display names for metric types
@@ -47,17 +49,24 @@ const AUTO_CAPTURE_METRICS = new Set<string>([
   MilestoneMetricTypes.DURATION_MINUTES,
 ]);
 
-export function MilestoneMetrics({ entityKey, className, compact = false, expandable = false }: MilestoneMetricsProps) {
-  const [metrics, setMetrics] = useState<Metric[]>([]);
-  const [loading, setLoading] = useState(true);
+export function MilestoneMetrics({ entityKey, metrics: passedMetrics, className, compact = false, expandable = false, showImpactSummary = true }: MilestoneMetricsProps) {
+  const [metrics, setMetrics] = useState<Metric[]>(passedMetrics || []);
+  const [loading, setLoading] = useState(!passedMetrics);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
+    // If metrics are passed directly, use them
+    if (passedMetrics) {
+      setMetrics(passedMetrics);
+      setLoading(false);
+      return;
+    }
+
     async function fetchMetrics() {
       try {
         setLoading(true);
-        const response = await api.metrics.list({ entity_key: entityKey });
+        const response = await api.metrics.list({ entity_key: entityKey! });
         if (response.success && response.data) {
           setMetrics(response.data.metrics);
         } else {
@@ -70,10 +79,10 @@ export function MilestoneMetrics({ entityKey, className, compact = false, expand
       }
     }
 
-    if (entityKey) {
+    if (entityKey && !passedMetrics) {
       fetchMetrics();
     }
-  }, [entityKey]);
+  }, [entityKey, passedMetrics]);
 
   if (loading) {
     return (
@@ -112,10 +121,44 @@ export function MilestoneMetrics({ entityKey, className, compact = false, expand
   // Determine if we should show compact or full view
   const showCompact = compact && !expanded;
 
+  // Calculate impact values for summary
+  const linesAdded = autoCaptureValues.get(MilestoneMetricTypes.LINES_ADDED) || 0;
+  const linesRemoved = autoCaptureValues.get(MilestoneMetricTypes.LINES_REMOVED) || 0;
+  const filesTouched = autoCaptureValues.get(MilestoneMetricTypes.FILES_TOUCHED) || 0;
+  const toolCalls = autoCaptureValues.get(MilestoneMetricTypes.TOOL_CALLS) || 0;
+  const netChange = linesAdded - linesRemoved;
+  const totalChurn = linesAdded + linesRemoved;
+
   if (showCompact) {
-    // Compact mode: single row of badges (clickable if expandable)
+    // Compact mode: enhanced display with impact summary
     return (
       <div className={cn('space-y-2', className)}>
+        {/* Impact summary badge */}
+        {showImpactSummary && totalChurn > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Line change summary with colors */}
+            <div className={cn(
+              'inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border',
+              totalChurn > 500 ? 'bg-red-50 border-red-200 text-red-700' :
+              totalChurn > 100 ? 'bg-amber-50 border-amber-200 text-amber-700' :
+              'bg-green-50 border-green-200 text-green-700'
+            )}>
+              <span className="text-green-600 font-medium">+{linesAdded}</span>
+              <span className="text-red-600 font-medium">-{linesRemoved}</span>
+              <span className="text-cm-coffee/50">|</span>
+              <span className={cn('font-medium', netChange >= 0 ? 'text-green-600' : 'text-red-600')}>
+                net: {netChange >= 0 ? '+' : ''}{netChange}
+              </span>
+            </div>
+            {filesTouched > 0 && (
+              <span className="text-xs text-cm-coffee">{filesTouched} files</span>
+            )}
+            {toolCalls > 0 && (
+              <span className="text-xs text-cm-coffee">{toolCalls} tools</span>
+            )}
+          </div>
+        )}
+
         <div
           className={cn(
             'flex flex-wrap gap-1 items-center',
@@ -124,15 +167,27 @@ export function MilestoneMetrics({ entityKey, className, compact = false, expand
           onClick={expandable ? () => setExpanded(true) : undefined}
           title={expandable ? 'Click to show details' : undefined}
         >
-          {Array.from(autoCaptureValues.entries()).map(([type, value]) => (
-            <span
-              key={type}
-              className="px-1.5 py-0.5 text-xs bg-cm-sand/70 text-cm-coffee rounded"
-              title={METRIC_LABELS[type]}
-            >
-              {formatValue(type, value)}
-            </span>
-          ))}
+          {/* Only show metrics not already shown in impact summary */}
+          {Array.from(autoCaptureValues.entries())
+            .filter(([type]) => {
+              if (!showImpactSummary) return true;
+              const impactMetrics = new Set<string>([
+                MilestoneMetricTypes.LINES_ADDED,
+                MilestoneMetricTypes.LINES_REMOVED,
+                MilestoneMetricTypes.FILES_TOUCHED,
+                MilestoneMetricTypes.TOOL_CALLS
+              ]);
+              return !impactMetrics.has(type);
+            })
+            .map(([type, value]) => (
+              <span
+                key={type}
+                className="px-1.5 py-0.5 text-xs bg-cm-sand/70 text-cm-coffee rounded"
+                title={METRIC_LABELS[type]}
+              >
+                {formatValue(type, value)}
+              </span>
+            ))}
           {Array.from(selfAssessmentValues.entries()).map(([type, value]) => (
             <span
               key={type}

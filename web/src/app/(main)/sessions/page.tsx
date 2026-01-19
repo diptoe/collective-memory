@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { WorkSession, Entity, UserTeam } from '@/types';
 import { cn } from '@/lib/utils';
-import { MilestoneMetrics } from '@/components/milestone-metrics';
+import { MilestoneMetricsPanel, extractAllMetrics } from '@/components/milestone-impact';
 import { Markdown } from '@/components/markdown/markdown';
 
 const STATUS_COLORS = {
@@ -377,8 +377,9 @@ function SessionCard({
   const [expanded, setExpanded] = useState(false);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
-  const [entityCount, setEntityCount] = useState<number | null>(null);
+  const [milestoneCount, setMilestoneCount] = useState<number | null>(null);
   const [messageCount, setMessageCount] = useState<number | null>(null);
+  const [otherEntityCount, setOtherEntityCount] = useState<number | null>(null);
 
   // Load stats when component mounts
   useEffect(() => {
@@ -386,8 +387,9 @@ function SessionCard({
       try {
         const res = await api.workSessions.get(session.session_key, { include_stats: true });
         if (res.success && res.data?.session?.stats) {
-          setEntityCount(res.data.session.stats.entity_count);
+          setMilestoneCount(res.data.session.stats.milestone_count);
           setMessageCount(res.data.session.stats.message_count);
+          setOtherEntityCount(res.data.session.stats.other_entity_count);
         }
       } catch (err) {
         console.error('Failed to load session stats:', err);
@@ -478,20 +480,25 @@ function SessionCard({
                   "{session.summary}"
                 </p>
               )}
-              {/* Stats row */}
-              {(entityCount !== null || messageCount !== null) && (
+              {/* Stats row - categorized counts */}
+              {(milestoneCount !== null || messageCount !== null || otherEntityCount !== null) && (
                 <div className="flex items-center gap-4 mt-2 pt-2 border-t border-cm-sand/50">
-                  {entityCount !== null && (
+                  {milestoneCount !== null && milestoneCount > 0 && (
                     <span className="text-xs text-cm-coffee">
-                      <span className="font-medium">{entityCount}</span> entities
+                      <span className="font-medium">{milestoneCount}</span> milestone{milestoneCount !== 1 ? 's' : ''}
                     </span>
                   )}
-                  {messageCount !== null && (
+                  {messageCount !== null && messageCount > 0 && (
                     <span className="text-xs text-cm-coffee">
-                      <span className="font-medium">{messageCount}</span> messages
+                      <span className="font-medium">{messageCount}</span> message{messageCount !== 1 ? 's' : ''}
                     </span>
                   )}
-                  {entityCount !== null && entityCount > 0 && (
+                  {otherEntityCount !== null && otherEntityCount > 0 && (
+                    <span className="text-xs text-cm-coffee">
+                      <span className="font-medium">{otherEntityCount}</span> other
+                    </span>
+                  )}
+                  {((milestoneCount ?? 0) + (otherEntityCount ?? 0)) > 0 && (
                     <button
                       onClick={handleExpand}
                       className="text-xs text-cm-terracotta hover:underline"
@@ -538,66 +545,67 @@ function SessionCard({
                   <h4 className="text-xs font-semibold text-cm-charcoal uppercase tracking-wider mb-2">
                     Milestones ({milestones.length})
                   </h4>
-                  <div className="space-y-2">
-                    {milestones.map((entity) => (
-                      <div key={entity.entity_key} className="p-2 bg-cm-ivory rounded border border-cm-sand/50">
-                        <div className="flex items-center gap-2">
-                          <span>{getStatusEmoji(entity.properties?.status)}</span>
-                          <span className="text-sm font-medium text-cm-charcoal">{entity.name}</span>
-                          {typeof entity.properties?.status === 'string' && (
-                            <span className={cn(
-                              'px-1.5 py-0.5 text-xs rounded',
-                              entity.properties.status === 'completed' ? 'bg-green-100 text-green-700' :
-                              entity.properties.status === 'started' ? 'bg-blue-100 text-blue-700' :
-                              entity.properties.status === 'blocked' ? 'bg-red-100 text-red-700' :
-                              'bg-gray-100 text-gray-700'
-                            )}>
-                              {entity.properties.status}
-                            </span>
-                          )}
-                          <span className="text-xs text-cm-coffee">
-                            {new Date(entity.created_at).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        {/* Narrative fields - goal, outcome, summary */}
-                        {typeof entity.properties?.goal === 'string' && (
-                          <div className="mt-2">
-                            <span className="text-xs font-medium text-cm-charcoal/70">Goal:</span>
-                            <Markdown content={entity.properties.goal} className="mt-0.5 text-xs text-cm-coffee" />
-                          </div>
-                        )}
-                        {typeof entity.properties?.outcome === 'string' && (
-                          <div className="mt-2">
-                            <span className="text-xs font-medium text-cm-charcoal/70">Outcome:</span>
-                            <Markdown content={entity.properties.outcome} className="mt-0.5 text-xs text-cm-coffee" />
-                          </div>
-                        )}
-                        {typeof entity.properties?.summary === 'string' && (
-                          <details className="mt-2 group">
-                            <summary className="text-xs font-medium text-cm-charcoal/70 cursor-pointer hover:text-cm-terracotta">
-                              Summary <span className="text-cm-coffee/50">(click to expand)</span>
-                            </summary>
-                            <div className="mt-1 pl-2 border-l-2 border-cm-sand">
-                              <Markdown content={entity.properties.summary} className="text-xs text-cm-coffee" />
-                            </div>
-                          </details>
-                        )}
-                        {/* Other properties as badges */}
-                        {entity.properties && Object.keys(entity.properties).filter(k => !['status', 'work_session_key', 'goal', 'outcome', 'summary', 'description'].includes(k)).length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {Object.entries(entity.properties)
-                              .filter(([key]) => !['status', 'work_session_key', 'goal', 'outcome', 'summary', 'description'].includes(key))
-                              .map(([key, value]) => (
-                                <span key={key} className="px-1.5 py-0.5 text-xs bg-cm-sand/50 text-cm-coffee rounded">
-                                  {key}: {String(value)}
+                  <div className="space-y-3">
+                    {milestones.map((entity) => {
+                      // Extract all metrics from entity.metrics (loaded with entities)
+                      const allMetrics = extractAllMetrics(entity.metrics);
+
+                      return (
+                        <div key={entity.entity_key} className="p-3 bg-cm-ivory rounded-lg border border-cm-sand/50">
+                          <div className="flex gap-4">
+                            {/* Left: Milestone content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span>{getStatusEmoji(entity.properties?.status)}</span>
+                                <span className="text-sm font-medium text-cm-charcoal">{entity.name}</span>
+                                {typeof entity.properties?.status === 'string' && (
+                                  <span className={cn(
+                                    'px-1.5 py-0.5 text-xs rounded',
+                                    entity.properties.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                    entity.properties.status === 'started' ? 'bg-blue-100 text-blue-700' :
+                                    entity.properties.status === 'blocked' ? 'bg-red-100 text-red-700' :
+                                    'bg-gray-100 text-gray-700'
+                                  )}>
+                                    {entity.properties.status}
+                                  </span>
+                                )}
+                                <span className="text-xs text-cm-coffee">
+                                  {new Date(entity.created_at).toLocaleTimeString()}
                                 </span>
-                              ))}
+                              </div>
+
+                              {/* Narrative fields - goal, outcome, summary */}
+                              {typeof entity.properties?.goal === 'string' && (
+                                <div className="mt-2">
+                                  <span className="text-xs font-medium text-cm-charcoal/70">Goal:</span>
+                                  <Markdown content={entity.properties.goal} className="mt-0.5 text-xs text-cm-coffee" />
+                                </div>
+                              )}
+                              {typeof entity.properties?.outcome === 'string' && (
+                                <div className="mt-2">
+                                  <span className="text-xs font-medium text-cm-charcoal/70">Outcome:</span>
+                                  <Markdown content={entity.properties.outcome} className="mt-0.5 text-xs text-cm-coffee" />
+                                </div>
+                              )}
+                              {typeof entity.properties?.summary === 'string' && (
+                                <div className="mt-2">
+                                  <span className="text-xs font-medium text-cm-charcoal/70">Summary:</span>
+                                  <div className="mt-1 pl-2 border-l-2 border-cm-sand">
+                                    <Markdown content={entity.properties.summary} className="text-xs text-cm-coffee" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Right: All metrics visualization */}
+                            <MilestoneMetricsPanel
+                              {...allMetrics}
+                              className="flex-shrink-0"
+                            />
                           </div>
-                        )}
-                        {/* Milestone metrics - click to expand details */}
-                        <MilestoneMetrics entityKey={entity.entity_key} className="mt-2" compact expandable />
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

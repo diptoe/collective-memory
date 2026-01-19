@@ -251,11 +251,19 @@ def register_work_session_routes(api: Api):
 
             if include_stats:
                 from api.models import Entity, Message
-                entity_count = Entity.query.filter_by(work_session_key=session_key).count()
+                # Get categorized entity counts
+                entities = Entity.query.filter_by(work_session_key=session_key).all()
+                milestone_count = sum(1 for e in entities if e.entity_type == 'Milestone')
+                other_entity_count = sum(1 for e in entities if e.entity_type != 'Milestone')
+                total_entity_count = len(entities)
                 message_count = Message.query.filter_by(work_session_key=session_key).count()
                 result['stats'] = {
-                    'entity_count': entity_count,
-                    'message_count': message_count
+                    'milestone_count': milestone_count,
+                    'message_count': message_count,
+                    'other_entity_count': other_entity_count,
+                    'total_entity_count': total_entity_count,
+                    # Legacy fields for backwards compatibility
+                    'entity_count': total_entity_count
                 }
 
             return {
@@ -458,7 +466,16 @@ def register_work_session_routes(api: Api):
         @ns.doc('list_work_session_entities')
         @require_auth_strict
         def get(self, session_key):
-            """List entities created during this work session."""
+            """
+            List entities created during this work session.
+
+            Query params:
+            - include_metrics: Include metrics for Milestone entities (default: true)
+            - limit: Maximum results (default: 50)
+            - offset: Pagination offset (default: 0)
+            """
+            from api.models import Metric
+
             user = g.current_user
             session = WorkSession.get_by_key(session_key)
 
@@ -471,16 +488,27 @@ def register_work_session_routes(api: Api):
 
             limit = min(int(request.args.get('limit', 50)), 100)
             offset = int(request.args.get('offset', 0))
+            include_metrics = request.args.get('include_metrics', 'true').lower() == 'true'
 
             query = Entity.query.filter_by(work_session_key=session_key)
             total = query.count()
             entities = query.order_by(Entity.created_at.desc()).offset(offset).limit(limit).all()
 
+            # Build entity dicts, including metrics for Milestone entities
+            entity_dicts = []
+            for entity in entities:
+                entity_dict = entity.to_dict()
+                if include_metrics and entity.entity_type == 'Milestone':
+                    # Fetch metrics for this milestone
+                    metrics = Metric.query.filter_by(entity_key=entity.entity_key).all()
+                    entity_dict['metrics'] = [m.to_dict() for m in metrics]
+                entity_dicts.append(entity_dict)
+
             return {
                 'success': True,
                 'msg': f'Found {len(entities)} entities',
                 'data': {
-                    'entities': [e.to_dict() for e in entities],
+                    'entities': entity_dicts,
                     'total': total,
                     'limit': limit,
                     'offset': offset
