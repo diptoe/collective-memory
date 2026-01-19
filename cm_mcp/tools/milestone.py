@@ -71,10 +71,14 @@ WHEN TO RECORD MILESTONES:
 - Hitting a blocker: status="blocked" with details about what's blocking progress
 
 WHAT IT DOES:
-- Creates a 'Milestone' entity linked to the current work session
+- For status="started": Creates a NEW 'Milestone' entity and tracks it as the current active milestone
+- For status="completed"/"blocked": UPDATES the existing active milestone (if one exists), otherwise creates new
 - Updates the session's activity timestamp (prevents auto-close)
 - Records optional metrics (auto-capture and self-assessment)
 - Updates agent's current milestone state
+
+IMPORTANT: When completing work, this tool automatically finds and updates your active "started"
+milestone rather than creating a duplicate. You don't need to track the milestone key yourself.
 
 NARRATIVE FIELDS (use markdown):
 - goal: What this milestone aims to achieve (set on "started")
@@ -391,19 +395,54 @@ async def record_milestone(
                 milestone_properties["started_at"] = now_iso
                 milestone_properties["duration_seconds"] = 0
 
-        entity_body = {
-            "name": name,
-            "entity_type": "Milestone",
-            "work_session_key": session_key,  # Top-level field, not in properties
-            "properties": milestone_properties,
-        }
+        # Check if we should update an existing milestone instead of creating new
+        existing_milestone_key = None
+        if status in ("completed", "blocked"):
+            # First check session_state for current milestone
+            current_milestone = session_state.get("current_milestone")
+            if current_milestone and current_milestone.get("key"):
+                existing_milestone_key = current_milestone.get("key")
+            else:
+                # Try to get from agent's current milestone via API
+                if agent_id:
+                    try:
+                        agent_result = await _make_request(config, "GET", f"/agents/{agent_id}", agent_id=agent_id)
+                        if agent_result.get("success"):
+                            agent_data = agent_result.get("data", {}).get("agent", {})
+                            existing_milestone_key = agent_data.get("current_milestone_key")
+                    except Exception:
+                        pass
 
-        # Add scope if determined
-        if scope_type and scope_key:
-            entity_body["scope_type"] = scope_type
-            entity_body["scope_key"] = scope_key
+        # If completing/blocking and we have an existing milestone, UPDATE it
+        if existing_milestone_key and status in ("completed", "blocked"):
+            # Update the existing milestone entity
+            update_body = {
+                "name": name,  # Allow name update on completion
+                "properties": milestone_properties,
+            }
 
-        result = await _make_request(config, "POST", "/entities", json=entity_body, agent_id=agent_id)
+            result = await _make_request(config, "PUT", f"/entities/{existing_milestone_key}", json=update_body, agent_id=agent_id)
+
+            # If update succeeded, use the existing key
+            if result.get("success"):
+                result["data"] = result.get("data", {})
+                result["data"]["entity"] = result["data"].get("entity", {})
+                result["data"]["entity"]["entity_key"] = existing_milestone_key
+        else:
+            # Create new milestone entity (for "started" or when no existing milestone)
+            entity_body = {
+                "name": name,
+                "entity_type": "Milestone",
+                "work_session_key": session_key,  # Top-level field, not in properties
+                "properties": milestone_properties,
+            }
+
+            # Add scope if determined
+            if scope_type and scope_key:
+                entity_body["scope_type"] = scope_type
+                entity_body["scope_key"] = scope_key
+
+            result = await _make_request(config, "POST", "/entities", json=entity_body, agent_id=agent_id)
 
         if result.get("success"):
             entity = result.get("data", {}).get("entity", {})
@@ -513,11 +552,14 @@ async def record_milestone(
 
             # Status emoji for visual feedback
             status_emoji = {"started": "🚀", "completed": "✅", "blocked": "🚫"}.get(status, "📍")
+            action_word = "Updated" if existing_milestone_key else "Recorded"
 
-            output = f"## {status_emoji} Milestone Recorded\n\n"
+            output = f"## {status_emoji} Milestone {action_word}\n\n"
             output += f"**Name:** {entity.get('name')}\n"
             output += f"**Status:** {status}\n"
             output += f"**Entity Key:** `{entity_key}`\n"
+            if existing_milestone_key:
+                output += f"**Action:** Updated existing started milestone\n"
             output += f"**Session:** `{session_key}`\n"
 
             # Show narrative fields if provided
