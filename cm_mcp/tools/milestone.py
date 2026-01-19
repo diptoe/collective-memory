@@ -480,6 +480,17 @@ async def record_milestone(
                     except Exception:
                         pass  # Non-critical
 
+                # Auto-update session name to reflect current milestone focus
+                if session_key:
+                    try:
+                        await _make_request(
+                            config, "PUT", f"/work-sessions/{session_key}",
+                            json={"name": name},
+                            agent_id=agent_id
+                        )
+                    except Exception:
+                        pass  # Non-critical - session name update is a nice-to-have
+
             elif status in ("completed", "blocked"):
                 # Calculate tool calls during this milestone
                 start_count = session_state.get("milestone_start_tool_count", 0)

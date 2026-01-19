@@ -6,9 +6,116 @@ Endpoints for managing work sessions - focused work periods on projects.
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import WorkSession, Entity, Project, db
+import asyncio
+import logging
+
+from api.models import WorkSession, Entity, Project, Metric, db
 from api.services.auth import require_auth_strict
 from api.services.activity import activity_service
+
+logger = logging.getLogger(__name__)
+
+
+def generate_session_summary_with_ai(session: WorkSession) -> str | None:
+    """
+    Generate a smart AI summary of a work session using Gemini Flash.
+
+    Gathers session details and milestones, then asks AI to create a concise summary.
+
+    Args:
+        session: The work session to summarize
+
+    Returns:
+        Generated summary string, or None if generation fails
+    """
+    try:
+        from api.services.chat import chat_service
+
+        # Fetch milestones for this session
+        milestones = Entity.query.filter_by(
+            work_session_key=session.session_key,
+            entity_type='Milestone'
+        ).order_by(Entity.created_at.asc()).all()
+
+        if not milestones:
+            return None  # No milestones to summarize
+
+        # Build context about the session
+        session_duration = "unknown"
+        if session.started_at and session.ended_at:
+            duration_seconds = (session.ended_at - session.started_at).total_seconds()
+            hours = int(duration_seconds // 3600)
+            minutes = int((duration_seconds % 3600) // 60)
+            if hours > 0:
+                session_duration = f"{hours}h {minutes}m"
+            else:
+                session_duration = f"{minutes}m"
+
+        # Build milestone details
+        milestone_details = []
+        for m in milestones:
+            props = m.properties or {}
+            detail = f"- {m.name}"
+            if props.get('status'):
+                detail += f" ({props.get('status')})"
+            if props.get('outcome'):
+                detail += f": {props.get('outcome')}"
+            elif props.get('summary'):
+                detail += f": {props.get('summary')}"
+            elif props.get('goal'):
+                detail += f" - Goal: {props.get('goal')}"
+
+            # Add metrics if available
+            metrics = Metric.query.filter_by(entity_key=m.entity_key).all()
+            if metrics:
+                metric_strs = []
+                for metric in metrics:
+                    if metric.metric_type == 'files_touched' and metric.value:
+                        metric_strs.append(f"{int(metric.value)} files")
+                    elif metric.metric_type == 'lines_added' and metric.value:
+                        metric_strs.append(f"+{int(metric.value)} lines")
+                if metric_strs:
+                    detail += f" [{', '.join(metric_strs)}]"
+
+            milestone_details.append(detail)
+
+        milestones_text = "\n".join(milestone_details)
+
+        # Build the prompt
+        prompt = f"""Summarize this work session in 1-2 concise sentences:
+
+Session: {session.name or 'Work session'}
+Duration: {session_duration}
+Agent: {session.agent_id or 'Unknown'}
+
+Milestones completed:
+{milestones_text}
+
+Write a brief, informative summary that captures what was accomplished. Focus on the outcomes and key achievements, not just listing what was done. Be specific but concise."""
+
+        system_prompt = "You are a technical writing assistant. Generate concise, professional summaries of work sessions. Output only the summary text, no preamble or explanation."
+
+        # Run async function in sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            summary = loop.run_until_complete(
+                chat_service.generate_text(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    model='gemini-3-flash-preview',
+                    max_tokens=256,
+                    temperature=0.5,
+                )
+            )
+            logger.info(f"Generated AI summary for session {session.session_key}: {summary[:100]}...")
+            return summary
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.warning(f"Failed to generate AI summary for session {session.session_key}: {e}")
+        return None
 
 
 def get_user_domain_key() -> str | None:
@@ -401,7 +508,14 @@ def register_work_session_routes(api: Api):
             data = request.json or {}
 
             try:
-                session.close(closed_by='user', summary=data.get('summary'))
+                # If no summary provided, generate one using AI
+                summary = data.get('summary')
+                ai_generated = False
+                if not summary:
+                    summary = generate_session_summary_with_ai(session)
+                    ai_generated = bool(summary)
+
+                session.close(closed_by='user', summary=summary)
                 session.save()
 
                 # Record activity
@@ -415,11 +529,16 @@ def register_work_session_routes(api: Api):
                     user_key=user.user_key
                 )
 
+                msg = 'Work session closed'
+                if ai_generated:
+                    msg = 'Work session closed (AI summary generated)'
+
                 return {
                     'success': True,
-                    'msg': 'Work session closed',
+                    'msg': msg,
                     'data': {
-                        'session': session.to_dict()
+                        'session': session.to_dict(),
+                        'ai_summary_generated': ai_generated
                     }
                 }
 

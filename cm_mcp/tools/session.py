@@ -71,10 +71,19 @@ RETURNS: Session details including session_key and auto-close time.""",
 
 USE THIS WHEN: You've finished your focused work and want to close the session.
 
+IMPORTANT - PROVIDE A GOOD SUMMARY: You have full context of the work done in this session.
+Write a thoughtful 1-2 sentence summary that captures:
+- What was accomplished (features, fixes, improvements)
+- Key decisions or approaches taken
+- Any notable outcomes or metrics
+
+DO NOT just list milestone names. Synthesize the work into a meaningful summary that would
+help someone understand what happened in this session at a glance.
+
 EXAMPLES:
-- {} → Close active session
-- {"summary": "Completed auth feature implementation"}
-- {"session_key": "sess-xyz", "summary": "Fixed 3 bugs"}
+- {"summary": "Implemented project management system with team associations, admin UI, and MCP integration for auto-detecting projects from git remotes"}
+- {"summary": "Fixed milestone duplication bug and added session auto-updates - sessions now track current milestone focus and auto-generate summaries"}
+- {"summary": "Refactored authentication flow to use JWT tokens, added refresh endpoint, and updated all API routes to use new auth middleware"}
 
 RETURNS: Closed session details including duration.""",
         inputSchema={

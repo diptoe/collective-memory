@@ -312,5 +312,62 @@ class ChatService:
         }
 
 
+    async def generate_text(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        model: str = 'gemini-3-flash-preview',
+        max_tokens: int = 1024,
+        temperature: float = 0.7,
+    ) -> str:
+        """
+        Generate text using AI without conversation tracking.
+
+        Simple one-shot completion for tasks like summarization.
+
+        Args:
+            prompt: The prompt to send to the model
+            system_prompt: Optional system instructions
+            model: Model identifier (default: gemini-3-flash-preview)
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+
+        Returns:
+            Generated text string
+        """
+        from api.providers import get_provider, Message
+
+        # Build messages
+        messages = [Message(role='user', content=prompt)]
+
+        # Get provider for model
+        try:
+            provider = get_provider(model)
+            logger.info(f"generate_text: Using provider '{provider.name}' for model '{model}'")
+        except ValueError as e:
+            logger.error(f"Provider error: {e}")
+            raise
+
+        # Accumulate response
+        full_content = ""
+
+        try:
+            async for chunk in provider.stream_completion(
+                messages=messages,
+                model=model,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            ):
+                if chunk.content:
+                    full_content += chunk.content
+
+            return full_content.strip()
+
+        except Exception as e:
+            logger.error(f"generate_text error: {e}")
+            raise
+
+
 # Global service instance
 chat_service = ChatService()

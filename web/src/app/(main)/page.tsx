@@ -1,12 +1,35 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Agent, WorkSession, Entity } from '@/types';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
+
+// Refresh icon component
+function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 21h5v-5" />
+    </svg>
+  );
+}
 
 interface DashboardStats {
   activeAgents: number;
@@ -45,55 +68,59 @@ export default function StartPage() {
   const [activeAgents, setActiveAgents] = useState<Agent[]>([]);
   const [activeSessions, setActiveSessions] = useState<WorkSession[]>([]);
   const [milestonesBySession, setMilestonesBySession] = useState<Record<string, Entity[]>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadDashboardData = useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) setIsRefreshing(true);
+    try {
+      const [agentsRes, messagesRes, sessionsRes, milestonesRes] = await Promise.all([
+        api.agents.list({ active_only: true }),
+        api.messages.list(undefined, { limit: 100, unread_only: true }),
+        api.workSessions.list({ status: 'active', limit: 10 }),
+        api.entities.list({ type: 'Milestone', limit: 50 }),
+      ]);
+
+      const agents = agentsRes.data?.agents || [];
+      const messages = messagesRes.data?.messages || [];
+      const sessions = sessionsRes.data?.sessions || [];
+      const milestones = milestonesRes.data?.entities || [];
+
+      // Filter milestones to only show "started" ones and group by session
+      const startedMilestones = milestones.filter(
+        (m: Entity) => m.properties?.status === 'started'
+      );
+
+      // Group milestones by work_session_key
+      const grouped: Record<string, Entity[]> = {};
+      startedMilestones.forEach((m: Entity) => {
+        const sessionKey = m.work_session_key;
+        if (sessionKey) {
+          if (!grouped[sessionKey]) grouped[sessionKey] = [];
+          grouped[sessionKey].push(m);
+        }
+      });
+
+      setStats({
+        activeAgents: agents.length,
+        unreadMessages: messages.length,
+        recentSessions: sessions.length,
+        loading: false,
+      });
+
+      setActiveAgents(agents.slice(0, 3));
+      setActiveSessions(sessions);
+      setMilestonesBySession(grouped);
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
+      setStats(prev => ({ ...prev, loading: false }));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function loadDashboardData() {
-      try {
-        const [agentsRes, messagesRes, sessionsRes, milestonesRes] = await Promise.all([
-          api.agents.list({ active_only: true }),
-          api.messages.list(undefined, { limit: 100, unread_only: true }),
-          api.workSessions.list({ status: 'active', limit: 10 }),
-          api.entities.list({ type: 'Milestone', limit: 50 }),
-        ]);
-
-        const agents = agentsRes.data?.agents || [];
-        const messages = messagesRes.data?.messages || [];
-        const sessions = sessionsRes.data?.sessions || [];
-        const milestones = milestonesRes.data?.entities || [];
-
-        // Filter milestones to only show "started" ones and group by session
-        const startedMilestones = milestones.filter(
-          (m: Entity) => m.properties?.status === 'started'
-        );
-
-        // Group milestones by work_session_key
-        const grouped: Record<string, Entity[]> = {};
-        startedMilestones.forEach((m: Entity) => {
-          const sessionKey = m.work_session_key;
-          if (sessionKey) {
-            if (!grouped[sessionKey]) grouped[sessionKey] = [];
-            grouped[sessionKey].push(m);
-          }
-        });
-
-        setStats({
-          activeAgents: agents.length,
-          unreadMessages: messages.length,
-          recentSessions: sessions.length,
-          loading: false,
-        });
-
-        setActiveAgents(agents.slice(0, 3));
-        setActiveSessions(sessions);
-        setMilestonesBySession(grouped);
-      } catch (err) {
-        console.error('Failed to load dashboard data:', err);
-        setStats(prev => ({ ...prev, loading: false }));
-      }
-    }
-
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -106,12 +133,27 @@ export default function StartPage() {
     <div className="h-full overflow-auto bg-cm-cream">
       {/* User Welcome Section */}
       <div className="p-6 pb-4">
-        <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
-          {getGreeting()}, {user?.first_name || 'there'}
-        </h1>
-        <p className="text-cm-coffee mt-1">
-          Here's what's happening in your workspace
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+              {getGreeting()}, {user?.first_name || 'there'}
+            </h1>
+            <p className="text-cm-coffee mt-1">
+              Here's what's happening in your workspace
+            </p>
+          </div>
+          <button
+            onClick={() => loadDashboardData(true)}
+            disabled={isRefreshing}
+            className={cn(
+              "p-2 rounded-lg border border-cm-sand hover:border-cm-terracotta/50 hover:bg-cm-ivory transition-colors",
+              isRefreshing && "opacity-50 cursor-not-allowed"
+            )}
+            title="Refresh"
+          >
+            <RefreshIcon className={cn(isRefreshing && "animate-spin")} />
+          </button>
+        </div>
       </div>
 
       {/* Main content */}
