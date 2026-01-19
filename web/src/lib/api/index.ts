@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric, KnowledgeStatsData, KnowledgeDomain } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric, KnowledgeStatsData, KnowledgeDomain, Project, TeamProject, TeamProjectRole } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
@@ -66,6 +66,13 @@ interface MetricResponse { metric: Metric }
 // Knowledge response types
 interface KnowledgeStatsResponse extends KnowledgeStatsData {}
 interface KnowledgeDomainsResponse { domains: KnowledgeDomain[] }
+
+// Project response types
+interface ProjectsResponse { projects: Project[]; total: number }
+interface ProjectResponse { project: Project }
+interface ProjectLookupResponse { project: Project | null; teams: TeamProject[] }
+interface ProjectTeamsResponse { project: Project; teams: TeamProject[] }
+interface TeamProjectResponse { team_project: TeamProject }
 
 /**
  * API Response type from the backend
@@ -399,7 +406,7 @@ export const api = {
 
   // Users (admin or domain_admin)
   users: {
-    list: (params?: { role?: string; status?: string; limit?: number; offset?: number }) =>
+    list: (params?: { role?: string; status?: string; domain_key?: string; limit?: number; offset?: number }) =>
       apiClient.get<UsersResponse>('/users', { params }),
     get: (userKey: string) =>
       apiClient.get<UserResponse>(`/users/${userKey}`),
@@ -449,7 +456,7 @@ export const api = {
 
   // Teams (domain_admin or admin)
   teams: {
-    list: (params?: { status?: string }) =>
+    list: (params?: { status?: string; domain_key?: string }) =>
       apiClient.get<TeamsResponse>('/teams', { params }),
     get: (teamKey: string) =>
       apiClient.get<TeamResponse>(`/teams/${teamKey}`),
@@ -511,5 +518,31 @@ export const api = {
       apiClient.get<KnowledgeStatsResponse>('/knowledge/stats', { params }),
     domains: () =>
       apiClient.get<KnowledgeDomainsResponse>('/knowledge/domains'),
+  },
+
+  // Projects
+  projects: {
+    list: (params?: { team_key?: string; status?: string; domain_key?: string; include_teams?: string; limit?: number; offset?: number }) =>
+      apiClient.get<ProjectsResponse>('/projects', { params }),
+    get: (projectKey: string, params?: { include_teams?: boolean }) =>
+      apiClient.get<ProjectResponse>(`/projects/${projectKey}`, { params }),
+    create: (data: { name: string; description?: string; repository_url?: string; domain_key?: string }) =>
+      apiClient.post<ProjectResponse>('/projects', data),
+    update: (projectKey: string, data: { name?: string; description?: string; repository_url?: string; status?: string }) =>
+      apiClient.put<ProjectResponse>(`/projects/${projectKey}`, data),
+    archive: (projectKey: string) =>
+      apiClient.delete(`/projects/${projectKey}`),
+    lookup: (repositoryUrl: string) =>
+      apiClient.get<ProjectLookupResponse>('/projects/lookup', { params: { repository_url: repositoryUrl } }),
+    createFromEntity: (entityKey: string, data?: { repository_url?: string; description?: string }) =>
+      apiClient.post<ProjectResponse & { entity_key: string }>(`/projects/from-entity/${entityKey}`, data),
+    teams: (projectKey: string) =>
+      apiClient.get<ProjectTeamsResponse>(`/projects/${projectKey}/teams`),
+    addTeam: (projectKey: string, data: { team_key: string; role?: TeamProjectRole }) =>
+      apiClient.post<TeamProjectResponse>(`/projects/${projectKey}/teams`, data),
+    updateTeam: (projectKey: string, teamKey: string, data: { role: TeamProjectRole }) =>
+      apiClient.put<TeamProjectResponse>(`/projects/${projectKey}/teams/${teamKey}`, data),
+    removeTeam: (projectKey: string, teamKey: string) =>
+      apiClient.delete(`/projects/${projectKey}/teams/${teamKey}`),
   },
 };

@@ -41,27 +41,28 @@ RETURNS: Active session details including time remaining, or message that no ses
 USE THIS WHEN: You're beginning focused work on a project and want to track entities/messages created during the session.
 
 WHAT IT DOES:
-- Creates a work session tied to a Project entity
+- Creates a work session tied to a Project
 - Entities and messages created while session is active are automatically linked
 - Session auto-closes after 1 hour of inactivity
 - Only one active session per project allowed
+- Auto-detects project from repository URL if `identify` was called first
 
 IMPORTANT: Record milestones during the session using `record_milestone` when you complete significant work (features, bug fixes, refactors). Sessions without milestones lose valuable tracking data.
 
 EXAMPLES:
-- {"project_key": "ent-project-xyz"}
-- {"project_key": "ent-dashboard", "name": "Implementing auth feature"}
-- {"project_key": "ent-api", "name": "Bug fixes", "team_key": "team-backend"}
+- {} → Start session for auto-detected project (from git remote)
+- {"project_key": "swift-bold-keen"}
+- {"name": "Implementing auth feature"} → Auto-detect project, with name
+- {"project_key": "calm-fresh-wild", "name": "Bug fixes", "team_key": "team-backend"}
 
 RETURNS: Session details including session_key and auto-close time.""",
         inputSchema={
             "type": "object",
             "properties": {
-                "project_key": {"type": "string", "description": "REQUIRED: The Project entity key to work on"},
+                "project_key": {"type": "string", "description": "Optional: The Project key to work on (auto-detected from repository if identify was called)"},
                 "name": {"type": "string", "description": "Optional: Descriptive name for the session"},
                 "team_key": {"type": "string", "description": "Optional: Team scope for the session"}
-            },
-            "required": ["project_key"]
+            }
         }
     ),
     types.Tool(
@@ -261,7 +262,7 @@ async def start_session(
     Start a new work session for a project.
 
     Args:
-        project_key: Required - the Project entity key to work on
+        project_key: Optional - the Project key to work on (auto-detected from repository if not provided)
         name: Optional - a descriptive name for the session
         team_key: Optional - team scope for the session
     """
@@ -269,8 +270,21 @@ async def start_session(
     name = arguments.get("name")
     team_key = arguments.get("team_key")
 
+    # Auto-detect project_key from session state if not provided
+    # This comes from the identify tool's project lookup via repository URL
     if not project_key:
-        return [types.TextContent(type="text", text="Error: `project_key` is required. Provide the key of a Project entity to work on.")]
+        project_key = session_state.get("project_key") or session_state.get("db_project_key")
+
+    if not project_key:
+        output = "Error: `project_key` is required.\n\n"
+        # Check if we have repository info but no project
+        if session_state.get("repository_url"):
+            output += f"Repository detected: {session_state.get('repository_url')}\n"
+            output += "But no matching project found in the database.\n\n"
+            output += "Ask your admin to create a project for this repository, or provide a project_key manually."
+        else:
+            output += "Provide the key of a Project to work on, or run `identify` to auto-detect from git remote."
+        return [types.TextContent(type="text", text=output)]
 
     # Get agent_id from session state or fall back to config
     agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)

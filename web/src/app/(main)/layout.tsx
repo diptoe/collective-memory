@@ -114,6 +114,7 @@ export default function MainLayout({
                 <p className="text-xs font-semibold text-cm-coffee uppercase tracking-wider">Admin</p>
               </div>
               <NavLink href="/admin/teams" icon="team" active={pathname.startsWith('/admin/teams')}>Teams</NavLink>
+              <NavLink href="/admin/projects" icon="project" active={pathname.startsWith('/admin/projects')}>Projects</NavLink>
               {user?.role === 'admin' && (
                 <>
                   <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
@@ -215,6 +216,7 @@ function NavIcon({ name }: { name: string }) {
     'key': '🔑',
     'settings': '⚙️',
     'team': '👨‍👩‍👧‍👦',
+    'project': '📁',
     'timer': '⏱️',
   };
   return <span className="w-5 text-center">{icons[name] || '•'}</span>;

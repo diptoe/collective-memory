@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Entity, Relationship, Scope } from '@/types';
+import { Entity, Relationship, Scope, Project } from '@/types';
 import { cn } from '@/lib/utils';
 import { EntityPropertiesPanel } from '@/components/entity/entity-properties-panel';
 import { EntityRelationshipsPanel } from '@/components/entity/entity-relationships-panel';
@@ -60,6 +60,12 @@ export default function ProjectDetailPage() {
   const [moveResult, setMoveResult] = useState<{ total: number } | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
 
+  // Linked Project state
+  const [linkedProject, setLinkedProject] = useState<Project | null>(null);
+  const [linkedProjectLoading, setLinkedProjectLoading] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(null);
+
   const loadProject = useCallback(async () => {
     try {
       const res = await api.entities.get(projectKey, true);
@@ -77,6 +83,77 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     loadProject();
   }, [loadProject]);
+
+  // Parse source bridge format: *type*{key}
+  const parseSourceBridge = (source: string | undefined | null): { type: string; key: string } | null => {
+    if (!source || !source.startsWith('*')) return null;
+    const match = source.match(/\*(\w+)\*\{([^}]+)\}/);
+    if (match) {
+      return { type: match[1], key: match[2] };
+    }
+    return null;
+  };
+
+  // Check for linked project when entity loads
+  useEffect(() => {
+    const checkLinkedProject = async () => {
+      if (!project?.source) {
+        setLinkedProject(null);
+        return;
+      }
+
+      const bridge = parseSourceBridge(project.source);
+      if (!bridge || bridge.type !== 'project') {
+        setLinkedProject(null);
+        return;
+      }
+
+      setLinkedProjectLoading(true);
+      try {
+        const res = await api.projects.get(bridge.key);
+        if (res.success && res.data?.project) {
+          setLinkedProject(res.data.project);
+        } else {
+          setLinkedProject(null);
+        }
+      } catch (err) {
+        console.error('Failed to load linked project:', err);
+        setLinkedProject(null);
+      } finally {
+        setLinkedProjectLoading(false);
+      }
+    };
+
+    checkLinkedProject();
+  }, [project?.source]);
+
+  const handleCreateProject = async () => {
+    if (!project) return;
+
+    setCreatingProject(true);
+    setCreateProjectError(null);
+
+    try {
+      const res = await api.projects.createFromEntity(project.entity_key, {
+        repository_url: project.properties?.repository_url as string | undefined,
+        description: project.properties?.description as string | undefined,
+      });
+
+      if (res.success && res.data?.project) {
+        setLinkedProject(res.data.project);
+        // Reload entity to get updated source
+        await loadProject();
+      } else {
+        setCreateProjectError(res.msg || 'Failed to create project');
+      }
+    } catch (err: unknown) {
+      console.error('Failed to create project:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create project';
+      setCreateProjectError(errorMessage);
+    } finally {
+      setCreatingProject(false);
+    }
+  };
 
   // Load user role and available scopes for move functionality
   useEffect(() => {
@@ -348,6 +425,73 @@ export default function ProjectDetailPage() {
       <div className="flex-1 overflow-auto p-6">
         {activeTab === 'overview' && (
           <div className="max-w-4xl space-y-6">
+            {/* Linked Project Status */}
+            <div className="bg-cm-ivory border border-cm-sand rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-cm-coffee mb-1">Project Database Record</h3>
+                  {linkedProjectLoading ? (
+                    <p className="text-sm text-cm-coffee/70">Checking link status...</p>
+                  ) : linkedProject ? (
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700">
+                        Linked
+                      </span>
+                      <Link
+                        href={`/admin/projects/${linkedProject.project_key}`}
+                        className="text-sm text-cm-terracotta hover:underline font-medium"
+                      >
+                        {linkedProject.name}
+                      </Link>
+                      {linkedProject.repository_url && (
+                        <span className="text-xs text-cm-coffee/70 font-mono">
+                          {linkedProject.repository_owner}/{linkedProject.repository_name}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
+                        Not Linked
+                      </span>
+                      <span className="text-sm text-cm-coffee/70">
+                        This entity is not linked to a Project database record
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {!linkedProject && !linkedProjectLoading && canMoveScope && (
+                  <button
+                    onClick={handleCreateProject}
+                    disabled={creatingProject}
+                    className="px-4 py-2 text-sm bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-terracotta/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {creatingProject ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Create & Link Project
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              {createProjectError && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                  {createProjectError}
+                </div>
+              )}
+            </div>
+
             {props.description && (
               <div>
                 <h3 className="text-sm font-medium text-cm-coffee mb-2">Description</h3>

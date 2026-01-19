@@ -307,3 +307,84 @@ class Entity(BaseModel):
             return user.display_name if user else None
 
         return None
+
+    # ============================================================
+    # SOURCE BRIDGE PATTERN
+    # ============================================================
+    # The source column can link entities to database records using
+    # the format: *type*{key}
+    # Examples: *project*{calm-fresh-river}, *agent*{swift-bold-lion}
+
+    @classmethod
+    def parse_source_bridge(cls, source: str) -> dict | None:
+        """
+        Parse source bridge format *type*{key}.
+
+        Args:
+            source: Source string to parse
+
+        Returns:
+            Dict with 'type' and 'key' if valid bridge format, None otherwise
+        """
+        if not source or not source.startswith('*'):
+            return None
+        import re
+        match = re.match(r'\*(\w+)\*\{([^}]+)\}', source)
+        if match:
+            return {'type': match.group(1), 'key': match.group(2)}
+        return None
+
+    @staticmethod
+    def create_source_bridge(record_type: str, key: str) -> str:
+        """
+        Create source bridge format.
+
+        Args:
+            record_type: Type of the linked record (e.g., 'project', 'agent')
+            key: Key of the linked record
+
+        Returns:
+            Source bridge string in format *type*{key}
+        """
+        return f"*{record_type}*{{{key}}}"
+
+    def get_linked_record(self):
+        """
+        Get the database record linked via source bridge.
+
+        Returns:
+            The linked record if found, None otherwise
+        """
+        bridge = self.parse_source_bridge(self.source)
+        if not bridge:
+            return None
+
+        record_type = bridge['type']
+        key = bridge['key']
+
+        if record_type == 'project':
+            from api.models.project import Project
+            return Project.get_by_key(key)
+        elif record_type == 'agent':
+            from api.models.agent import Agent
+            return Agent.get_by_key(key)
+        elif record_type == 'team':
+            from api.models.team import Team
+            return Team.get_by_key(key)
+        elif record_type == 'user':
+            from api.models.user import User
+            return User.get_by_key(key)
+        elif record_type == 'domain':
+            from api.models.domain import Domain
+            return Domain.get_by_key(key)
+
+        return None
+
+    def has_source_bridge(self) -> bool:
+        """Check if this entity has a source bridge."""
+        return self.parse_source_bridge(self.source) is not None
+
+    def get_source_bridge_type(self) -> str | None:
+        """Get the type of the source bridge if present."""
+        bridge = self.parse_source_bridge(self.source)
+        return bridge['type'] if bridge else None

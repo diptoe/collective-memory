@@ -63,6 +63,38 @@ export function extractImpactFromMetrics(metrics?: Metric[]): MilestoneImpactPro
 }
 
 /**
+ * Rating dots component for consistent 1-5 scale display
+ */
+function RatingDots({
+  label,
+  value,
+  color = 'bg-cm-terracotta'
+}: {
+  label: string;
+  value?: number;
+  color?: string;
+}) {
+  if (!value || value <= 0) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 w-full" title={`${label}: ${value}/5`}>
+      <span className="text-cm-coffee/50 text-[10px] w-[70px] text-right truncate">{label}</span>
+      <div className="flex gap-0.5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div
+            key={i}
+            className={cn(
+              'w-1.5 h-1.5 rounded-full',
+              i < value ? color : 'bg-cm-sand'
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Full metrics panel for right side of milestone card
  * Shows all metrics in a structured layout
  */
@@ -90,7 +122,7 @@ export function MilestoneMetricsPanel({
 
   if (!hasCodeMetrics && !hasActivityMetrics && !hasSelfAssessments) {
     return (
-      <div className={cn('min-w-[120px] flex flex-col items-center justify-center text-xs text-cm-coffee/50', className)}>
+      <div className={cn('min-w-[140px] flex flex-col items-center justify-center text-xs text-cm-coffee/50', className)}>
         <span>No metrics</span>
         <span>recorded</span>
       </div>
@@ -107,7 +139,7 @@ export function MilestoneMetricsPanel({
     : 0;
 
   return (
-    <div className={cn('min-w-[120px] flex flex-col items-center gap-2 text-xs', className)}>
+    <div className={cn('min-w-[140px] flex flex-col items-center gap-2 text-xs', className)}>
       {/* Impact circle with code churn */}
       {codeChurn > 0 && (
         <div
@@ -161,47 +193,11 @@ export function MilestoneMetricsPanel({
       {/* Self-assessment indicators */}
       {hasSelfAssessments && (
         <div className="flex flex-col items-center gap-1 border-t border-cm-sand/50 pt-1 mt-1 w-full">
-          {/* Complexity bar */}
-          {complexity && complexity > 0 && (
-            <div className="flex items-center gap-1" title={`Complexity: ${complexity}/5`}>
-              <span className="text-cm-coffee/50 text-[10px]">Cmplx</span>
-              <div className="flex gap-0.5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      'w-1.5 h-1.5 rounded-full',
-                      i < complexity ? 'bg-cm-terracotta' : 'bg-cm-sand'
-                    )}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Other ratings as compact badges */}
-          <div className="flex flex-wrap justify-center gap-1">
-            {modelUnderstanding && (
-              <span className="px-1 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px]" title="Model Understanding">
-                🎯{modelUnderstanding}
-              </span>
-            )}
-            {modelAccuracy && (
-              <span className="px-1 py-0.5 bg-green-100 text-green-700 rounded text-[10px]" title="Model Accuracy">
-                ✓{modelAccuracy}
-              </span>
-            )}
-            {collaborationRating && (
-              <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px]" title="Collaboration">
-                🤝{collaborationRating}
-              </span>
-            )}
-            {humanGuidance && (
-              <span className="px-1 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px]" title="Human Guidance Level">
-                👤{humanGuidance}
-              </span>
-            )}
-          </div>
+          <RatingDots label="Complexity" value={complexity} color="bg-cm-terracotta" />
+          <RatingDots label="Understand" value={modelUnderstanding} color="bg-amber-500" />
+          <RatingDots label="Accuracy" value={modelAccuracy} color="bg-green-500" />
+          <RatingDots label="Collab" value={collaborationRating} color="bg-blue-500" />
+          <RatingDots label="Guidance" value={humanGuidance} color="bg-purple-500" />
         </div>
       )}
     </div>

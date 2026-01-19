@@ -28,9 +28,10 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<{ total: number; active: number; suspended: number; admins: number; users: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<{ role?: string; status?: string }>({});
+  const [filter, setFilter] = useState<{ role?: string; status?: string; domain_key?: string }>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [domains, setDomains] = useState<Domain[]>([]);
+  const isAdmin = currentUser?.role === 'admin';
 
   // Redirect if not admin or domain_admin
   useEffect(() => {
@@ -112,6 +113,20 @@ export default function AdminUsersPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-4 mb-6">
+        {isAdmin && domains.length > 0 && (
+          <select
+            value={filter.domain_key || ''}
+            onChange={(e) => setFilter((prev) => ({ ...prev, domain_key: e.target.value || undefined }))}
+            className="px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+          >
+            <option value="">All domains</option>
+            {domains.map((domain) => (
+              <option key={domain.domain_key} value={domain.domain_key}>
+                {domain.name}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={filter.role || ''}
           onChange={(e) => setFilter((prev) => ({ ...prev, role: e.target.value || undefined }))}

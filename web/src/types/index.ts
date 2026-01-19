@@ -417,6 +417,43 @@ export interface TeamMembership {
   };
 }
 
+// Project types (dedicated repository/project tracking)
+export type ProjectStatus = 'active' | 'archived';
+export type RepositoryType = 'github' | 'gitlab' | 'bitbucket' | 'azure' | 'codecommit' | null;
+
+export interface Project {
+  project_key: string;
+  name: string;
+  description?: string;
+  repository_type?: RepositoryType;
+  repository_url?: string;
+  repository_owner?: string;
+  repository_name?: string;
+  domain_key: string;
+  entity_key?: string;  // Link to Project entity in knowledge graph
+  status: ProjectStatus;
+  extra_data?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  // Extended fields (when include_teams=true)
+  teams?: TeamProject[];
+}
+
+// Team-Project association
+export type TeamProjectRole = 'owner' | 'contributor' | 'viewer';
+
+export interface TeamProject {
+  team_project_key: string;
+  team_key: string;
+  project_key: string;
+  role: TeamProjectRole;
+  created_at: string;
+  updated_at?: string;
+  // Extended fields
+  team?: Team;
+  project?: Project;
+}
+
 // Scope types for entity visibility control
 export type ScopeType = 'domain' | 'team' | 'user';
 export type ScopeAccessLevel = 'owner' | 'admin' | 'member' | 'viewer';

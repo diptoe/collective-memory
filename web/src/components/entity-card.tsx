@@ -20,8 +20,15 @@ const entityTypeColors: Record<string, string> = {
   Repository: '#7c5cbf',
 };
 
+// Check if entity has a source bridge to a project database record
+const hasProjectLink = (source: string | undefined | null): boolean => {
+  if (!source) return false;
+  return source.startsWith('*project*{');
+};
+
 export function EntityCard({ entity, onClick, selected }: EntityCardProps) {
   const color = entityTypeColors[entity.entity_type] || '#5c4d3c';
+  const isLinkedProject = entity.entity_type === 'Project' && hasProjectLink(entity.source);
 
   return (
     <div
@@ -45,12 +52,24 @@ export function EntityCard({ entity, onClick, selected }: EntityCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-cm-charcoal truncate">{entity.name}</h3>
-            <span
-              className="px-2 py-0.5 text-xs rounded-full"
-              style={{ backgroundColor: `${color}20`, color }}
-            >
-              {entity.entity_type}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {isLinkedProject && (
+                <span
+                  className="px-1.5 py-0.5 text-xs rounded-full bg-green-100 text-green-700 flex items-center gap-1"
+                  title="Linked to Project database record"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                </span>
+              )}
+              <span
+                className="px-2 py-0.5 text-xs rounded-full"
+                style={{ backgroundColor: `${color}20`, color }}
+              >
+                {entity.entity_type}
+              </span>
+            </div>
           </div>
 
           {entity.context_domain && (

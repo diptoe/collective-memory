@@ -5,20 +5,21 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { Team, Domain } from '@/types';
+import { Project, Team, Domain } from '@/types';
 
-export default function AdminTeamsPage() {
+export default function AdminProjectsPage() {
   const router = useRouter();
   const { user: currentUser, isAuthenticated } = useAuthStore();
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<{
     total: number;
     active: number;
     archived: number;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<{ status?: string; domain_key?: string }>({});
+  const [filter, setFilter] = useState<{ status?: string; team_key?: string; domain_key?: string }>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const isAdmin = currentUser?.role === 'admin';
 
@@ -31,7 +32,7 @@ export default function AdminTeamsPage() {
     }
   }, [isAuthenticated, currentUser, router]);
 
-  // Load teams and stats
+  // Load projects, stats, and teams
   useEffect(() => {
     if (currentUser?.role === 'admin' || currentUser?.role === 'domain_admin') {
       loadData();
@@ -42,8 +43,8 @@ export default function AdminTeamsPage() {
     setIsLoading(true);
     try {
       const requests: Promise<unknown>[] = [
-        api.teams.list(filter),
-        api.teams.stats(),
+        api.projects.list({ ...filter, include_teams: 'true' }),
+        api.teams.list(),
       ];
 
       // Load domains for admin users
@@ -52,16 +53,25 @@ export default function AdminTeamsPage() {
       }
 
       const responses = await Promise.all(requests);
-      const [teamsResponse, statsResponse] = responses as [
+      const [projectsResponse, teamsResponse] = responses as [
+        Awaited<ReturnType<typeof api.projects.list>>,
         Awaited<ReturnType<typeof api.teams.list>>,
-        Awaited<ReturnType<typeof api.teams.stats>>,
       ];
 
+      if (projectsResponse.success && projectsResponse.data) {
+        const projectsList = projectsResponse.data.projects;
+        setProjects(projectsList);
+        // Calculate stats from the list
+        const active = projectsList.filter((p) => p.status === 'active').length;
+        const archived = projectsList.filter((p) => p.status === 'archived').length;
+        setStats({
+          total: projectsList.length,
+          active,
+          archived,
+        });
+      }
       if (teamsResponse.success && teamsResponse.data) {
         setTeams(teamsResponse.data.teams);
-      }
-      if (statsResponse.success && statsResponse.data) {
-        setStats(statsResponse.data);
       }
 
       // Set domains for admin users
@@ -72,7 +82,7 @@ export default function AdminTeamsPage() {
         }
       }
     } catch (err) {
-      console.error('Failed to load teams:', err);
+      console.error('Failed to load projects:', err);
     } finally {
       setIsLoading(false);
     }
@@ -92,19 +102,19 @@ export default function AdminTeamsPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-cm-charcoal">Team Management</h1>
+        <h1 className="text-2xl font-semibold text-cm-charcoal">Project Management</h1>
         <button
           onClick={() => setShowCreateModal(true)}
           className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
         >
-          Create Team
+          Create Project
         </button>
       </div>
 
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <StatCard label="Total Teams" value={stats.total} />
+          <StatCard label="Total Projects" value={stats.total} />
           <StatCard label="Active" value={stats.active} color="green" />
           <StatCard label="Archived" value={stats.archived} color="gray" />
         </div>
@@ -135,19 +145,31 @@ export default function AdminTeamsPage() {
           <option value="active">Active</option>
           <option value="archived">Archived</option>
         </select>
+        <select
+          value={filter.team_key || ''}
+          onChange={(e) => setFilter((prev) => ({ ...prev, team_key: e.target.value || undefined }))}
+          className="px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+        >
+          <option value="">All teams</option>
+          {teams.map((team) => (
+            <option key={team.team_key} value={team.team_key}>
+              {team.name}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Teams Table */}
+      {/* Projects Table */}
       <div className="bg-cm-ivory border border-cm-sand rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-cm-sand/50">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Team</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Slug</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Project</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Repository</th>
               {isAdmin && (
                 <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Domain</th>
               )}
-              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Members</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Teams</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Status</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-cm-charcoal">Actions</th>
             </tr>
@@ -156,49 +178,66 @@ export default function AdminTeamsPage() {
             {isLoading ? (
               <tr>
                 <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-sm text-cm-coffee">
-                  Loading teams...
+                  Loading projects...
                 </td>
               </tr>
-            ) : teams.length === 0 ? (
+            ) : projects.length === 0 ? (
               <tr>
                 <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-sm text-cm-coffee">
-                  No teams found. Create your first team to organize your users.
+                  No projects found. Create your first project to track a repository.
                 </td>
               </tr>
             ) : (
-              teams.map((team) => (
-                <tr key={team.team_key} className="border-t border-cm-sand hover:bg-cm-cream/50">
+              projects.map((project) => (
+                <tr key={project.project_key} className="border-t border-cm-sand hover:bg-cm-cream/50">
                   <td className="px-4 py-3">
                     <div>
-                      <span className="text-sm font-medium text-cm-charcoal">{team.name}</span>
-                      {team.description && (
-                        <p className="text-xs text-cm-coffee mt-0.5">{team.description}</p>
+                      <span className="text-sm font-medium text-cm-charcoal">{project.name}</span>
+                      {project.description && (
+                        <p className="text-xs text-cm-coffee mt-0.5 line-clamp-1">{project.description}</p>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-cm-coffee font-mono">{team.slug}</td>
+                  <td className="px-4 py-3">
+                    {project.repository_url ? (
+                      <div className="flex items-center gap-2">
+                        {project.repository_type && (
+                          <RepoTypeIcon type={project.repository_type} />
+                        )}
+                        <div>
+                          <span className="text-sm text-cm-charcoal font-mono">
+                            {project.repository_owner}/{project.repository_name}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-cm-coffee">No repository</span>
+                    )}
+                  </td>
                   {isAdmin && (
                     <td className="px-4 py-3">
                       <span className="text-sm text-cm-charcoal">
-                        {getDomainName(team.domain_key)}
+                        {getDomainName(project.domain_key)}
                       </span>
                     </td>
                   )}
-                  <td className="px-4 py-3 text-sm text-cm-charcoal">{team.member_count ?? 0}</td>
+                  <td className="px-4 py-3 text-sm text-cm-charcoal">
+                    {project.teams?.length ?? 0}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`px-2 py-1 text-xs rounded-full ${
-                        team.status === 'active'
+                        project.status === 'active'
                           ? 'bg-green-100 text-green-700'
                           : 'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {team.status}
+                      {project.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
-                      href={`/admin/teams/${team.team_key}`}
+                      href={`/admin/projects/${project.project_key}`}
                       className="text-sm text-cm-terracotta hover:underline"
                     >
                       View
@@ -213,9 +252,10 @@ export default function AdminTeamsPage() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <CreateTeamModal
+        <CreateProjectModal
           isAdmin={currentUser?.role === 'admin'}
           userDomainKey={currentUser?.domain_key}
+          teams={teams}
           onClose={() => setShowCreateModal(false)}
           onCreated={() => {
             setShowCreateModal(false);
@@ -252,22 +292,43 @@ function StatCard({
   );
 }
 
-function CreateTeamModal({
+function RepoTypeIcon({ type }: { type: string }) {
+  // Simple icon based on repository type
+  const icons: Record<string, string> = {
+    github: 'GH',
+    gitlab: 'GL',
+    bitbucket: 'BB',
+    azure: 'AZ',
+    codecommit: 'CC',
+  };
+
+  return (
+    <span className="inline-flex items-center justify-center w-6 h-6 rounded bg-cm-sand text-xs font-medium text-cm-charcoal">
+      {icons[type] || '?'}
+    </span>
+  );
+}
+
+function CreateProjectModal({
   isAdmin,
   userDomainKey,
+  teams,
   onClose,
   onCreated,
 }: {
   isAdmin?: boolean;
   userDomainKey?: string;
+  teams: Team[];
   onClose: () => void;
   onCreated: () => void;
 }) {
   const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
+  const [repositoryUrl, setRepositoryUrl] = useState('');
   const [domainKey, setDomainKey] = useState(userDomainKey || '');
   const [domains, setDomains] = useState<Domain[]>([]);
+  const [selectedTeamKey, setSelectedTeamKey] = useState('');
+  const [teamRole, setTeamRole] = useState<'owner' | 'contributor' | 'viewer'>('contributor');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -282,17 +343,10 @@ function CreateTeamModal({
     }
   }, [isAdmin]);
 
-  // Auto-generate slug from name
-  useEffect(() => {
-    if (name && !slug) {
-      setSlug(name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
-    }
-  }, [name]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !slug.trim()) {
-      setError('Name and slug are required');
+    if (!name.trim()) {
+      setError('Name is required');
       return;
     }
 
@@ -305,21 +359,32 @@ function CreateTeamModal({
     setError('');
 
     try {
-      const response = await api.teams.create({
+      // Create the project
+      const response = await api.projects.create({
         name: name.trim(),
-        slug: slug.trim().toLowerCase(),
         description: description.trim() || undefined,
+        repository_url: repositoryUrl.trim() || undefined,
         domain_key: isAdmin ? domainKey : undefined,
       });
 
-      if (response.success) {
+      if (response.success && response.data) {
+        const project = response.data.project;
+
+        // Add team association if selected
+        if (selectedTeamKey && project) {
+          await api.projects.addTeam(project.project_key, {
+            team_key: selectedTeamKey,
+            role: teamRole,
+          });
+        }
+
         onCreated();
       } else {
-        setError(response.msg || 'Failed to create team');
+        setError(response.msg || 'Failed to create project');
       }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { msg?: string } } };
-      setError(error.response?.data?.msg || 'Failed to create team');
+      setError(error.response?.data?.msg || 'Failed to create project');
     } finally {
       setIsSubmitting(false);
     }
@@ -328,7 +393,7 @@ function CreateTeamModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-cm-ivory rounded-lg shadow-xl w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Create Team</h2>
+        <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Create Project</h2>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
@@ -362,19 +427,8 @@ function CreateTeamModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
-                placeholder="Engineering Team"
+                placeholder="My Project"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-cm-charcoal mb-1">Slug</label>
-              <input
-                type="text"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal font-mono focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
-                placeholder="engineering"
-              />
-              <p className="text-xs text-cm-coffee mt-1">Unique identifier for the team</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-cm-charcoal mb-1">Description</label>
@@ -385,6 +439,47 @@ function CreateTeamModal({
                 className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
                 placeholder="Optional description..."
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-cm-charcoal mb-1">Repository URL</label>
+              <input
+                type="text"
+                value={repositoryUrl}
+                onChange={(e) => setRepositoryUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                placeholder="https://github.com/owner/repo"
+              />
+              <p className="text-xs text-cm-coffee mt-1">
+                Supports GitHub, GitLab, Bitbucket, Azure DevOps, CodeCommit
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-cm-charcoal mb-1">Associate with Team (Optional)</label>
+              <div className="flex gap-2">
+                <select
+                  value={selectedTeamKey}
+                  onChange={(e) => setSelectedTeamKey(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                >
+                  <option value="">No team</option>
+                  {teams.map((team) => (
+                    <option key={team.team_key} value={team.team_key}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedTeamKey && (
+                  <select
+                    value={teamRole}
+                    onChange={(e) => setTeamRole(e.target.value as 'owner' | 'contributor' | 'viewer')}
+                    className="w-32 px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                  >
+                    <option value="owner">Owner</option>
+                    <option value="contributor">Contributor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                )}
+              </div>
             </div>
           </div>
 
@@ -401,7 +496,7 @@ function CreateTeamModal({
               disabled={isSubmitting}
               className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 disabled:opacity-50 transition-colors"
             >
-              {isSubmitting ? 'Creating...' : 'Create Team'}
+              {isSubmitting ? 'Creating...' : 'Create Project'}
             </button>
           </div>
         </form>

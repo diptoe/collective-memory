@@ -47,7 +47,8 @@ RETURNS: Either the identity guidance (options) or confirmation of registration.
                 "model_key": {"type": "string", "description": "Model key from database (alternative to model_id)"},
                 "focus": {"type": "string", "description": "What you're currently working on - describe your task"},
                 "team_key": {"type": "string", "description": "Explicit team key to set as active (optional - auto-detected from agent_id if not provided)"},
-                "team_slug": {"type": "string", "description": "Team slug to set as active (optional - resolved to team_key)"}
+                "team_slug": {"type": "string", "description": "Team slug to set as active (optional - resolved to team_key)"},
+                "project_key": {"type": "string", "description": "Explicit project key to link to (optional - auto-detected from git remote or directory name)"}
             }
         }
     ),
@@ -97,6 +98,27 @@ RETURNS: Your new identity details after the change.""",
 # HELPER FUNCTIONS
 # ============================================================
 
+async def _detect_project_from_api(config: Any, session_state: dict, repo_url: str) -> dict | None:
+    """
+    Query API to find project by repository URL.
+
+    Returns dict with project and teams info if found, None otherwise.
+    """
+    try:
+        from urllib.parse import quote
+        encoded_url = quote(repo_url, safe='')
+        result = await _make_request(
+            config,
+            "GET",
+            f"/projects/lookup?repository_url={encoded_url}",
+        )
+        if result.get('success') and result.get('data', {}).get('project'):
+            return result['data']
+        return None
+    except Exception:
+        return None
+
+
 def _detect_project_from_git() -> dict | None:
     """
     Detect project from git remote URL.
@@ -145,6 +167,130 @@ def _detect_project_from_git() -> dict | None:
 
     except Exception:
         return None
+
+
+def _get_working_directory_name() -> str | None:
+    """
+    Get the current working directory name.
+
+    Returns the folder name (not full path), or None if unable to determine.
+    """
+    try:
+        import os
+        cwd = os.getcwd()
+        return os.path.basename(cwd)
+    except Exception:
+        return None
+
+
+async def _fetch_user_projects(config: Any) -> list:
+    """
+    Fetch projects accessible to the authenticated user (via their team memberships).
+
+    Returns a list of project dicts with project_key, name, repository_name, etc.
+    """
+    try:
+        result = await _make_request(
+            config,
+            "GET",
+            "/projects",
+            params={"include_teams": "true"}
+        )
+        if result.get("success"):
+            return result.get("data", {}).get("projects", [])
+        return []
+    except Exception:
+        return []
+
+
+def _match_directory_to_project(dir_name: str, projects: list) -> dict | None:
+    """
+    Try to match a directory name to a project.
+
+    Matching strategy (in order of confidence):
+    1. Exact match on repository_name (case-insensitive)
+    2. Exact match on project name (case-insensitive)
+    3. Normalized match (replace - with _, etc.)
+
+    Returns the matched project dict or None if no confident match.
+    """
+    if not dir_name or not projects:
+        return None
+
+    dir_lower = dir_name.lower()
+    dir_normalized = dir_lower.replace('-', '_').replace(' ', '_')
+
+    # First pass: exact match on repository_name
+    for project in projects:
+        repo_name = project.get('repository_name', '')
+        if repo_name and repo_name.lower() == dir_lower:
+            return project
+
+    # Second pass: exact match on project name
+    for project in projects:
+        name = project.get('name', '')
+        if name and name.lower() == dir_lower:
+            return project
+
+    # Third pass: normalized match on repository_name
+    for project in projects:
+        repo_name = project.get('repository_name', '')
+        if repo_name:
+            repo_normalized = repo_name.lower().replace('-', '_').replace(' ', '_')
+            if repo_normalized == dir_normalized:
+                return project
+
+    # Fourth pass: normalized match on project name
+    for project in projects:
+        name = project.get('name', '')
+        if name:
+            name_normalized = name.lower().replace('-', '_').replace(' ', '_')
+            if name_normalized == dir_normalized:
+                return project
+
+    return None
+
+
+def _format_project_selection_prompt(projects: list, dir_name: str | None = None) -> str:
+    """
+    Format a prompt asking the user to select a project.
+
+    Returns formatted text with project list and instructions.
+    """
+    output = "## Project Selection\n\n"
+
+    if dir_name:
+        output += f"Could not automatically match directory `{dir_name}` to a project.\n\n"
+    else:
+        output += "No git remote detected and unable to determine project from directory.\n\n"
+
+    if not projects:
+        output += "No projects available. Ask a domain admin to create a project and add your team to it.\n"
+        return output
+
+    output += "**Available projects from your teams:**\n\n"
+    output += "| # | Project | Repository | Teams |\n"
+    output += "|---|---------|------------|-------|\n"
+
+    for i, project in enumerate(projects[:10], 1):
+        name = project.get('name', 'Unknown')
+        repo = project.get('repository_name') or '-'
+        teams = project.get('teams', [])
+        team_names = ', '.join([t.get('team', {}).get('name', t.get('team_key', '')) for t in teams[:2]])
+        if len(teams) > 2:
+            team_names += f" +{len(teams) - 2}"
+        output += f"| {i} | {name} | {repo} | {team_names} |\n"
+
+    if len(projects) > 10:
+        output += f"\n*...and {len(projects) - 10} more projects*\n"
+
+    output += "\n**To link to a project, call identify with `project_key`:**\n"
+    output += "```\n"
+    output += f'identify(agent_id="...", client="...", model_id="...", project_key="{projects[0].get("project_key")}")\n'
+    output += "```\n\n"
+    output += "*Or continue without a project - sessions and milestones will still work but won't be linked to a specific project.*\n"
+
+    return output
 
 
 async def _fetch_existing_agents_for_user(config: Any, client_filter: str = None) -> list:
@@ -369,6 +515,7 @@ async def identify(
     focus = arguments.get("focus")
     explicit_team_key = arguments.get("team_key")
     explicit_team_slug = arguments.get("team_slug")
+    explicit_project_key = arguments.get("project_key")
 
     # If no identity parameters provided, show the challenge/options
     if not agent_id and not persona:
@@ -560,14 +707,73 @@ async def identify(
         return [types.TextContent(type="text", text=output)]
 
     try:
-        # Detect project from git remote (auto-detection) - do this early for agent matching
+        # Detect project - priority: explicit > git remote > directory name
         git_project = _detect_project_from_git()
         detected_project_key = None
         detected_project_name = None
+        detected_db_project = None  # Project from database (via /projects/lookup)
+        project_teams = []  # Teams associated with the project
+        project_detection_method = None  # Track how project was detected
+        user_projects = []  # Will be populated if needed for fallback
+        working_dir_name = None  # Current directory name
 
-        if git_project:
-            # Use git remote info for project context (no API sync during registration)
+        # 1. Check for explicit project_key first
+        if explicit_project_key:
+            try:
+                project_result = await _make_request(
+                    config,
+                    "GET",
+                    f"/projects/{explicit_project_key}",
+                    params={"include_teams": "true"}
+                )
+                if project_result.get("success"):
+                    detected_db_project = project_result.get("data", {}).get("project")
+                    if detected_db_project:
+                        detected_project_key = detected_db_project.get('project_key')
+                        detected_project_name = detected_db_project.get('name')
+                        project_teams = detected_db_project.get('teams', [])
+                        project_detection_method = "explicit"
+            except Exception:
+                pass
+
+        # 2. Try git remote detection
+        if not detected_project_key and git_project:
+            # Use git remote info for project context
             detected_project_name = git_project['repo']
+
+            # Query API to find project by repository URL
+            api_project_data = await _detect_project_from_api(config, session_state, git_project['url'])
+            if api_project_data:
+                detected_db_project = api_project_data.get('project')
+                project_teams = api_project_data.get('teams', [])
+                if detected_db_project:
+                    detected_project_key = detected_db_project.get('project_key')
+                    detected_project_name = detected_db_project.get('name') or detected_project_name
+                    project_detection_method = "git_remote"
+
+        # 3. Try directory name matching (fallback when no git remote)
+        if not detected_project_key:
+            working_dir_name = _get_working_directory_name()
+            if working_dir_name:
+                # Fetch user's projects for matching
+                user_projects = await _fetch_user_projects(config)
+                if user_projects:
+                    matched_project = _match_directory_to_project(working_dir_name, user_projects)
+                    if matched_project:
+                        detected_db_project = matched_project
+                        detected_project_key = matched_project.get('project_key')
+                        detected_project_name = matched_project.get('name')
+                        project_teams = matched_project.get('teams', [])
+                        project_detection_method = "directory_match"
+
+        # 4. If still no match, show project selection prompt (but continue with registration)
+        project_selection_prompt = ""
+        if not detected_project_key and not explicit_project_key:
+            # Fetch projects if not already fetched
+            if not user_projects:
+                user_projects = await _fetch_user_projects(config)
+            if user_projects:
+                project_selection_prompt = _format_project_selection_prompt(user_projects, working_dir_name)
 
         # Fetch existing agents for this user to help with identity selection
         # Don't filter by client - show all agents and let relevance scoring handle it
@@ -740,6 +946,26 @@ async def identify(
                                     resolved_team_name = t.get('name')
                                     membership_slug = t.get('membership_slug')
                                     break
+
+                        # Third, use project's associated teams from /projects/lookup
+                        # Prefer 'owner' role, then 'contributor', then any
+                        if not resolved_team_key and project_teams:
+                            # Sort by role priority: owner > contributor > viewer
+                            role_priority = {'owner': 0, 'contributor': 1, 'viewer': 2}
+                            sorted_teams = sorted(
+                                project_teams,
+                                key=lambda x: role_priority.get(x.get('role', 'viewer'), 3)
+                            )
+                            for pt in sorted_teams:
+                                pt_team_key = pt.get('team_key')
+                                # Check if user is a member of this team
+                                user_team = next((t for t in teams if t.get('team_key') == pt_team_key), None)
+                                if user_team:
+                                    resolved_team_key = pt_team_key
+                                    resolved_team_name = user_team.get('name')
+                                    membership_slug = user_team.get('membership_slug')
+                                    team_detected_from_project = True
+                                    break
             except Exception:
                 pass  # Continue without user info
 
@@ -807,14 +1033,21 @@ async def identify(
             if agent_data.get("affinity_warning"):
                 session_state["affinity_warning"] = agent_data.get("affinity_warning")
 
-            # Store project info in session_state (from git detection)
+            # Store project info in session_state (from git detection and API lookup)
             if git_project:
                 session_state["project_owner"] = git_project.get('owner')
                 session_state["project_repo"] = git_project.get('repo')
+                session_state["repository_url"] = git_project.get('url')
             if detected_project_key:
                 session_state["project_key"] = detected_project_key
             if detected_project_name:
                 session_state["project_name"] = detected_project_name
+            if project_detection_method:
+                session_state["project_detection_method"] = project_detection_method
+            # Store database project info if found
+            if detected_db_project:
+                session_state["db_project"] = detected_db_project
+                session_state["db_project_key"] = detected_db_project.get('project_key')
 
             # Store user info (already fetched before registration)
             if user_data:
@@ -976,12 +1209,28 @@ async def identify(
                 output += "\n"
 
             # Show project info if detected
-            if detected_project_name or detected_project_key or git_project:
+            if detected_project_name or detected_project_key or git_project or detected_db_project:
                 output += "\n## Project Context\n"
                 if git_project:
                     output += f"**GitHub:** {git_project.get('owner')}/{git_project.get('repo')}\n"
                 if detected_project_name:
                     output += f"**Name:** {detected_project_name}\n"
+                if detected_db_project:
+                    output += f"**Project Key:** {detected_db_project.get('project_key')}\n"
+                    if project_teams:
+                        team_names = [t.get('team', {}).get('name') or t.get('team_key') for t in project_teams[:3]]
+                        output += f"**Teams:** {', '.join(team_names)}\n"
+                # Show detection method
+                if project_detection_method:
+                    method_labels = {
+                        "explicit": "explicit project_key",
+                        "git_remote": "git remote",
+                        "directory_match": f"directory name match ({working_dir_name})"
+                    }
+                    output += f"**Detected via:** {method_labels.get(project_detection_method, project_detection_method)}\n"
+            elif project_selection_prompt:
+                # No project detected - show selection prompt
+                output += "\n" + project_selection_prompt
 
             # Show active work session if any
             if active_work_session:

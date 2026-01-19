@@ -82,6 +82,7 @@ def register_user_routes(api: Api):
         @ns.doc('list_users')
         @ns.param('role', 'Filter by role')
         @ns.param('status', 'Filter by status')
+        @ns.param('domain_key', 'Filter by domain (admin only)')
         @ns.param('limit', 'Limit results', type=int, default=100)
         @ns.param('offset', 'Offset for pagination', type=int, default=0)
         @require_admin
@@ -90,6 +91,7 @@ def register_user_routes(api: Api):
             """List all users (admin only)."""
             role = request.args.get('role')
             status = request.args.get('status')
+            domain_filter = request.args.get('domain_key')
             limit = int(request.args.get('limit', 100))
             offset = int(request.args.get('offset', 0))
 
@@ -99,6 +101,8 @@ def register_user_routes(api: Api):
                 query = query.filter_by(role=role)
             if status:
                 query = query.filter_by(status=status)
+            if domain_filter:
+                query = query.filter_by(domain_key=domain_filter)
 
             total = query.count()
             users = query.order_by(User.created_at.desc()).limit(limit).offset(offset).all()

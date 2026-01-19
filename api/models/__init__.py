@@ -28,6 +28,8 @@ from api.models.session import Session
 from api.models.domain import Domain
 from api.models.team import Team, TeamMembership
 from api.models.work_session import WorkSession
+from api.models.project import Project
+from api.models.team_project import TeamProject
 
 __all__ = [
     'db',
@@ -66,4 +68,6 @@ __all__ = [
     'Team',
     'TeamMembership',
     'WorkSession',
+    'Project',
+    'TeamProject',
 ]

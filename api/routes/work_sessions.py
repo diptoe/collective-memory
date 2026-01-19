@@ -6,7 +6,7 @@ Endpoints for managing work sessions - focused work periods on projects.
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import WorkSession, Entity, db
+from api.models import WorkSession, Entity, Project, db
 from api.services.auth import require_auth_strict
 from api.services.activity import activity_service
 
@@ -139,13 +139,15 @@ def register_work_session_routes(api: Api):
 
             project_key = data['project_key']
 
-            # Verify project exists
-            project = Entity.get_by_key(project_key)
+            # Verify project exists (check Project table first, fall back to Entity for backwards compatibility)
+            project = Project.get_by_key(project_key)
             if not project:
-                return {'success': False, 'msg': 'Project not found'}, 404
-
-            if project.entity_type != 'Project':
-                return {'success': False, 'msg': 'Entity must be a Project type'}, 400
+                # Fall back to Entity lookup for backwards compatibility
+                entity = Entity.get_by_key(project_key)
+                if not entity:
+                    return {'success': False, 'msg': 'Project not found'}, 404
+                if entity.entity_type != 'Project':
+                    return {'success': False, 'msg': 'Entity must be a Project type'}, 400
 
             # Check for existing active session
             existing = WorkSession.get_active_for_user(user.user_key, project_key)

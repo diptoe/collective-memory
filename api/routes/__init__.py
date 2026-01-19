@@ -26,6 +26,7 @@ from api.routes.teams import register_team_routes
 from api.routes.work_sessions import register_work_session_routes
 from api.routes.metrics import register_metric_routes
 from api.routes.knowledge import register_knowledge_routes
+from api.routes.projects import register_project_routes
 
 
 def register_routes(api: Api):
@@ -51,3 +52,4 @@ def register_routes(api: Api):
     register_work_session_routes(api)
     register_metric_routes(api)
     register_knowledge_routes(api)
+    register_project_routes(api)
