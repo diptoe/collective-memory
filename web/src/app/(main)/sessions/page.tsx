@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { WorkSession, Entity, UserTeam } from '@/types';
 import { cn } from '@/lib/utils';
+import { MilestoneMetrics } from '@/components/milestone-metrics';
 
 const STATUS_COLORS = {
   active: 'bg-green-100 text-green-800',
@@ -542,7 +543,7 @@ function SessionCard({
                         <div className="flex items-center gap-2">
                           <span>{getStatusEmoji(entity.properties?.status)}</span>
                           <span className="text-sm font-medium text-cm-charcoal">{entity.name}</span>
-                          {entity.properties?.status && (
+                          {typeof entity.properties?.status === 'string' && (
                             <span className={cn(
                               'px-1.5 py-0.5 text-xs rounded',
                               entity.properties.status === 'completed' ? 'bg-green-100 text-green-700' :
@@ -550,7 +551,7 @@ function SessionCard({
                               entity.properties.status === 'blocked' ? 'bg-red-100 text-red-700' :
                               'bg-gray-100 text-gray-700'
                             )}>
-                              {String(entity.properties.status)}
+                              {entity.properties.status}
                             </span>
                           )}
                           <span className="text-xs text-cm-coffee">
@@ -568,6 +569,8 @@ function SessionCard({
                               ))}
                           </div>
                         )}
+                        {/* Milestone metrics */}
+                        <MilestoneMetrics entityKey={entity.entity_key} className="mt-2" compact />
                       </div>
                     ))}
                   </div>

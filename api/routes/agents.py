@@ -552,6 +552,15 @@ def register_agent_routes(api: Api):
                 agent_data['autonomous_tasks'] = autonomous_count
                 agent_data['recommended_heartbeat_seconds'] = 30 if agent.is_focused else 300
 
+                # Include current milestone for MCP reminder display
+                if agent.current_milestone_key:
+                    agent_data['current_milestone'] = {
+                        'key': agent.current_milestone_key,
+                        'name': agent.current_milestone_name,
+                        'status': agent.current_milestone_status,
+                        'started_at': agent.current_milestone_started_at.isoformat() if agent.current_milestone_started_at else None
+                    }
+
                 # Build notification message
                 if autonomous_count > 0:
                     msg = f'Heartbeat updated. 🚨 AUTONOMOUS TASK(S): You have {autonomous_count} autonomous task(s) waiting. These require your immediate attention - work on them and reply when complete. Use get_messages to see details.'
@@ -699,6 +708,88 @@ def register_agent_routes(api: Api):
                         'is_focused': agent.is_focused,
                         'focused_mode_expires_at': agent.focused_mode_expires_at.isoformat() if agent.focused_mode_expires_at else None,
                         'recommended_heartbeat_seconds': 30 if agent.is_focused else 300
+                    }
+                }
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    # Milestone model
+    milestone_update = ns.model('MilestoneUpdate', {
+        'milestone_key': fields.String(description='Milestone entity key (null to clear)'),
+        'milestone_name': fields.String(description='Milestone name (null to clear)'),
+        'milestone_status': fields.String(description='Status: started, completed, blocked (null to clear)'),
+    })
+
+    @ns.route('/<string:agent_id>/milestone')
+    @ns.param('agent_id', 'Agent ID')
+    class AgentMilestone(Resource):
+        @ns.doc('get_milestone')
+        @ns.marshal_with(response_model)
+        @require_auth
+        def get(self, agent_id):
+            """Get agent's current milestone."""
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
+
+            return {
+                'success': True,
+                'msg': 'Current milestone retrieved',
+                'data': {
+                    'agent_id': agent.agent_id,
+                    'current_milestone': {
+                        'key': agent.current_milestone_key,
+                        'name': agent.current_milestone_name,
+                        'status': agent.current_milestone_status,
+                        'started_at': agent.current_milestone_started_at.isoformat() if agent.current_milestone_started_at else None
+                    } if agent.current_milestone_key else None,
+                    'has_active_milestone': agent.has_active_milestone
+                }
+            }
+
+        @ns.doc('set_milestone')
+        @ns.expect(milestone_update)
+        @ns.marshal_with(response_model)
+        @require_auth
+        def put(self, agent_id):
+            """
+            Set or clear the agent's current milestone.
+
+            Used by MCP record_milestone tool to track what the agent is working on.
+            Setting milestone_key to null clears the current milestone.
+            """
+            agent, error, status = _check_agent_access(agent_id)
+            if error:
+                return error, status
+
+            data = request.json
+
+            try:
+                milestone_key = data.get('milestone_key')
+                milestone_name = data.get('milestone_name')
+                milestone_status = data.get('milestone_status')
+
+                if milestone_key and milestone_name and milestone_status:
+                    # Set milestone
+                    agent.set_current_milestone(milestone_key, milestone_name, milestone_status)
+                    msg = f'Milestone set: {milestone_name} ({milestone_status})'
+                else:
+                    # Clear milestone
+                    agent.clear_current_milestone()
+                    msg = 'Milestone cleared'
+
+                return {
+                    'success': True,
+                    'msg': msg,
+                    'data': {
+                        'agent_id': agent.agent_id,
+                        'current_milestone': {
+                            'key': agent.current_milestone_key,
+                            'name': agent.current_milestone_name,
+                            'status': agent.current_milestone_status,
+                            'started_at': agent.current_milestone_started_at.isoformat() if agent.current_milestone_started_at else None
+                        } if agent.current_milestone_key else None,
+                        'has_active_milestone': agent.has_active_milestone
                     }
                 }
             except Exception as e:

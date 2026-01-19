@@ -169,6 +169,12 @@ export interface Agent {
   // Project/Repository context
   project_key?: string;
   project_name?: string;   // Repository name (denormalized)
+  // Current milestone tracking (denormalized for display)
+  current_milestone_key?: string;
+  current_milestone_name?: string;
+  current_milestone_status?: 'started' | 'completed' | 'blocked';
+  current_milestone_started_at?: string;
+  has_active_milestone?: boolean;
   // Resolved references (optional, populated by API)
   model?: Model;
   persona?: Persona;
@@ -420,6 +426,35 @@ export interface Scope {
   name: string;
   access_level: ScopeAccessLevel;
 }
+
+// Metric types
+export interface Metric {
+  metric_key: string;
+  entity_key: string;
+  metric_type: string;
+  value: number;
+  recorded_at: string;
+  extra: Record<string, unknown>;
+  tags: string[];
+  created_at: string;
+}
+
+// Common metric type constants for milestones
+export const MilestoneMetricTypes = {
+  // Auto-capture metrics
+  TOOL_CALLS: 'milestone_tool_calls',
+  FILES_TOUCHED: 'milestone_files_touched',
+  LINES_ADDED: 'milestone_lines_added',
+  LINES_REMOVED: 'milestone_lines_removed',
+  COMMITS_MADE: 'milestone_commits_made',
+  DURATION_MINUTES: 'milestone_duration_minutes',
+  // Self-assessment metrics (1-5 scale)
+  HUMAN_GUIDANCE: 'milestone_human_guidance',
+  MODEL_UNDERSTANDING: 'milestone_model_understanding',
+  MODEL_ACCURACY: 'milestone_model_accuracy',
+  COLLABORATION_RATING: 'milestone_collaboration_rating',
+  COMPLEXITY_RATING: 'milestone_complexity_rating',
+} as const;
 
 // Work Session types (focused work periods on projects)
 export type WorkSessionStatus = 'active' | 'closed' | 'expired';

@@ -11,6 +11,60 @@ from typing import Any
 from .utils import _make_request
 
 
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+    types.Tool(
+        name="get_context",
+        description="""Get relevant context from the knowledge graph for answering a question or completing a task.
+
+USE THIS WHEN: You need background knowledge from the graph to inform your response. This is the primary RAG tool.
+
+HOW IT WORKS: Searches for relevant entities and their relationships, returning a structured context package.
+
+EXAMPLES:
+- {"query": "What technologies does the dashboard project use?"}
+- {"query": "Who is working on authentication?", "max_entities": 10}
+
+RETURNS: Relevant entities, their relationships, and a formatted context summary.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The question or topic you need context for"},
+                "max_entities": {"type": "integer", "description": "Maximum entities to include (default 5)", "default": 5}
+            },
+            "required": ["query"]
+        }
+    ),
+    types.Tool(
+        name="get_entity_context",
+        description="""Get detailed context around a specific entity, including all its relationships.
+
+USE THIS WHEN: You have a specific entity and want to understand its full context - what it's connected to.
+
+EXAMPLES:
+- {"entity_key": "ent-sarah"} → Sarah's projects, technologies, colleagues
+- {"entity_key": "ent-dashboard", "depth": 2} → Dashboard's tech stack AND what uses those technologies
+
+RETURNS: The entity, all related entities, and the relationships connecting them.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_key": {"type": "string", "description": "The entity to get context for"},
+                "depth": {"type": "integer", "description": "How many relationship hops to follow (1=direct, 2=includes neighbors' neighbors)", "default": 1}
+            },
+            "required": ["entity_key"]
+        }
+    ),
+]
+
+
+# ============================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================
+
 async def get_context(
     arguments: dict,
     config: Any,
@@ -247,3 +301,13 @@ async def get_entity_context(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error getting entity context: {str(e)}")]
+
+
+# ============================================================
+# TOOL HANDLERS MAPPING
+# ============================================================
+
+TOOL_HANDLERS = {
+    "get_context": get_context,
+    "get_entity_context": get_entity_context,
+}

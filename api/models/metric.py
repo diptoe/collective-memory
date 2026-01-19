@@ -145,3 +145,18 @@ class MetricTypes:
     # Usage metrics
     API_CALLS = 'api_calls'
     ACTIVE_USERS = 'active_users'
+
+    # Milestone auto-capture metrics
+    MILESTONE_TOOL_CALLS = 'milestone_tool_calls'
+    MILESTONE_FILES_TOUCHED = 'milestone_files_touched'
+    MILESTONE_LINES_ADDED = 'milestone_lines_added'
+    MILESTONE_LINES_REMOVED = 'milestone_lines_removed'
+    MILESTONE_COMMITS_MADE = 'milestone_commits_made'
+    MILESTONE_DURATION_MINUTES = 'milestone_duration_minutes'
+
+    # Milestone self-assessment metrics (1-5 scale)
+    MILESTONE_HUMAN_GUIDANCE = 'milestone_human_guidance'       # 1=fully autonomous, 5=heavy guidance
+    MILESTONE_MODEL_UNDERSTANDING = 'milestone_model_understanding'  # 1=low, 5=high
+    MILESTONE_MODEL_ACCURACY = 'milestone_model_accuracy'       # 1=low, 5=high
+    MILESTONE_COLLABORATION_RATING = 'milestone_collaboration_rating'  # 1=poor, 5=excellent
+    MILESTONE_COMPLEXITY_RATING = 'milestone_complexity_rating'  # 1=trivial, 5=very complex

@@ -12,6 +12,68 @@ from datetime import datetime
 from .utils import _make_request
 
 
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+    types.Tool(
+        name="list_activities",
+        description="""List recent system activities with optional filtering.
+
+USE THIS WHEN: You want to see what's been happening in Collective Memory - entity changes, messages, agent connections.
+
+ACTIVITY TYPES:
+- message_sent: Messages sent to channels
+- agent_heartbeat: Agent keep-alive signals
+- agent_registered: Agent connections/reconnections
+- search_performed: Search and list operations
+- entity_created, entity_updated, entity_deleted, entity_read
+- relationship_created, relationship_deleted
+
+EXAMPLES:
+- {} → Activities from last 24 hours
+- {"hours": 1} → Activities from last hour
+- {"activity_type": "entity_created"} → Only entity creations
+- {"actor": "claude-code-myproject"} → Only activities by specific agent
+- {"hours": 24, "limit": 100} → More results
+
+RETURNS: Activities grouped by type with timestamps, actors, and details.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "hours": {"type": "integer", "description": "Hours to look back (default 24)", "default": 24},
+                "activity_type": {"type": "string", "description": "Filter by type: message_sent, agent_heartbeat, entity_created, etc."},
+                "actor": {"type": "string", "description": "Filter by actor (agent_id)"},
+                "limit": {"type": "integer", "description": "Maximum results (default 50)", "default": 50}
+            }
+        }
+    ),
+    types.Tool(
+        name="get_activity_summary",
+        description="""Get activity summary with counts by type.
+
+USE THIS WHEN: You want a quick overview of system activity without detailed logs.
+
+EXAMPLES:
+- {} → Summary of last 24 hours
+- {"hours": 168} → Summary of last week
+
+RETURNS: Table of activity types with counts and percentages.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "hours": {"type": "integer", "description": "Hours to summarize (default 24)", "default": 24}
+            }
+        }
+    ),
+]
+
+
+# ============================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================
+
 async def list_activities(
     arguments: dict,
     config: Any,
@@ -169,3 +231,13 @@ async def get_activity_summary(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error getting activity summary: {str(e)}")]
+
+
+# ============================================================
+# TOOL HANDLERS MAPPING
+# ============================================================
+
+TOOL_HANDLERS = {
+    "list_activities": list_activities,
+    "get_activity_summary": get_activity_summary,
+}

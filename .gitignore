@@ -43,3 +43,4 @@ htmlcov/
 # Build artifacts
 *.egg
 *.whl
+web/tsconfig.tsbuildinfo

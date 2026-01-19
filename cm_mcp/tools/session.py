@@ -1,7 +1,7 @@
 """
-Work Session Tools
+Session Tools
 
-MCP tools for managing work sessions - focused work periods on projects.
+MCP tools for managing work sessions - session lifecycle (start, end, extend, get active).
 """
 
 import mcp.types as types
@@ -10,6 +10,104 @@ from datetime import datetime
 
 from .utils import _make_request
 
+
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+    types.Tool(
+        name="get_active_session",
+        description="""Check for an active work session for the current user.
+
+USE THIS WHEN: You want to see if there's already an active work session, especially before starting a new one.
+
+EXAMPLES:
+- {} → Check for any active session
+- {"project_key": "ent-project-xyz"} → Check for session on specific project
+
+RETURNS: Active session details including time remaining, or message that no session is active.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "project_key": {"type": "string", "description": "Optional: Filter by specific project entity key"}
+            }
+        }
+    ),
+    types.Tool(
+        name="start_session",
+        description="""Start a new work session for a project.
+
+USE THIS WHEN: You're beginning focused work on a project and want to track entities/messages created during the session.
+
+WHAT IT DOES:
+- Creates a work session tied to a Project entity
+- Entities and messages created while session is active are automatically linked
+- Session auto-closes after 1 hour of inactivity
+- Only one active session per project allowed
+
+EXAMPLES:
+- {"project_key": "ent-project-xyz"}
+- {"project_key": "ent-dashboard", "name": "Implementing auth feature"}
+- {"project_key": "ent-api", "name": "Bug fixes", "team_key": "team-backend"}
+
+RETURNS: Session details including session_key and auto-close time.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "project_key": {"type": "string", "description": "REQUIRED: The Project entity key to work on"},
+                "name": {"type": "string", "description": "Optional: Descriptive name for the session"},
+                "team_key": {"type": "string", "description": "Optional: Team scope for the session"}
+            },
+            "required": ["project_key"]
+        }
+    ),
+    types.Tool(
+        name="end_session",
+        description="""End (close) a work session.
+
+USE THIS WHEN: You've finished your focused work and want to close the session.
+
+EXAMPLES:
+- {} → Close active session
+- {"summary": "Completed auth feature implementation"}
+- {"session_key": "sess-xyz", "summary": "Fixed 3 bugs"}
+
+RETURNS: Closed session details including duration.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_key": {"type": "string", "description": "Optional: Specific session to close (defaults to active session)"},
+                "summary": {"type": "string", "description": "Optional: Summary of work done in the session"}
+            }
+        }
+    ),
+    types.Tool(
+        name="extend_session",
+        description="""Extend the auto-close timer for a work session.
+
+USE THIS WHEN: You need more time and want to prevent the session from auto-closing.
+
+EXAMPLES:
+- {} → Extend active session by 1 hour (default)
+- {"hours": 2} → Extend by 2 hours
+- {"session_key": "sess-xyz", "hours": 0.5} → Extend specific session by 30 minutes
+
+RETURNS: Updated session with new auto-close time.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_key": {"type": "string", "description": "Optional: Specific session to extend (defaults to active session)"},
+                "hours": {"type": "number", "description": "Hours to extend (default: 1.0, max: 8.0)", "default": 1.0}
+            }
+        }
+    ),
+]
+
+
+# ============================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================
 
 async def get_active_session(
     arguments: dict,
@@ -308,131 +406,13 @@ async def extend_session(
         return [types.TextContent(type="text", text=f"Error extending session: {str(e)}")]
 
 
-async def record_milestone(
-    arguments: dict,
-    config: Any,
-    session_state: dict,
-) -> list[types.TextContent]:
-    """
-    Record a milestone during a work session.
+# ============================================================
+# TOOL HANDLERS MAPPING
+# ============================================================
 
-    Creates a 'Milestone' entity linked to the current work session.
-    Also updates the session's activity timestamp.
-
-    Args:
-        name: Required - name/description of the milestone
-        status: Optional - milestone status: 'started', 'completed', or 'blocked' (default: 'completed')
-        properties: Optional - additional properties (e.g., blocker reason, files changed)
-        session_key: Optional - specific session (defaults to active session)
-    """
-    name = arguments.get("name")
-    status = arguments.get("status", "completed")
-    properties = arguments.get("properties", {})
-    session_key = arguments.get("session_key")
-
-    if not name:
-        return [types.TextContent(type="text", text="Error: `name` is required for the milestone.")]
-
-    # Validate status
-    valid_statuses = ["started", "completed", "blocked"]
-    if status not in valid_statuses:
-        return [types.TextContent(type="text", text=f"Error: `status` must be one of: {', '.join(valid_statuses)}")]
-
-    # Get agent_id from session state or fall back to config
-    agent_id = session_state.get("agent_id") or getattr(config, "agent_id", None)
-
-    try:
-        # If no session_key provided, get the active session first
-        active_session = None  # Initialize for scope lookup later
-        if not session_key:
-            active_result = await _make_request(config, "GET", "/work-sessions/active", agent_id=agent_id)
-            if active_result.get("success"):
-                active_session = active_result.get("data", {}).get("session")
-                if active_session:
-                    session_key = active_session.get("session_key")
-                else:
-                    return [types.TextContent(type="text", text="No active session. Start a session first with `start_session`.")]
-            else:
-                return [types.TextContent(type="text", text=f"Error finding active session: {active_result.get('msg')}")]
-
-        # Update session activity
-        await _make_request(config, "POST", f"/work-sessions/{session_key}/activity", agent_id=agent_id)
-
-        # Get scope from the active session (need to fetch it if we don't have it)
-        scope_type = None
-        scope_key = None
-        if active_session:
-            # Use team scope if session has a team, otherwise domain scope
-            if active_session.get("team_key"):
-                scope_type = "team"
-                scope_key = active_session.get("team_key")
-            elif active_session.get("domain_key"):
-                scope_type = "domain"
-                scope_key = active_session.get("domain_key")
-
-        # If we didn't have active_session details, fetch the session
-        if not scope_type and session_key:
-            try:
-                session_result = await _make_request(config, "GET", f"/work-sessions/{session_key}", agent_id=agent_id)
-                if session_result.get("success"):
-                    session_data = session_result.get("data", {}).get("session", {})
-                    if session_data.get("team_key"):
-                        scope_type = "team"
-                        scope_key = session_data.get("team_key")
-                    elif session_data.get("domain_key"):
-                        scope_type = "domain"
-                        scope_key = session_data.get("domain_key")
-            except Exception:
-                pass  # Fall back to no scope
-
-        # Create the Milestone entity with proper scope and work_session_key
-        entity_body = {
-            "name": name,
-            "entity_type": "Milestone",
-            "work_session_key": session_key,  # Top-level field, not in properties
-            "properties": {
-                **properties,
-                "status": status,
-            }
-        }
-
-        # Add scope if determined
-        if scope_type and scope_key:
-            entity_body["scope_type"] = scope_type
-            entity_body["scope_key"] = scope_key
-
-        result = await _make_request(config, "POST", "/entities", json=entity_body, agent_id=agent_id)
-
-        if result.get("success"):
-            entity = result.get("data", {}).get("entity", {})
-
-            # Status emoji for visual feedback
-            status_emoji = {"started": "🚀", "completed": "✅", "blocked": "🚫"}.get(status, "📍")
-
-            output = f"## {status_emoji} Milestone Recorded\n\n"
-            output += f"**Name:** {entity.get('name')}\n"
-            output += f"**Status:** {status}\n"
-            output += f"**Entity Key:** `{entity.get('entity_key')}`\n"
-            output += f"**Session:** `{session_key}`\n"
-
-            if properties:
-                output += f"**Properties:** {properties}\n"
-
-            output += "\nSession activity timestamp updated."
-
-            return [types.TextContent(type="text", text=output)]
-        else:
-            return [types.TextContent(type="text", text=f"Error: {result.get('msg', 'Failed to create milestone')}")]
-
-    except Exception as e:
-        return [types.TextContent(type="text", text=f"Error recording milestone: {str(e)}")]
-
-
-# Legacy alias for backward compatibility
-async def record_interaction(
-    arguments: dict,
-    config: Any,
-    session_state: dict,
-) -> list[types.TextContent]:
-    """Legacy alias for record_milestone. Use record_milestone instead."""
-    return await record_milestone(arguments, config, session_state)
+TOOL_HANDLERS = {
+    "get_active_session": get_active_session,
+    "start_session": start_session,
+    "end_session": end_session,
+    "extend_session": extend_session,
+}

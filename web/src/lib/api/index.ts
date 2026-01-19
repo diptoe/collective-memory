@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
@@ -58,6 +58,10 @@ interface WorkSessionResponse { session: WorkSession }
 interface WorkSessionActiveResponse { session: WorkSession | null }
 interface WorkSessionEntitiesResponse { entities: Entity[]; total: number }
 interface WorkSessionMessagesResponse { messages: Message[]; total: number }
+
+// Metrics response types
+interface MetricsResponse { metrics: Metric[]; count: number }
+interface MetricResponse { metric: Metric }
 
 /**
  * API Response type from the backend
@@ -485,5 +489,15 @@ export const api = {
       apiClient.get<WorkSessionEntitiesResponse>(`/work-sessions/${sessionKey}/entities`, { params }),
     getMessages: (sessionKey: string, params?: { limit?: number; offset?: number }) =>
       apiClient.get<WorkSessionMessagesResponse>(`/work-sessions/${sessionKey}/messages`, { params }),
+  },
+
+  // Metrics
+  metrics: {
+    list: (params: { entity_key: string; metric_type?: string; limit?: number; offset?: number }) =>
+      apiClient.get<MetricsResponse>('/metrics', { params }),
+    latest: (params: { entity_key: string; metric_type: string }) =>
+      apiClient.get<MetricResponse>('/metrics/latest', { params }),
+    timeSeries: (params: { entity_key: string; metric_type: string; start_date?: string; end_date?: string }) =>
+      apiClient.get<{ time_series: Metric[]; count: number }>('/metrics/time-series', { params }),
   },
 };

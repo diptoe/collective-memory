@@ -11,6 +11,199 @@ from typing import Any
 from .utils import _make_request
 
 
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+    types.Tool(
+        name="search_entities",
+        description="""Search for entities in the knowledge graph by name or type.
+
+USE THIS WHEN: You need to find existing entities before creating new ones, or explore what's in the knowledge graph.
+
+EXAMPLES:
+- Search by name: {"query": "React"}
+- Search by type: {"entity_type": "Technology"}
+- Combined: {"query": "dashboard", "entity_type": "Project"}
+
+RETURNS: List of matching entities with keys, names, types, and properties.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query - matches entity names (partial match supported)"},
+                "entity_type": {"type": "string", "description": "Filter by type: Person, Project, Technology, Organization, Document, Concept, or any custom type"},
+                "limit": {"type": "integer", "description": "Maximum results to return (default 10)", "default": 10}
+            }
+        }
+    ),
+    types.Tool(
+        name="get_entity",
+        description="""Get detailed information about a specific entity by its key.
+
+USE THIS WHEN: You have an entity_key and need full details including all properties and metadata.
+
+EXAMPLE: {"entity_key": "ent-abc123"}
+
+RETURNS: Complete entity data including name, type, properties, source attribution, and timestamps.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_key": {"type": "string", "description": "The unique entity key (e.g., 'ent-abc123')"}
+            },
+            "required": ["entity_key"]
+        }
+    ),
+    types.Tool(
+        name="create_entity",
+        description="""Create a new entity in the knowledge graph. Your agent ID is automatically recorded as the source.
+
+USE THIS WHEN: You've confirmed an entity doesn't already exist (use search_entities first!) and need to add new knowledge.
+
+COMMON TYPES:
+- Person: Team members, contacts, stakeholders
+- Project: Products, initiatives, applications
+- Technology: Languages, frameworks, tools, libraries
+- Organization: Companies, teams, departments
+- Document: Notes, specs, references
+- Concept: Ideas, patterns, methodologies
+
+SCOPE (visibility):
+- domain: Visible to everyone in the domain (default if no active team)
+- team: Visible only to team members (default when active team is set)
+- user: Private to you only
+
+Use list_my_scopes to see available scopes, set_active_team to change the default.
+
+EXAMPLES:
+- {"name": "React Dashboard", "entity_type": "Project", "properties": {"status": "active"}}
+- {"name": "Sarah Chen", "entity_type": "Person", "scope_type": "team", "scope_key": "team-xyz"}
+- {"name": "My Notes", "entity_type": "Document", "scope_type": "user", "scope_key": "user-abc"}
+
+RETURNS: The created entity with its assigned entity_key and scope.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Entity name - should be clear and unique"},
+                "entity_type": {"type": "string", "description": "Type: Person, Project, Technology, Organization, Document, Concept, or custom"},
+                "properties": {"type": "object", "description": "Additional properties as key-value pairs (flexible schema)"},
+                "scope_type": {"type": "string", "description": "Scope type: 'domain', 'team', or 'user'. If omitted, uses session default."},
+                "scope_key": {"type": "string", "description": "Scope key (team_key or user_key). Required if scope_type is set."}
+            },
+            "required": ["name", "entity_type"]
+        }
+    ),
+    types.Tool(
+        name="update_entity",
+        description="""Update an existing entity's name, type, properties, or scope.
+
+USE THIS WHEN: You need to correct, enrich, or modify existing entity data, or move an entity to a different scope.
+
+EXAMPLES:
+- Update name: {"entity_key": "swift-bold-keen-lion", "name": "React Dashboard v2"}
+- Change type: {"entity_key": "swift-bold-keen-lion", "entity_type": "Application"}
+- Add properties: {"entity_key": "swift-bold-keen-lion", "properties": {"status": "completed"}}
+- Move to team scope: {"entity_key": "swift-bold-keen-lion", "scope_type": "team", "scope_key": "calm-fresh-wild-river"}
+- Move to personal scope: {"entity_key": "swift-bold-keen-lion", "scope_type": "user", "scope_key": "bright-quick-warm-spark"}
+
+NOTE: Properties are merged, not replaced. To remove a property, set it to null.
+SCOPE: Use scope_type and scope_key together to move entity visibility between domain, team, or user.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_key": {"type": "string", "description": "The entity key to update"},
+                "name": {"type": "string", "description": "New name (optional)"},
+                "entity_type": {"type": "string", "description": "New type (optional)"},
+                "properties": {"type": "object", "description": "Properties to add/update (merged with existing)"},
+                "scope_type": {"type": "string", "enum": ["domain", "team", "user"], "description": "New scope type (optional)"},
+                "scope_key": {"type": "string", "description": "New scope key - team_key or user_key (required if scope_type is set)"}
+            },
+            "required": ["entity_key"]
+        }
+    ),
+    types.Tool(
+        name="search_entities_semantic",
+        description="""Semantic search using natural language. Finds entities by meaning, not just keywords.
+
+USE THIS WHEN: Keyword search isn't finding what you need, or you want conceptually related entities.
+
+HOW IT WORKS: Converts your query to a vector embedding and finds entities with similar embeddings.
+
+EXAMPLES:
+- {"query": "tools for building user interfaces"} → finds React, Vue, Angular
+- {"query": "people who work on authentication"} → finds team members related to auth
+- {"query": "frontend frameworks"} → finds UI-related technologies
+
+RETURNS: Entities ranked by semantic similarity with confidence scores.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Natural language description of what you're looking for"},
+                "entity_type": {"type": "string", "description": "Optionally filter results by type"},
+                "limit": {"type": "integer", "description": "Maximum results (default 10)", "default": 10}
+            },
+            "required": ["query"]
+        }
+    ),
+    types.Tool(
+        name="extract_entities_from_text",
+        description="""Extract named entities from text using NER (Named Entity Recognition).
+
+USE THIS WHEN: Processing meeting notes, documentation, or any text that mentions people, companies, or technologies.
+
+EXAMPLES:
+- {"text": "Sarah from Acme Corp discussed the React migration with our team"}
+  → Extracts: Sarah (Person), Acme Corp (Organization), React (Technology)
+
+- {"text": "The new dashboard uses PostgreSQL and Redis", "auto_create": true}
+  → Extracts AND creates entities for PostgreSQL and Redis
+
+RETURNS: List of extracted entities with their types. If auto_create=true, also returns created entity keys.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Text to analyze for entity mentions"},
+                "auto_create": {"type": "boolean", "description": "If true, automatically create entities that don't exist (default false)", "default": False}
+            },
+            "required": ["text"]
+        }
+    ),
+    types.Tool(
+        name="move_entity_scope",
+        description="""Move an entity and its related entities to a different scope. Requires domain_admin or admin role.
+
+USE THIS WHEN: You need to move a project or group of related entities from one scope to another
+(e.g., from domain to team, between teams, or to personal scope).
+
+EXAMPLES:
+- Move to team: {"entity_key": "ent-project", "scope_type": "team", "scope_key": "team-xyz"}
+- Move to domain (public): {"entity_key": "ent-project", "scope_type": "domain", "scope_key": "dom-abc"}
+- Move single entity: {"entity_key": "ent-abc", "scope_type": "team", "scope_key": "team-xyz", "include_related": false}
+
+BEHAVIOR:
+- Recursively updates all connected entities via relationships (unless include_related=false)
+- Only moves entities within your domain
+- Requires domain_admin or admin role
+
+RETURNS: Count and list of updated entities.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_key": {"type": "string", "description": "The entity key to move"},
+                "scope_type": {"type": "string", "enum": ["domain", "team", "user"], "description": "Target scope type"},
+                "scope_key": {"type": "string", "description": "Target scope key (domain_key, team_key, or user_key)"},
+                "include_related": {"type": "boolean", "description": "Include related entities recursively (default true)", "default": True}
+            },
+            "required": ["entity_key", "scope_type", "scope_key"]
+        }
+    ),
+]
+
+
+# ============================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================
+
 async def search_entities(
     arguments: dict,
     config: Any,
@@ -617,3 +810,18 @@ async def move_entity_scope(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error moving entity scope: {str(e)}")]
+
+
+# ============================================================
+# TOOL HANDLERS MAPPING
+# ============================================================
+
+TOOL_HANDLERS = {
+    "search_entities": search_entities,
+    "get_entity": get_entity,
+    "create_entity": create_entity,
+    "update_entity": update_entity,
+    "search_entities_semantic": search_entities_semantic,
+    "extract_entities_from_text": extract_entities_from_text,
+    "move_entity_scope": move_entity_scope,
+}

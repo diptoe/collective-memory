@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Agent, ClientType } from '@/types';
 import { use } from 'react';
+import { cn } from '@/lib/utils';
+import { MilestoneMetrics } from '@/components/milestone-metrics';
 
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -326,6 +328,46 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
               </div>
+
+              {/* Current Milestone */}
+              {agent?.current_milestone_key && (
+                <div className="bg-cm-ivory rounded-xl border border-cm-sand p-6">
+                  <h3 className="text-sm font-medium text-cm-coffee mb-4">Current Milestone</h3>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">
+                        {agent.current_milestone_status === 'started' && '🚀'}
+                        {agent.current_milestone_status === 'completed' && '✅'}
+                        {agent.current_milestone_status === 'blocked' && '🚫'}
+                      </span>
+                      <span className="text-sm font-medium text-cm-charcoal">
+                        {agent.current_milestone_name}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className={cn(
+                        'px-2 py-0.5 text-xs rounded-full',
+                        agent.current_milestone_status === 'started' && 'bg-amber-100 text-amber-800',
+                        agent.current_milestone_status === 'blocked' && 'bg-red-100 text-red-800',
+                        agent.current_milestone_status === 'completed' && 'bg-green-100 text-green-800'
+                      )}>
+                        {agent.current_milestone_status}
+                      </span>
+                    </div>
+
+                    {agent.current_milestone_started_at && (
+                      <div className="text-xs text-cm-coffee">
+                        Started: {new Date(agent.current_milestone_started_at).toLocaleString()}
+                      </div>
+                    )}
+
+                    {/* Milestone metrics */}
+                    <MilestoneMetrics entityKey={agent.current_milestone_key} className="mt-3" />
+                  </div>
+                </div>
+              )}
 
               {/* Metadata */}
               <div className="bg-cm-ivory rounded-xl border border-cm-sand p-6">

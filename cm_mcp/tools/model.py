@@ -11,6 +11,102 @@ from typing import Any
 from .utils import _make_request
 
 
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+    types.Tool(
+        name="list_models",
+        description="""List available AI models in the Collective Memory.
+
+USE THIS WHEN: You want to see what AI models are available (Claude, GPT, Gemini, etc.).
+
+EXAMPLES:
+- {} → All active models
+- {"provider": "anthropic"} → Only Anthropic models
+- {"active_only": false} → Include deprecated models
+
+RETURNS: Models grouped by provider with capabilities and context windows.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "provider": {"type": "string", "description": "Filter by provider: anthropic, openai, google"},
+                "active_only": {"type": "boolean", "description": "Only show active models (default true)", "default": True}
+            }
+        }
+    ),
+    types.Tool(
+        name="list_clients",
+        description="""List available client types and their persona affinities.
+
+USE THIS WHEN: You want to understand the different platforms that connect to Collective Memory
+and which personas work best with each.
+
+Client types: claude-code, claude-desktop, codex, gemini-cli, cursor
+
+RETURNS: Client types with descriptions and suggested personas.""",
+        inputSchema={"type": "object", "properties": {}}
+    ),
+    types.Tool(
+        name="update_focus",
+        description="""Update your current work focus.
+
+USE THIS WHEN: You want to let other collaborators know what you're working on.
+
+EXAMPLES:
+- {"focus": "Implementing authentication module"}
+- {"focus": "Reviewing PR #42"}
+- {"focus": ""} → Clear focus (available for new work)
+
+The focus is visible to other agents in the collaboration.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "focus": {"type": "string", "description": "Description of current work (empty to clear)"}
+            }
+        }
+    ),
+    types.Tool(
+        name="set_focused_mode",
+        description="""Enable or disable focused mode for faster heartbeats.
+
+USE THIS WHEN: You're actively waiting for a response from another agent and want to be notified quickly.
+
+FOCUSED MODE:
+- When ENABLED: Heartbeat interval is 30 seconds (fast polling for messages)
+- When DISABLED: Heartbeat interval is 5 minutes (normal polling)
+- Auto-expires after the specified duration (default 10 minutes)
+
+EXAMPLES:
+- {"enabled": true} → Enable focused mode for 10 minutes (default)
+- {"enabled": true, "duration_minutes": 15} → Enable for 15 minutes
+- {"enabled": false} → Disable focused mode immediately
+
+WORKFLOW:
+1. Send an autonomous task to another agent
+2. Enable focused mode: {"enabled": true}
+3. Agent works, replies when done
+4. You receive the reply quickly (30s polling)
+5. Focused mode auto-expires, or disable manually
+
+RETURNS: Current focused mode status with recommended heartbeat interval.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "enabled": {"type": "boolean", "description": "Enable (true) or disable (false) focused mode"},
+                "duration_minutes": {"type": "integer", "description": "How long focused mode should last (default 10 minutes)", "default": 10}
+            },
+            "required": ["enabled"]
+        }
+    ),
+]
+
+
+# ============================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================
+
 async def list_models(
     arguments: dict,
     config: Any,
@@ -252,3 +348,15 @@ async def set_focused_mode(
             type="text",
             text=f"❌ Error setting focused mode: {str(e)}"
         )]
+
+
+# ============================================================
+# TOOL HANDLERS MAPPING
+# ============================================================
+
+TOOL_HANDLERS = {
+    "list_models": list_models,
+    "list_clients": list_clients,
+    "update_focus": update_focus,
+    "set_focused_mode": set_focused_mode,
+}

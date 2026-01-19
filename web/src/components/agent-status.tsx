@@ -122,6 +122,17 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
             {agent.project_name}
           </span>
         )}
+        {/* Current milestone badge */}
+        {agent.current_milestone_name && (
+          <span className={cn(
+            'px-2 py-0.5 text-xs rounded-full',
+            agent.current_milestone_status === 'started' && 'bg-amber-100 text-amber-800',
+            agent.current_milestone_status === 'blocked' && 'bg-red-100 text-red-800',
+            agent.current_milestone_status === 'completed' && 'bg-green-100 text-green-800'
+          )}>
+            🎯 {agent.current_milestone_name}
+          </span>
+        )}
       </div>
 
       {/* Focus */}

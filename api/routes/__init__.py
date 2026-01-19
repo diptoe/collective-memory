@@ -24,6 +24,7 @@ from api.routes.users import register_user_routes
 from api.routes.domains import register_domain_routes
 from api.routes.teams import register_team_routes
 from api.routes.work_sessions import register_work_session_routes
+from api.routes.metrics import register_metric_routes
 
 
 def register_routes(api: Api):
@@ -47,3 +48,4 @@ def register_routes(api: Api):
     register_domain_routes(api)
     register_team_routes(api)
     register_work_session_routes(api)
+    register_metric_routes(api)

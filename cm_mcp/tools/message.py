@@ -10,6 +10,189 @@ from typing import Any
 from .utils import _make_request
 
 
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+    types.Tool(
+        name="send_message",
+        description="""Send a message to other agents or human coordinators via the message queue.
+
+USE THIS WHEN: You want to communicate with other agents or humans. Messages appear in the Messages UI, NOT the Chat UI.
+
+Use this for:
+- Status updates: "I've completed the API refactoring"
+- Questions: "Which database should I use for caching?"
+- Handoffs: "Frontend is ready, backend team please review"
+- Announcements: "New feature deployed to staging"
+- Replies: Reply to a specific message to create a threaded conversation
+- Autonomous tasks: Request another agent to work on something and reply when done
+
+## AUTONOMOUS COLLABORATION WORKFLOW
+
+The `autonomous` flag enables structured agent-to-agent collaboration:
+
+1. **Request work**: Set `autonomous=true` when asking another agent to work on a task
+   - "Please implement X and reply when done"
+   - The receiver will see this prominently highlighted as requiring their attention
+
+2. **Acknowledge task**: When you RECEIVE an autonomous task, IMMEDIATELY reply with:
+   - Use `message_type: "acknowledged"` to signal you've received the task
+   - Include brief plan and ETA in the content
+   - Example: `{"reply_to": "msg-abc", "message_type": "acknowledged", "content": "Starting auth API with JWT. ETA ~15 min."}`
+
+3. **Signal waiting**: When you need to ask your operator for console input:
+   - Use `message_type: "waiting"` to broadcast that you're paused
+   - This lets other agents/observers know you're waiting for LOCAL console input (not a message reply)
+   - Include WHY you're waiting and WHAT you're asking your operator
+   - Example: `{"reply_to": "msg-abc", "message_type": "waiting", "content": "Asking operator: OAuth or JWT? (waiting for console input)"}`
+
+4. **Signal resumed**: When your operator provides console input and you continue:
+   - Use `message_type: "resumed"` to broadcast you're back to work
+   - Include WHAT your operator decided/provided
+   - Example: `{"reply_to": "msg-abc", "message_type": "resumed", "content": "Operator chose JWT with refresh tokens. Continuing..."}`
+
+5. **Complete work**: Reply with `autonomous=false` (default) when you believe the task is done
+   - "I've implemented X, here's what I did..."
+   - This signals you believe the task is complete and are handing back control
+
+6. **Operator confirmation**: Human operators can "Confirm" completion in the Messages UI
+   - Shows a green "Confirmed" badge on the message
+   - Operators can also "Undo" confirmation if more work is needed
+   - This provides a human-in-the-loop verification step
+
+5. **Continue collaboration**: Original sender can send a NEW message with `autonomous=true` if more work needed
+   - "Thanks, but we also need Y. Please continue and reply when done."
+   - This keeps the collaboration loop going
+
+This creates a natural back-and-forth where agents can work independently but stay coordinated, with optional human oversight.
+
+EXAMPLES:
+- {"channel": "general", "content": "Starting work on auth module", "message_type": "status"}
+- {"channel": "backend", "content": "Need help with database schema", "message_type": "question", "priority": "high"}
+- {"to_agent": "claude-backend", "content": "Please implement the auth API and reply when done", "autonomous": true} → Request autonomous work
+- {"content": "Acknowledged! I'll implement auth with JWT tokens. ETA ~15 min.", "reply_to": "msg-abc123"} → Acknowledge immediately
+- {"content": "Done! I implemented the auth API with JWT tokens.", "reply_to": "msg-abc123"} → Reply when complete (autonomous=false by default)
+- {"to_agent": "claude-backend", "content": "Great, but we also need refresh tokens. Please add that.", "autonomous": true} → Continue collaboration
+
+RETURNS: Confirmation with message key.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "description": "Channel name: general, backend, frontend, urgent, or custom", "default": "general"},
+                "content": {"type": "string", "description": "Message content"},
+                "message_type": {"type": "string", "description": "Type: status, announcement, request, task, message, acknowledged (task received), waiting (blocked/need input), resumed (continuing after input)", "default": "status"},
+                "to_agent": {"type": "string", "description": "Optional: specific agent ID (null for broadcast)"},
+                "reply_to": {"type": "string", "description": "Optional: message_key to reply to (creates threaded conversation)"},
+                "priority": {"type": "string", "description": "Priority: high, normal, low", "default": "normal"},
+                "autonomous": {"type": "boolean", "description": "Set true to request autonomous work (receiver works independently and replies when done). Set false (default) when replying to signal task completion. See AUTONOMOUS COLLABORATION WORKFLOW above.", "default": False},
+                "entity_keys": {"type": "array", "items": {"type": "string"}, "description": "Optional: entity keys to link this message to in the knowledge graph. Replies auto-inherit parent's entity_keys."},
+                "team_key": {"type": "string", "description": "Optional: team key to scope message to a specific team (null = domain-wide)"}
+            },
+            "required": ["content"]
+        }
+    ),
+    types.Tool(
+        name="get_messages",
+        description="""Get messages from the message queue.
+
+USE THIS WHEN: You want to check for messages from other agents or human coordinators.
+
+EXAMPLES:
+- {} → Get all unread messages
+- {"channel": "backend"} → Messages from backend channel
+- {"unread_only": false, "limit": 50} → Get recent messages including read ones
+- {"since": "2025-01-06T10:00:00Z"} → Messages after a specific time
+
+RETURNS: List of messages with sender, content, type, and read status.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "description": "Filter by channel (optional)"},
+                "unread_only": {"type": "boolean", "description": "Only unread messages", "default": True},
+                "limit": {"type": "integer", "description": "Maximum messages to retrieve", "default": 20},
+                "since": {"type": "string", "description": "Only return messages created after this ISO8601 timestamp (optional)"},
+                "team_key": {"type": "string", "description": "Filter to a specific team's messages (optional, uses active team if set)"}
+            }
+        }
+    ),
+    types.Tool(
+        name="mark_message_read",
+        description="""Mark a message as read by you.
+
+Uses per-agent read tracking - marks the message as read by YOU specifically.
+Other agents will still see the message as unread until they mark it.
+
+USE THIS WHEN: You've processed a message and want to mark it as handled.
+
+EXAMPLE: {"message_key": "msg-abc123"}
+
+RETURNS: Confirmation.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "message_key": {"type": "string", "description": "The message key to mark as read"}
+            },
+            "required": ["message_key"]
+        }
+    ),
+    types.Tool(
+        name="mark_all_messages_read",
+        description="""Mark all unread messages as read for you.
+
+Uses per-agent read tracking - marks messages as read by YOU specifically.
+Other agents will still see the messages as unread until they mark them.
+
+USE THIS WHEN: You want to clear your unread messages.
+
+EXAMPLES:
+- {} → Mark all your unread messages as read
+- {"channel": "backend"} → Mark only backend channel messages as read
+
+RETURNS: Number of messages marked as read.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "description": "Only mark messages in this channel as read (optional)"},
+                "team_key": {"type": "string", "description": "Only mark messages in this team as read (optional)"}
+            }
+        }
+    ),
+    types.Tool(
+        name="link_message_entities",
+        description="""Link entities to an existing message.
+
+USE THIS WHEN: You want to connect a message to relevant entities in the knowledge graph after it was created.
+
+MODES:
+- add (default): Add entities to existing links
+- replace: Replace all entity links with the new ones
+- remove: Remove specified entities from links
+
+EXAMPLES:
+- {"message_key": "msg-abc123", "entity_keys": ["ent-xyz"]} → Add entity to message
+- {"message_key": "msg-abc123", "entity_keys": ["ent-a", "ent-b"], "mode": "replace"} → Replace all links
+- {"message_key": "msg-abc123", "entity_keys": ["ent-old"], "mode": "remove"} → Remove entity link
+
+RETURNS: Updated message with new entity links.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "message_key": {"type": "string", "description": "The message key to update"},
+                "entity_keys": {"type": "array", "items": {"type": "string"}, "description": "Entity keys to link/unlink"},
+                "mode": {"type": "string", "description": "Link mode: add (default), replace, or remove", "default": "add"}
+            },
+            "required": ["message_key", "entity_keys"]
+        }
+    ),
+]
+
+
+# ============================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================
+
 async def send_message(
     arguments: dict,
     config: Any,
@@ -453,3 +636,16 @@ async def mark_all_messages_read(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error marking messages read: {str(e)}")]
+
+
+# ============================================================
+# TOOL HANDLERS MAPPING
+# ============================================================
+
+TOOL_HANDLERS = {
+    "send_message": send_message,
+    "get_messages": get_messages,
+    "mark_message_read": mark_message_read,
+    "mark_all_messages_read": mark_all_messages_read,
+    "link_message_entities": link_message_entities,
+}

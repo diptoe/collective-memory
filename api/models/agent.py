@@ -41,6 +41,12 @@ class Agent(BaseModel):
     project_key = Column(String(36), nullable=True, index=True)
     project_name = Column(String(200), nullable=True)
 
+    # Current milestone tracking (denormalized for display and reminders)
+    current_milestone_key = Column(String(36), nullable=True, index=True)
+    current_milestone_name = Column(String(500), nullable=True)
+    current_milestone_status = Column(String(50), nullable=True)  # started, completed, blocked
+    current_milestone_started_at = Column(DateTime(timezone=True), nullable=True)
+
     # Client type (claude-code, claude-desktop, codex, gemini-cli)
     client = Column(String(50), nullable=True, index=True)
 
@@ -71,7 +77,9 @@ class Agent(BaseModel):
         # Team and user display info
         'team_key', 'team_name', 'user_name', 'user_initials',
         # Project context
-        'project_key', 'project_name'
+        'project_key', 'project_name',
+        # Current milestone tracking
+        'current_milestone_key', 'current_milestone_name', 'current_milestone_status', 'current_milestone_started_at'
     ]
     _readonly_fields = ['agent_key', 'created_at']
 
@@ -80,7 +88,7 @@ class Agent(BaseModel):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 5  # Bumped for team_key, user_name, user_initials, project_key fields
+        return 6  # Added current_milestone_* fields for milestone tracking
 
     @classmethod
     def migrate(cls) -> bool:
@@ -207,6 +215,36 @@ class Agent(BaseModel):
         self.last_heartbeat = get_now()
         return self.save()
 
+    def set_current_milestone(self, milestone_key: str, milestone_name: str, milestone_status: str) -> bool:
+        """
+        Set the agent's current milestone (denormalized for display and reminders).
+
+        Args:
+            milestone_key: Entity key of the milestone
+            milestone_name: Display name of the milestone
+            milestone_status: Status: 'started', 'completed', or 'blocked'
+        """
+        self.current_milestone_key = milestone_key
+        self.current_milestone_name = milestone_name
+        self.current_milestone_status = milestone_status
+        self.current_milestone_started_at = get_now() if milestone_status == 'started' else None
+        self.last_heartbeat = get_now()
+        return self.save()
+
+    def clear_current_milestone(self) -> bool:
+        """Clear the agent's current milestone (when completed or cancelled)."""
+        self.current_milestone_key = None
+        self.current_milestone_name = None
+        self.current_milestone_status = None
+        self.current_milestone_started_at = None
+        self.last_heartbeat = get_now()
+        return self.save()
+
+    @property
+    def has_active_milestone(self) -> bool:
+        """Check if agent has an active (started) milestone."""
+        return self.current_milestone_key is not None and self.current_milestone_status == 'started'
+
     @property
     def is_focused(self) -> bool:
         """Check if agent is in focused mode (and mode hasn't expired)."""
@@ -235,6 +273,7 @@ class Agent(BaseModel):
         if include_active_status:
             result['is_active'] = self.is_active
             result['is_focused'] = self.is_focused
+            result['has_active_milestone'] = self.has_active_milestone
 
         # Expand model and persona to full objects for UI
         if expand_relations:

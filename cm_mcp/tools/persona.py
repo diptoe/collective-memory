@@ -11,6 +11,53 @@ from typing import Any
 from .utils import _make_request
 
 
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+    types.Tool(
+        name="list_personas",
+        description="""List all available AI personas in the Collective Memory.
+
+USE THIS WHEN: You want to see what AI personas are available and their specializations.
+
+PERSONAS are specialized AI roles with distinct:
+- System prompts and personalities
+- Model configurations
+- Domain expertise
+
+RETURNS: All personas with their names, roles, models, and capabilities.""",
+        inputSchema={"type": "object", "properties": {}}
+    ),
+    types.Tool(
+        name="chat_with_persona",
+        description="""Send a message to a specific AI persona and get a response.
+
+USE THIS WHEN: You want to consult with a specialized AI persona (e.g., ask the architect about system design).
+
+EXAMPLES:
+- {"persona_key": "per-architect", "message": "What's the best approach for scaling our auth system?"}
+- {"persona_key": "per-backend", "message": "Review this API design", "conversation_key": "conv-123"}
+
+RETURNS: The persona's response and conversation context.""",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "persona_key": {"type": "string", "description": "The persona to chat with (from list_personas)"},
+                "message": {"type": "string", "description": "Your message to the persona"},
+                "conversation_key": {"type": "string", "description": "Continue an existing conversation (omit to start new)"}
+            },
+            "required": ["persona_key", "message"]
+        }
+    ),
+]
+
+
+# ============================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================
+
 async def list_personas(
     arguments: dict,
     config: Any,
@@ -119,3 +166,13 @@ async def chat_with_persona(
 
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error chatting with persona: {str(e)}")]
+
+
+# ============================================================
+# TOOL HANDLERS MAPPING
+# ============================================================
+
+TOOL_HANDLERS = {
+    "list_personas": list_personas,
+    "chat_with_persona": chat_with_persona,
+}
