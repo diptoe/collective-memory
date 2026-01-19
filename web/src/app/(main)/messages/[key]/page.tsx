@@ -550,9 +550,9 @@ export default function MessageDetailPage() {
             Read by {message.read_count || message.readers.length} agent{(message.read_count || message.readers.length) !== 1 ? 's' : ''}
           </h3>
           <div className="flex flex-wrap gap-2">
-            {message.readers.map((reader) => (
+            {message.readers.map((reader, index) => (
               <div
-                key={reader.agent_id}
+                key={`${reader.agent_id}-${index}`}
                 className="px-3 py-1.5 bg-cm-sand/50 rounded-lg text-sm flex items-center gap-2"
               >
                 <span className="text-cm-charcoal">{reader.agent_id}</span>
