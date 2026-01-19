@@ -6,6 +6,7 @@ MCP tools for recording milestones during work sessions - progress tracking with
 
 import mcp.types as types
 from typing import Any
+from datetime import datetime, timezone
 
 from .utils import _make_request
 
@@ -345,10 +346,17 @@ async def record_milestone(
 
         # Create the Milestone entity with proper scope and work_session_key
         # Build properties with narrative fields
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+
         milestone_properties = {
             **properties,
             "status": status,
         }
+
+        # Add agent_id for tracking (uses agent_id not agent_key for flexibility)
+        if agent_id:
+            milestone_properties["agent_id"] = agent_id
 
         # Add narrative fields if provided (markdown supported)
         if goal:
@@ -357,6 +365,25 @@ async def record_milestone(
             milestone_properties["outcome"] = outcome
         if summary:
             milestone_properties["summary"] = summary
+
+        # Time tracking in properties
+        if status == "started":
+            # Record start time
+            milestone_properties["started_at"] = now_iso
+        elif status in ("completed", "blocked"):
+            # Record completion time
+            milestone_properties["completed_at"] = now_iso
+
+            # Try to get started_at from agent's current milestone for duration calculation
+            current_milestone_started_at = session_state.get("current_milestone_started_at")
+            if current_milestone_started_at:
+                milestone_properties["started_at"] = current_milestone_started_at
+                try:
+                    started_dt = datetime.fromisoformat(current_milestone_started_at.replace('Z', '+00:00'))
+                    duration_seconds = int((now - started_dt).total_seconds())
+                    milestone_properties["duration_seconds"] = duration_seconds
+                except Exception:
+                    pass  # If parsing fails, skip duration
 
         entity_body = {
             "name": name,
@@ -386,8 +413,12 @@ async def record_milestone(
                 session_state["current_milestone"] = {
                     "key": entity_key,
                     "name": name,
-                    "status": status
+                    "status": status,
+                    "started_at": now_iso
                 }
+
+                # Store started_at for duration calculation when milestone completes
+                session_state["current_milestone_started_at"] = now_iso
 
                 # Update agent's current milestone via API
                 if agent_id:
@@ -469,6 +500,7 @@ async def record_milestone(
 
                 # Clear current milestone from session_state
                 session_state["current_milestone"] = None
+                session_state["current_milestone_started_at"] = None
 
                 # Reset milestone start count
                 session_state["milestone_start_tool_count"] = 0

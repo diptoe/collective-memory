@@ -38,6 +38,7 @@ def register_work_session_routes(api: Api):
     session_model = ns.model('WorkSession', {
         'session_key': fields.String(readonly=True, description='Unique session identifier'),
         'user_key': fields.String(description='User who owns the session'),
+        'agent_id': fields.String(description='Agent ID that started the session (optional)'),
         'project_key': fields.String(description='Project entity key'),
         'team_key': fields.String(description='Team scope (optional)'),
         'name': fields.String(description='Session name'),
@@ -57,6 +58,7 @@ def register_work_session_routes(api: Api):
         'project_key': fields.String(required=True, description='Project entity key (required)'),
         'name': fields.String(description='Session name (optional)'),
         'team_key': fields.String(description='Team scope (optional)'),
+        'agent_id': fields.String(description='Agent ID starting the session (optional, for MCP)'),
     })
 
     update_session_model = ns.model('UpdateWorkSessionRequest', {
@@ -161,6 +163,7 @@ def register_work_session_routes(api: Api):
                     team_key=data.get('team_key'),
                     domain_key=user.domain_key,
                     name=data.get('name'),
+                    agent_id=data.get('agent_id'),  # Track which agent started the session
                     status='active'
                 )
                 session.save()

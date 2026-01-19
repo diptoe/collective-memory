@@ -440,6 +440,19 @@ export interface Metric {
   created_at: string;
 }
 
+// Milestone properties (stored in Entity.properties for Milestone entities)
+export interface MilestoneProperties {
+  status: 'started' | 'completed' | 'blocked';
+  goal?: string;
+  outcome?: string;
+  summary?: string;
+  agent_id?: string;  // Agent that recorded the milestone (stable identifier)
+  // Time tracking
+  started_at?: string;    // ISO timestamp when milestone started
+  completed_at?: string;  // ISO timestamp when milestone completed/blocked
+  duration_seconds?: number;  // Calculated duration (completed_at - started_at)
+}
+
 // Common metric type constants for milestones
 export const MilestoneMetricTypes = {
   // Auto-capture metrics
@@ -507,6 +520,7 @@ export interface WorkSession {
   project_key: string;
   team_key?: string;
   domain_key?: string;
+  agent_id?: string;  // Agent that started the session (uses agent_id for stability across agent recreation)
   name?: string;
   status: WorkSessionStatus;
   started_at: string;

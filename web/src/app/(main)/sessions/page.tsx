@@ -14,6 +14,15 @@ const STATUS_COLORS = {
   expired: 'bg-amber-100 text-amber-800',
 };
 
+// Format duration in seconds to human-readable string
+const formatDuration = (seconds: number): string => {
+  if (seconds < 60) return `${seconds}s`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+};
+
 export default function SessionsPage() {
   const { user } = useAuthStore();
   const [sessions, setSessions] = useState<WorkSession[]>([]);
@@ -187,20 +196,44 @@ export default function SessionsPage() {
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
                 <span className="font-medium text-green-800">Active Session</span>
+                <code className="text-xs font-mono text-green-600/70 bg-green-100 px-1.5 py-0.5 rounded">
+                  {activeSession.session_key}
+                </code>
+                <button
+                  onClick={() => navigator.clipboard.writeText(activeSession.session_key)}
+                  className="p-1 text-green-500 hover:text-green-700 transition-colors"
+                  title="Copy session key"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
               </div>
               <p className="text-sm text-green-700 mt-1">
                 {activeSession.name || 'Unnamed session'} - Project: {activeSession.project?.name || activeSession.project_key}
+                {activeSession.agent_id && (
+                  <span className="ml-2 font-mono text-xs text-green-600">
+                    (by {activeSession.agent_id})
+                  </span>
+                )}
               </p>
-              {activeSession.time_remaining_seconds !== undefined && (
-                <p className={cn(
-                  'text-sm mt-1',
-                  activeSession.time_remaining_seconds < 600
-                    ? 'text-amber-600 font-medium'
-                    : 'text-green-600'
-                )}>
-                  Expires in {formatTimeRemaining(activeSession.time_remaining_seconds)}
-                </p>
-              )}
+              <div className="flex items-center gap-4 text-sm mt-1">
+                <span className="text-green-600">
+                  Started: {new Date(activeSession.started_at).toLocaleString()}
+                </span>
+                <span className="text-green-600">
+                  Duration: {formatDuration(Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000))}
+                </span>
+                {activeSession.time_remaining_seconds !== undefined && (
+                  <span className={cn(
+                    activeSession.time_remaining_seconds < 600
+                      ? 'text-amber-600 font-medium'
+                      : 'text-green-600'
+                  )}>
+                    Expires in {formatTimeRemaining(activeSession.time_remaining_seconds)}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -451,15 +484,43 @@ function SessionCard({
                 </span>
               )}
             </div>
+            <div className="flex items-center gap-1 mb-2">
+              <code className="text-xs font-mono text-cm-coffee/70 bg-cm-sand/30 px-1.5 py-0.5 rounded">
+                {session.session_key}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(session.session_key);
+                }}
+                className="p-1 text-cm-coffee/50 hover:text-cm-terracotta transition-colors"
+                title="Copy session key"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
 
             <div className="text-sm text-cm-coffee space-y-1">
               <p>
                 <span className="text-cm-charcoal/70">Project:</span>{' '}
                 {session.project?.name || session.project_key}
               </p>
+              {session.agent_id && (
+                <p>
+                  <span className="text-cm-charcoal/70">Started by:</span>{' '}
+                  <span className="font-mono text-xs bg-cm-sand/50 px-1 py-0.5 rounded">{session.agent_id}</span>
+                </p>
+              )}
               <p>
                 <span className="text-cm-charcoal/70">Started:</span>{' '}
                 {formatDate(session.started_at)}
+                {' · '}
+                <span className="text-cm-charcoal/70">Duration:</span>{' '}
+                {session.ended_at
+                  ? formatDuration(Math.floor((new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000))
+                  : formatDuration(Math.floor((Date.now() - new Date(session.started_at).getTime()) / 1000))
+                }
               </p>
               {session.ended_at && (
                 <p>
@@ -569,9 +630,19 @@ function SessionCard({
                                     {entity.properties.status}
                                   </span>
                                 )}
+                                {typeof entity.properties?.duration_seconds === 'number' && (
+                                  <span className="px-1.5 py-0.5 text-xs bg-cm-sand rounded text-cm-charcoal">
+                                    {formatDuration(entity.properties.duration_seconds)}
+                                  </span>
+                                )}
                                 <span className="text-xs text-cm-coffee">
                                   {new Date(entity.created_at).toLocaleTimeString()}
                                 </span>
+                                {typeof entity.properties?.agent_id === 'string' && (
+                                  <span className="text-xs text-cm-coffee/70 font-mono">
+                                    by {entity.properties.agent_id}
+                                  </span>
+                                )}
                               </div>
 
                               {/* Narrative fields - goal, outcome, summary */}

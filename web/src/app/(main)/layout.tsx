@@ -93,7 +93,7 @@ export default function MainLayout({
         </div>
 
         <div className="flex-1 py-4 overflow-y-auto">
-          <NavLink href="/" icon="home" active={pathname === '/'}>Start</NavLink>
+          <NavLink href="/" icon="start" active={pathname === '/'}>Start</NavLink>
           <NavLink href="/activity" icon="activity" active={pathname.startsWith('/activity')}>Activity</NavLink>
           <NavLink href="/chat" icon="message-circle" active={pathname.startsWith('/chat')}>Chat</NavLink>
           <NavLink href="/personas" icon="users" active={pathname.startsWith('/personas')}>Personas</NavLink>
@@ -199,7 +199,7 @@ function NavLink({
 
 function NavIcon({ name }: { name: string }) {
   const icons: Record<string, string> = {
-    'home': '🏠',
+    'start': '🚀',
     'activity': '📈',
     'message-circle': '💬',
     'users': '👥',

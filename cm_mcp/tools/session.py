@@ -276,6 +276,9 @@ async def start_session(
             body["name"] = name
         if team_key:
             body["team_key"] = team_key
+        # Include agent_id so the session tracks which agent started it
+        if agent_id:
+            body["agent_id"] = agent_id
 
         result = await _make_request(config, "POST", "/work-sessions", json=body, agent_id=agent_id)
 

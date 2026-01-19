@@ -21,8 +21,15 @@ class WorkSession(BaseModel):
     """
     __tablename__ = 'work_sessions'
 
-    _schema_version = 1
+    _schema_version = 2  # Bumped for agent_id column
     _readonly_fields = ['session_key', 'created_at', 'started_at']
+
+    # Schema updates for auto-migration
+    __schema_updates__ = {
+        2: [
+            ("agent_id", Column(String(100), nullable=True, index=True)),
+        ]
+    }
 
     # Primary key
     session_key = Column(String(64), primary_key=True, default=get_key)
@@ -32,6 +39,10 @@ class WorkSession(BaseModel):
     project_key = Column(String(64), nullable=False, index=True)  # Project entity key
     team_key = Column(String(64), nullable=True, index=True)
     domain_key = Column(String(64), nullable=True, index=True)
+
+    # Agent that started/owns the session (nullable for human-initiated sessions)
+    # Uses agent_id (not agent_key) so records remain meaningful even if agent is deleted/recreated
+    agent_id = Column(String(100), nullable=True, index=True)
 
     # Session details
     name = Column(String(255), nullable=True)
@@ -186,6 +197,7 @@ class WorkSession(BaseModel):
         result = {
             'session_key': self.session_key,
             'user_key': self.user_key,
+            'agent_id': self.agent_id,
             'project_key': self.project_key,
             'team_key': self.team_key,
             'domain_key': self.domain_key,
