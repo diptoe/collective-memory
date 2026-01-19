@@ -165,6 +165,8 @@ async def get_active_session(
             session = result.get("data", {}).get("session")
 
             if not session:
+                # Clear active session from state
+                session_state["active_session_key"] = None
                 output = "## No Active Work Session\n\n"
                 output += "You don't have an active work session"
                 if project_key:
@@ -172,6 +174,9 @@ async def get_active_session(
                 output += ".\n\n"
                 output += "Use `start_session` to begin a new work session."
                 return [types.TextContent(type="text", text=output)]
+
+            # Track active session in state for automatic activity updates
+            session_state["active_session_key"] = session.get("session_key")
 
             # Fetch session stats (milestone count, etc.)
             session_key = session.get('session_key')
@@ -285,6 +290,10 @@ async def start_session(
         if result.get("success"):
             session = result.get("data", {}).get("session", {})
 
+            # Track active session in state for automatic activity updates
+            session_state["active_session_key"] = session.get("session_key")
+            session_state["last_session_activity_update"] = None  # Reset timer
+
             output = "## Work Session Started\n\n"
             output += f"**Session Key:** `{session.get('session_key')}`\n"
             if session.get('name'):
@@ -391,6 +400,10 @@ async def end_session(
 
         if result.get("success"):
             session = result.get("data", {}).get("session", {})
+
+            # Clear active session from state
+            session_state["active_session_key"] = None
+            session_state["last_session_activity_update"] = None
 
             output = "## Work Session Closed\n\n"
             output += f"**Session:** `{session.get('session_key')}`\n"

@@ -889,6 +889,9 @@ async def identify(
                     active_work_session = work_session_result.get("data", {}).get("session")
                     if active_work_session:
                         session_state["active_work_session"] = active_work_session
+                        # Track active session key for automatic activity updates
+                        session_state["active_session_key"] = active_work_session.get("session_key")
+                        session_state["last_session_activity_update"] = None  # Will update on next tool call
             except Exception:
                 pass  # Continue without work session info
 

@@ -217,6 +217,9 @@ _session_state = {
     # Tool call counting for milestone metrics
     "tool_call_count": 0,               # Total tool calls this session
     "milestone_start_tool_count": 0,    # Tool count when milestone started
+    # Work session activity tracking
+    "active_session_key": None,         # Current active work session key
+    "last_session_activity_update": None,  # Timestamp of last activity update
 }
 
 
@@ -265,6 +268,14 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             unread_count, autonomous_count = await send_heartbeat()
         except Exception:
             pass  # Don't fail tool call if heartbeat fails
+
+    # Update work session activity periodically to prevent auto-close
+    # This slides the session expiration whenever we're actively using tools
+    if _session_state.get("registered") and _session_state.get("active_session_key"):
+        try:
+            await update_session_activity()
+        except Exception:
+            pass  # Don't fail tool call if session update fails
 
     # Helper to append unread/autonomous notice to results with message preview
     async def maybe_append_unread_notice(result: list[types.TextContent]) -> list[types.TextContent]:
@@ -560,6 +571,55 @@ HEARTBEAT_INTERVAL = 300
 
 # Flag to control heartbeat task
 _heartbeat_running = False
+
+
+# Session activity update interval (10 minutes)
+SESSION_ACTIVITY_INTERVAL = 600
+
+
+async def update_session_activity() -> bool:
+    """Update work session activity to prevent auto-close.
+
+    Called periodically during tool usage to slide the session expiration.
+    Returns True if update was sent, False otherwise.
+    """
+    import httpx
+    from datetime import datetime, timezone
+
+    session_key = _session_state.get("active_session_key")
+    if not session_key:
+        return False
+
+    # Check if enough time has passed since last update
+    last_update = _session_state.get("last_session_activity_update")
+    now = datetime.now(timezone.utc)
+
+    if last_update:
+        elapsed = (now - last_update).total_seconds()
+        if elapsed < SESSION_ACTIVITY_INTERVAL:
+            return False  # Not enough time passed
+
+    try:
+        async with httpx.AsyncClient(timeout=config.timeout) as client:
+            response = await client.post(
+                f"{config.api_endpoint}/work-sessions/{session_key}/activity"
+            )
+            if response.status_code == 200:
+                _session_state["last_session_activity_update"] = now
+                if config.debug:
+                    print(f"  Session activity updated for {session_key}", file=sys.stderr)
+                return True
+            else:
+                # Session might have been closed/expired
+                if response.status_code == 404 or response.status_code == 400:
+                    _session_state["active_session_key"] = None
+                if config.debug:
+                    print(f"  Session activity update failed: {response.status_code}", file=sys.stderr)
+                return False
+    except Exception as e:
+        if config.debug:
+            print(f"  Session activity update error: {e}", file=sys.stderr)
+        return False
 
 
 async def send_heartbeat() -> tuple[int, int]:
