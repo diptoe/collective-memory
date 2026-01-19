@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Entity, Scope } from '@/types';
 import { EntityCard } from '@/components/entity-card';
+import { KnowledgeNav } from '@/components/knowledge';
 import { cn } from '@/lib/utils';
 import { TYPE_COLORS } from '@/lib/graph/layout';
 
@@ -193,6 +194,7 @@ function EntitiesContent() {
             >
               Browse All
             </Link>
+            <KnowledgeNav currentPage="entities" />
           </div>
         </div>
 
@@ -289,23 +291,8 @@ function EntitiesContent() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Link
-              href="/entities"
-              className="text-cm-coffee hover:text-cm-charcoal transition-colors"
-            >
-              Entities
-            </Link>
-            <span className="text-cm-coffee/50">/</span>
-            <span
-              className="font-medium"
-              style={{ color: browseAll ? TYPE_COLORS.Default : (TYPE_COLORS[filterType!] || TYPE_COLORS.Default) }}
-            >
-              {displayType}
-            </span>
-          </div>
           <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
             {displayType}
           </h1>
@@ -313,23 +300,23 @@ function EntitiesContent() {
             {filteredEntities.length} {filteredEntities.length === 1 ? 'entity' : 'entities'}
           </p>
         </div>
-        {!browseAll && (
-          <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors">
-            + New {filterType}
-          </button>
-        )}
-      </div>
-
-      {/* Search and Scope Filter */}
-      <div className="mb-6 flex items-center gap-4">
-        <input
-          type="text"
-          placeholder={searchPlaceholder}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 max-w-md px-4 py-2 bg-cm-cream border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta text-cm-charcoal"
-        />
-        <ScopeFilter />
+        <div className="flex items-center gap-3">
+          {/* Search box */}
+          <input
+            type="text"
+            placeholder={searchPlaceholder}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-64 px-4 py-2 bg-cm-cream border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta text-cm-charcoal text-sm"
+          />
+          <ScopeFilter />
+          {!browseAll && (
+            <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors text-sm">
+              + New {filterType}
+            </button>
+          )}
+          <KnowledgeNav currentPage="entities" />
+        </div>
       </div>
 
       {/* Entity grid */}

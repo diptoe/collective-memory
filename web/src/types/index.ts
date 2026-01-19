@@ -457,6 +457,46 @@ export const MilestoneMetricTypes = {
   COMPLEXITY_RATING: 'milestone_complexity_rating',
 } as const;
 
+// Knowledge Stats types (scope-aggregated overview)
+export interface ScopeStats {
+  scope_type: ScopeType;
+  scope_key: string;
+  name: string;
+  entity_count: number;
+  entity_types: Record<string, number>;
+  relationship_count: number;
+}
+
+export interface CrossScopeRelationship {
+  from_scope: {
+    scope_type: ScopeType;
+    scope_key: string;
+    name?: string;
+  };
+  to_scope: {
+    scope_type: ScopeType;
+    scope_key: string;
+    name?: string;
+  };
+  count: number;
+}
+
+export interface KnowledgeStatsData {
+  scopes: ScopeStats[];
+  cross_scope_relationships: CrossScopeRelationship[];
+  totals: {
+    entities: number;
+    relationships: number;
+    scopes: number;
+  };
+}
+
+export interface KnowledgeDomain {
+  domain_key: string;
+  name: string;
+  slug: string;
+}
+
 // Work Session types (focused work periods on projects)
 export type WorkSessionStatus = 'active' | 'closed' | 'expired';
 export type WorkSessionClosedBy = 'user' | 'agent' | 'system' | null;

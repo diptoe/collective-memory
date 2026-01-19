@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric, KnowledgeStatsData, KnowledgeDomain } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
@@ -62,6 +62,10 @@ interface WorkSessionMessagesResponse { messages: Message[]; total: number }
 // Metrics response types
 interface MetricsResponse { metrics: Metric[]; count: number }
 interface MetricResponse { metric: Metric }
+
+// Knowledge response types
+interface KnowledgeStatsResponse extends KnowledgeStatsData {}
+interface KnowledgeDomainsResponse { domains: KnowledgeDomain[] }
 
 /**
  * API Response type from the backend
@@ -499,5 +503,13 @@ export const api = {
       apiClient.get<MetricResponse>('/metrics/latest', { params }),
     timeSeries: (params: { entity_key: string; metric_type: string; start_date?: string; end_date?: string }) =>
       apiClient.get<{ time_series: Metric[]; count: number }>('/metrics/time-series', { params }),
+  },
+
+  // Knowledge
+  knowledge: {
+    stats: (params?: { domain_key?: string }) =>
+      apiClient.get<KnowledgeStatsResponse>('/knowledge/stats', { params }),
+    domains: () =>
+      apiClient.get<KnowledgeDomainsResponse>('/knowledge/domains'),
   },
 };

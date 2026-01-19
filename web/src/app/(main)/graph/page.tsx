@@ -6,6 +6,7 @@ import { X, Search, Focus, ChevronDown } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Entity, Relationship, Scope } from '@/types';
 import { KnowledgeGraph } from '@/components/graph';
+import { KnowledgeNav } from '@/components/knowledge';
 import { cn } from '@/lib/utils';
 
 // Entity types that can be used as project/scope filters
@@ -148,109 +149,115 @@ function GraphPageContent() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-cm-sand bg-cm-ivory gap-4">
+      <div className="flex items-center justify-between p-6 pb-4 gap-4">
         <div className="flex-shrink-0">
-          <h1 className="font-serif text-xl font-semibold text-cm-charcoal">
-            Knowledge Graph
+          <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+            Graph
           </h1>
-          <p className="text-sm text-cm-coffee">
+          <p className="text-cm-coffee mt-1">
             Visualize entities and their relationships
           </p>
         </div>
 
-        {/* Scope filter dropdown */}
-        <div className="relative flex-shrink-0">
-          <select
-            value={selectedScope ? `${selectedScope.scope_type}:${selectedScope.scope_key}` : ''}
-            onChange={(e) => {
-              if (e.target.value === '') {
-                setSelectedScope(null);
-              } else {
-                const [scopeType, scopeKey] = e.target.value.split(':');
-                const scope = availableScopes.find(
-                  s => s.scope_type === scopeType && s.scope_key === scopeKey
-                );
-                setSelectedScope(scope || null);
-              }
-            }}
-            className={cn(
-              "px-3 py-2 pr-8 rounded-lg border transition-colors text-sm appearance-none cursor-pointer min-w-[140px]",
-              "focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta",
-              selectedScope
-                ? SCOPE_COLORS[selectedScope.scope_type] || 'border-cm-sand bg-white'
-                : 'border-cm-sand text-cm-coffee bg-white'
-            )}
-            disabled={scopesLoading}
-          >
-            <option value="">All Scopes</option>
-            {availableScopes.map((scope) => (
-              <option key={`${scope.scope_type}:${scope.scope_key}`} value={`${scope.scope_type}:${scope.scope_key}`}>
-                {SCOPE_ICONS[scope.scope_type]} {scope.name}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50 pointer-events-none" />
-        </div>
-
-        {/* Project/Repository focus dropdown */}
-        {scopeEntities.length > 0 && (
-          <div className="relative flex-shrink-0">
+        {/* Controls row */}
+        <div className="flex items-center gap-3">
+          {/* Scope filter dropdown */}
+          <div className="relative">
             <select
-              value={focusedEntityKey || ''}
-              onChange={(e) => handleFocusEntity(e.target.value || null)}
-              className="appearance-none pl-3 pr-8 py-2 text-sm border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta bg-white cursor-pointer min-w-[180px]"
+              value={selectedScope ? `${selectedScope.scope_type}:${selectedScope.scope_key}` : ''}
+              onChange={(e) => {
+                if (e.target.value === '') {
+                  setSelectedScope(null);
+                } else {
+                  const [scopeType, scopeKey] = e.target.value.split(':');
+                  const scope = availableScopes.find(
+                    s => s.scope_type === scopeType && s.scope_key === scopeKey
+                  );
+                  setSelectedScope(scope || null);
+                }
+              }}
+              className={cn(
+                "px-3 py-2 pr-8 rounded-lg border transition-colors text-sm appearance-none cursor-pointer min-w-[140px]",
+                "focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50 focus:border-cm-terracotta",
+                selectedScope
+                  ? SCOPE_COLORS[selectedScope.scope_type] || 'border-cm-sand bg-white'
+                  : 'border-cm-sand text-cm-coffee bg-white'
+              )}
+              disabled={scopesLoading}
             >
-              <option value="">All entities</option>
-              <optgroup label="Projects">
-                {scopeEntities.filter(e => e.entity_type === 'Project').map(e => (
-                  <option key={e.entity_key} value={e.entity_key}>{e.name}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Repositories">
-                {scopeEntities.filter(e => e.entity_type === 'Repository').map(e => (
-                  <option key={e.entity_key} value={e.entity_key}>{e.name}</option>
-                ))}
-              </optgroup>
+              <option value="">All Scopes</option>
+              {availableScopes.map((scope) => (
+                <option key={`${scope.scope_type}:${scope.scope_key}`} value={`${scope.scope_type}:${scope.scope_key}`}>
+                  {SCOPE_ICONS[scope.scope_type]} {scope.name}
+                </option>
+              ))}
             </select>
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50 pointer-events-none" />
           </div>
-        )}
 
-        {/* Focus indicator (for non-scope entities) */}
-        {focusedEntity && !SCOPE_ENTITY_TYPES.includes(focusedEntity.entity_type) && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-cm-terracotta/10 border border-cm-terracotta/30 rounded-lg">
-            <Focus className="w-4 h-4 text-cm-terracotta" />
-            <span className="text-sm text-cm-charcoal">
-              Focused: <strong>{focusedEntity.name}</strong>
-            </span>
-            <button
-              onClick={() => handleFocusEntity(null)}
-              className="p-0.5 text-cm-terracotta hover:text-cm-sienna transition-colors"
-              title="Clear focus"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Search box */}
-        <div className="relative flex-shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50" />
-          <input
-            type="text"
-            placeholder="Filter entities..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-64 pl-9 pr-8 py-2 text-sm border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta bg-white"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          {/* Project/Repository focus dropdown */}
+          {scopeEntities.length > 0 && (
+            <div className="relative">
+              <select
+                value={focusedEntityKey || ''}
+                onChange={(e) => handleFocusEntity(e.target.value || null)}
+                className="appearance-none pl-3 pr-8 py-2 text-sm border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta bg-white cursor-pointer min-w-[180px]"
+              >
+                <option value="">All entities</option>
+                <optgroup label="Projects">
+                  {scopeEntities.filter(e => e.entity_type === 'Project').map(e => (
+                    <option key={e.entity_key} value={e.entity_key}>{e.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Repositories">
+                  {scopeEntities.filter(e => e.entity_type === 'Repository').map(e => (
+                    <option key={e.entity_key} value={e.entity_key}>{e.name}</option>
+                  ))}
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50 pointer-events-none" />
+            </div>
           )}
+
+          {/* Focus indicator (for non-scope entities) */}
+          {focusedEntity && !SCOPE_ENTITY_TYPES.includes(focusedEntity.entity_type) && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-cm-terracotta/10 border border-cm-terracotta/30 rounded-lg">
+              <Focus className="w-4 h-4 text-cm-terracotta" />
+              <span className="text-sm text-cm-charcoal">
+                Focused: <strong>{focusedEntity.name}</strong>
+              </span>
+              <button
+                onClick={() => handleFocusEntity(null)}
+                className="p-0.5 text-cm-terracotta hover:text-cm-sienna transition-colors"
+                title="Clear focus"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Search box */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cm-coffee/50" />
+            <input
+              type="text"
+              placeholder="Filter entities..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-64 pl-9 pr-8 py-2 text-sm border border-cm-sand rounded-lg focus:outline-none focus:ring-2 focus:ring-cm-terracotta/20 focus:border-cm-terracotta bg-white"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-cm-coffee/50 hover:text-cm-coffee transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Navigation toggle */}
+          <KnowledgeNav currentPage="graph" />
         </div>
       </div>
 

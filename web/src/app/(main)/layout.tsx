@@ -97,8 +97,11 @@ export default function MainLayout({
           <NavLink href="/chat" icon="message-circle" active={pathname.startsWith('/chat')}>Chat</NavLink>
           <NavLink href="/personas" icon="users" active={pathname.startsWith('/personas')}>Personas</NavLink>
           <NavLink href="/models" icon="brain" active={pathname.startsWith('/models')}>Models</NavLink>
-          <NavLink href="/entities" icon="database" active={pathname.startsWith('/entities')}>Entities</NavLink>
-          <NavLink href="/graph" icon="git-branch" active={pathname === '/graph'}>Graph</NavLink>
+          <NavLink
+            href="/knowledge"
+            icon="layers"
+            active={pathname === '/knowledge' || pathname.startsWith('/entities') || pathname === '/graph'}
+          >Knowledge</NavLink>
           <NavLink href="/messages" icon="inbox" active={pathname.startsWith('/messages')}>Messages</NavLink>
           <NavLink href="/agents" icon="cpu" active={pathname.startsWith('/agents')}>Agents</NavLink>
           <NavLink href="/sessions" icon="timer" active={pathname.startsWith('/sessions')}>Sessions</NavLink>
