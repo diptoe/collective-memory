@@ -10,9 +10,9 @@ import { MilestoneMetricsPanel, extractAllMetrics } from '@/components/milestone
 import { Markdown } from '@/components/markdown/markdown';
 
 const STATUS_COLORS = {
-  active: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-600',
-  expired: 'bg-amber-100 text-amber-800',
+  active: 'bg-cm-success/10 text-cm-success',
+  closed: 'bg-cm-sand text-cm-coffee',
+  expired: 'bg-cm-warning/10 text-cm-warning',
 };
 
 // Format duration in seconds to human-readable string
@@ -191,61 +191,65 @@ export default function SessionsPage() {
 
       {/* Active Session Banner */}
       {activeSession && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+        <div className="mb-6 p-4 bg-cm-ivory border border-cm-sand rounded-xl">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                <span className="font-medium text-green-800">Active Session</span>
-                <code className="text-xs font-mono text-green-600/70 bg-green-100 px-1.5 py-0.5 rounded">
-                  {activeSession.session_key}
-                </code>
-                <button
-                  onClick={() => navigator.clipboard.writeText(activeSession.session_key)}
-                  className="p-1 text-green-500 hover:text-green-700 transition-colors"
-                  title="Copy session key"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                </button>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-lg bg-cm-success/10 flex items-center justify-center">
+                <div className="w-3 h-3 rounded-full bg-cm-success animate-pulse" />
               </div>
-              <p className="text-sm text-green-700 mt-1">
-                {activeSession.name || 'Unnamed session'} - Project: {activeSession.project?.name || activeSession.project_key}
-                {activeSession.agent_id && (
-                  <span className="ml-2 font-mono text-xs text-green-600">
-                    (by {activeSession.agent_id})
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-cm-charcoal">Active Session</span>
+                  <code className="text-xs font-mono text-cm-coffee/70 bg-cm-sand/50 px-1.5 py-0.5 rounded">
+                    {activeSession.session_key}
+                  </code>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(activeSession.session_key)}
+                    className="p-1 text-cm-coffee/50 hover:text-cm-terracotta transition-colors"
+                    title="Copy session key"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-sm text-cm-coffee mt-1">
+                  {activeSession.name || 'Unnamed session'} - Project: {activeSession.project?.name || activeSession.project_key}
+                  {activeSession.agent_id && (
+                    <span className="ml-2 font-mono text-xs text-cm-coffee/70">
+                      (by {activeSession.agent_id})
+                    </span>
+                  )}
+                </p>
+                <div className="flex items-center gap-4 text-sm text-cm-coffee mt-1">
+                  <span>
+                    Started: {new Date(activeSession.started_at).toLocaleString()}
                   </span>
-                )}
-              </p>
-              <div className="flex items-center gap-4 text-sm mt-1">
-                <span className="text-green-600">
-                  Started: {new Date(activeSession.started_at).toLocaleString()}
-                </span>
-                <span className="text-green-600">
-                  Duration: {formatDuration(Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000))}
-                </span>
-                {activeSession.time_remaining_seconds !== undefined && (
-                  <span className={cn(
-                    activeSession.time_remaining_seconds < 600
-                      ? 'text-amber-600 font-medium'
-                      : 'text-green-600'
-                  )}>
-                    Expires in {formatTimeRemaining(activeSession.time_remaining_seconds)}
+                  <span>
+                    Duration: {formatDuration(Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000))}
                   </span>
-                )}
+                  {activeSession.time_remaining_seconds !== undefined && (
+                    <span className={cn(
+                      activeSession.time_remaining_seconds < 600
+                        ? 'text-cm-warning font-medium'
+                        : ''
+                    )}>
+                      Expires in {formatTimeRemaining(activeSession.time_remaining_seconds)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleExtendSession(activeSession.session_key)}
-                className="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                className="px-3 py-1.5 text-sm bg-cm-sand text-cm-coffee rounded-lg hover:bg-cm-sand/80 transition-colors"
               >
                 Extend 1h
               </button>
               <button
                 onClick={() => handleCloseSession(activeSession.session_key)}
-                className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                className="px-3 py-1.5 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors"
               >
                 Close
               </button>
@@ -256,10 +260,10 @@ export default function SessionsPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total" value={sessions.length} />
-        <StatCard label="Active" value={activeSessions.length} color="green" />
-        <StatCard label="Closed" value={closedSessions.length} color="gray" />
-        <StatCard label="Expired" value={expiredSessions.length} color="amber" />
+        <StatCard label="Total" value={sessions.length} icon="📊" />
+        <StatCard label="Active" value={activeSessions.length} color="success" icon="⚡" />
+        <StatCard label="Closed" value={closedSessions.length} color="default" icon="✓" />
+        <StatCard label="Expired" value={expiredSessions.length} color="warning" icon="⏱️" />
       </div>
 
       {/* Filters */}
@@ -463,27 +467,41 @@ function SessionCard({
   return (
     <div
       className={cn(
-        'border rounded-lg transition-colors',
-        isActive
-          ? 'bg-green-50 border-green-200'
-          : 'bg-cm-ivory border-cm-sand hover:border-cm-terracotta/30'
+        'border rounded-xl transition-colors bg-cm-ivory border-cm-sand',
+        isActive && 'ring-2 ring-cm-success/30'
       )}
     >
       <div className="p-4">
         <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-medium text-cm-charcoal">
-                {session.name || 'Unnamed Session'}
-              </h3>
-              <span className={cn('px-2 py-0.5 text-xs rounded-full', STATUS_COLORS[session.status])}>
-                {session.status}
-              </span>
-              {isActive && (
-                <span className="px-2 py-0.5 text-xs rounded-full bg-green-500 text-white">
-                  Current
-                </span>
+          <div className="flex items-start gap-3 flex-1">
+            {/* Status indicator icon */}
+            <div className={cn(
+              'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+              session.status === 'active' ? 'bg-cm-success/10' :
+              session.status === 'expired' ? 'bg-cm-warning/10' :
+              'bg-cm-sand/50'
+            )}>
+              {session.status === 'active' ? (
+                <div className="w-3 h-3 rounded-full bg-cm-success animate-pulse" />
+              ) : session.status === 'expired' ? (
+                <span className="text-cm-warning">⏱️</span>
+              ) : (
+                <span className="text-cm-coffee/50">✓</span>
               )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-medium text-cm-charcoal">
+                  {session.name || 'Unnamed Session'}
+                </h3>
+                <span className={cn('px-2 py-0.5 text-xs rounded-full', STATUS_COLORS[session.status])}>
+                  {session.status}
+                </span>
+                {isActive && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-cm-success/10 text-cm-success font-medium">
+                    Current
+                  </span>
+                )}
             </div>
             <div className="flex items-center gap-1 mb-2">
               <code className="text-xs font-mono text-cm-coffee/70 bg-cm-sand/30 px-1.5 py-0.5 rounded">
@@ -572,6 +590,7 @@ function SessionCard({
               )}
             </div>
           </div>
+          </div>
 
           {session.status === 'active' && (
             <div className="flex items-center gap-2 ml-4">
@@ -583,7 +602,7 @@ function SessionCard({
               </button>
               <button
                 onClick={onClose}
-                className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                className="px-3 py-1.5 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors"
               >
                 Close
               </button>
@@ -623,10 +642,10 @@ function SessionCard({
                                 {typeof entity.properties?.status === 'string' && (
                                   <span className={cn(
                                     'px-1.5 py-0.5 text-xs rounded',
-                                    entity.properties.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                    entity.properties.status === 'started' ? 'bg-blue-100 text-blue-700' :
-                                    entity.properties.status === 'blocked' ? 'bg-red-100 text-red-700' :
-                                    'bg-gray-100 text-gray-700'
+                                    entity.properties.status === 'completed' ? 'bg-cm-success/10 text-cm-success' :
+                                    entity.properties.status === 'started' ? 'bg-cm-info/10 text-cm-info' :
+                                    entity.properties.status === 'blocked' ? 'bg-cm-error/10 text-cm-error' :
+                                    'bg-cm-sand text-cm-coffee'
                                   )}>
                                     {entity.properties.status}
                                   </span>
@@ -637,7 +656,7 @@ function SessionCard({
                                     {formatDuration(entity.properties.duration_seconds)}
                                   </span>
                                 ) : entity.properties?.status === 'started' ? (
-                                  <span className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded animate-pulse">
+                                  <span className="px-1.5 py-0.5 text-xs bg-cm-info/10 text-cm-info rounded animate-pulse">
                                     {formatDuration(Math.floor((Date.now() - new Date(entity.properties?.started_at || entity.created_at).getTime()) / 1000))}
                                   </span>
                                 ) : null}
@@ -734,23 +753,43 @@ function StatCard({
   label,
   value,
   color,
+  icon,
 }: {
   label: string;
   value: number;
-  color?: 'green' | 'gray' | 'amber';
+  color?: 'success' | 'default' | 'warning';
+  icon?: string;
 }) {
   const colorClasses = {
-    green: 'text-green-600',
-    gray: 'text-gray-600',
-    amber: 'text-amber-600',
+    success: 'text-cm-success',
+    default: 'text-cm-coffee',
+    warning: 'text-cm-warning',
+  };
+
+  const iconBgClasses = {
+    success: 'bg-cm-success/10',
+    default: 'bg-cm-sand/50',
+    warning: 'bg-cm-warning/10',
   };
 
   return (
-    <div className="bg-cm-ivory border border-cm-sand rounded-lg p-4">
-      <p className="text-sm text-cm-coffee">{label}</p>
-      <p className={cn('text-2xl font-semibold mt-1', color ? colorClasses[color] : 'text-cm-charcoal')}>
-        {value}
-      </p>
+    <div className="bg-cm-ivory border border-cm-sand rounded-xl p-4">
+      <div className="flex items-center gap-3">
+        {icon && (
+          <div className={cn(
+            'w-10 h-10 rounded-lg flex items-center justify-center text-lg',
+            color ? iconBgClasses[color] : 'bg-cm-sand/50'
+          )}>
+            {icon}
+          </div>
+        )}
+        <div>
+          <p className="text-sm text-cm-coffee">{label}</p>
+          <p className={cn('text-2xl font-semibold', color ? colorClasses[color] : 'text-cm-charcoal')}>
+            {value}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
