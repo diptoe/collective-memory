@@ -215,7 +215,7 @@ function NavIcon({ name }: { name: string }) {
     'globe': '🌐',
     'key': '🔑',
     'settings': '⚙️',
-    'team': '👨‍👩‍👧‍👦',
+    'team': '👥',
     'project': '📁',
     'timer': '⏱️',
   };
