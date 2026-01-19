@@ -174,21 +174,16 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen bg-cm-cream">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-cm-sand bg-cm-ivory">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-            AI
-          </div>
-          <div>
-            <h2 className="font-serif text-lg font-semibold text-cm-charcoal">
-              Chat
-            </h2>
-            <p className="text-xs text-cm-coffee">
-              {CHAT_MODEL_DISPLAY}
-            </p>
-          </div>
+      <div className="flex items-center justify-between p-6 pb-4">
+        <div>
+          <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+            Chat
+          </h1>
+          <p className="text-cm-coffee mt-1">
+            {CHAT_MODEL_DISPLAY}
+          </p>
         </div>
 
         <button
