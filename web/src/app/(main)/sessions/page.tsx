@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 import { WorkSession, Entity, UserTeam } from '@/types';
 import { cn } from '@/lib/utils';
 import { MilestoneMetrics } from '@/components/milestone-metrics';
+import { Markdown } from '@/components/markdown/markdown';
 
 const STATUS_COLORS = {
   active: 'bg-green-100 text-green-800',
@@ -558,19 +559,43 @@ function SessionCard({
                             {new Date(entity.created_at).toLocaleTimeString()}
                           </span>
                         </div>
-                        {entity.properties && Object.keys(entity.properties).filter(k => k !== 'status' && k !== 'work_session_key').length > 0 && (
-                          <div className="mt-1 text-xs text-cm-coffee">
+                        {/* Narrative fields - goal, outcome, summary */}
+                        {typeof entity.properties?.goal === 'string' && (
+                          <div className="mt-2">
+                            <span className="text-xs font-medium text-cm-charcoal/70">Goal:</span>
+                            <Markdown content={entity.properties.goal} className="mt-0.5 text-xs text-cm-coffee" />
+                          </div>
+                        )}
+                        {typeof entity.properties?.outcome === 'string' && (
+                          <div className="mt-2">
+                            <span className="text-xs font-medium text-cm-charcoal/70">Outcome:</span>
+                            <Markdown content={entity.properties.outcome} className="mt-0.5 text-xs text-cm-coffee" />
+                          </div>
+                        )}
+                        {typeof entity.properties?.summary === 'string' && (
+                          <details className="mt-2 group">
+                            <summary className="text-xs font-medium text-cm-charcoal/70 cursor-pointer hover:text-cm-terracotta">
+                              Summary <span className="text-cm-coffee/50">(click to expand)</span>
+                            </summary>
+                            <div className="mt-1 pl-2 border-l-2 border-cm-sand">
+                              <Markdown content={entity.properties.summary} className="text-xs text-cm-coffee" />
+                            </div>
+                          </details>
+                        )}
+                        {/* Other properties as badges */}
+                        {entity.properties && Object.keys(entity.properties).filter(k => !['status', 'work_session_key', 'goal', 'outcome', 'summary', 'description'].includes(k)).length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
                             {Object.entries(entity.properties)
-                              .filter(([key]) => key !== 'status' && key !== 'work_session_key')
+                              .filter(([key]) => !['status', 'work_session_key', 'goal', 'outcome', 'summary', 'description'].includes(key))
                               .map(([key, value]) => (
-                                <span key={key} className="mr-3">
-                                  <span className="text-cm-charcoal/70">{key}:</span> {String(value)}
+                                <span key={key} className="px-1.5 py-0.5 text-xs bg-cm-sand/50 text-cm-coffee rounded">
+                                  {key}: {String(value)}
                                 </span>
                               ))}
                           </div>
                         )}
-                        {/* Milestone metrics */}
-                        <MilestoneMetrics entityKey={entity.entity_key} className="mt-2" compact />
+                        {/* Milestone metrics - click to expand details */}
+                        <MilestoneMetrics entityKey={entity.entity_key} className="mt-2" compact expandable />
                       </div>
                     ))}
                   </div>

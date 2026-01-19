@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Metric, MilestoneMetricTypes } from '@/types';
 import { cn } from '@/lib/utils';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface MilestoneMetricsProps {
   entityKey: string;
   className?: string;
   compact?: boolean;
+  expandable?: boolean;  // If true, compact view can expand to full view on click
 }
 
 // Display names for metric types
@@ -45,10 +47,11 @@ const AUTO_CAPTURE_METRICS = new Set<string>([
   MilestoneMetricTypes.DURATION_MINUTES,
 ]);
 
-export function MilestoneMetrics({ entityKey, className, compact = false }: MilestoneMetricsProps) {
+export function MilestoneMetrics({ entityKey, className, compact = false, expandable = false }: MilestoneMetricsProps) {
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     async function fetchMetrics() {
@@ -106,39 +109,65 @@ export function MilestoneMetrics({ entityKey, className, compact = false }: Mile
     return String(value);
   };
 
-  if (compact) {
-    // Compact mode: single row of badges
+  // Determine if we should show compact or full view
+  const showCompact = compact && !expanded;
+
+  if (showCompact) {
+    // Compact mode: single row of badges (clickable if expandable)
     return (
-      <div className={cn('flex flex-wrap gap-1', className)}>
-        {Array.from(autoCaptureValues.entries()).map(([type, value]) => (
-          <span
-            key={type}
-            className="px-1.5 py-0.5 text-xs bg-cm-sand/70 text-cm-coffee rounded"
-            title={METRIC_LABELS[type]}
-          >
-            {formatValue(type, value)}
-          </span>
-        ))}
-        {Array.from(selfAssessmentValues.entries()).map(([type, value]) => (
-          <span
-            key={type}
-            className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 rounded"
-            title={METRIC_LABELS[type]}
-          >
-            {value}/5
-          </span>
-        ))}
+      <div className={cn('space-y-2', className)}>
+        <div
+          className={cn(
+            'flex flex-wrap gap-1 items-center',
+            expandable && 'cursor-pointer hover:opacity-80'
+          )}
+          onClick={expandable ? () => setExpanded(true) : undefined}
+          title={expandable ? 'Click to show details' : undefined}
+        >
+          {Array.from(autoCaptureValues.entries()).map(([type, value]) => (
+            <span
+              key={type}
+              className="px-1.5 py-0.5 text-xs bg-cm-sand/70 text-cm-coffee rounded"
+              title={METRIC_LABELS[type]}
+            >
+              {formatValue(type, value)}
+            </span>
+          ))}
+          {Array.from(selfAssessmentValues.entries()).map(([type, value]) => (
+            <span
+              key={type}
+              className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 rounded"
+              title={METRIC_LABELS[type]}
+            >
+              {value}/5
+            </span>
+          ))}
+          {expandable && (
+            <ChevronDown className="w-3 h-3 text-cm-coffee/50 ml-1" />
+          )}
+        </div>
       </div>
     );
   }
 
-  // Full mode: two sections
+  // Full mode: two sections with labeled metrics
   return (
     <div className={cn('space-y-2', className)}>
+      {/* Collapse header when expandable */}
+      {expandable && expanded && (
+        <button
+          onClick={() => setExpanded(false)}
+          className="flex items-center gap-1 text-xs text-cm-coffee/60 hover:text-cm-coffee"
+        >
+          <ChevronUp className="w-3 h-3" />
+          <span>Collapse metrics</span>
+        </button>
+      )}
+
       {/* Auto-capture metrics */}
       {autoCaptureValues.size > 0 && (
         <div>
-          <p className="text-xs text-cm-coffee/50 mb-1">Auto-captured</p>
+          <p className="text-xs text-cm-coffee/50 mb-1">📊 Auto-captured</p>
           <div className="flex flex-wrap gap-1">
             {Array.from(autoCaptureValues.entries()).map(([type, value]) => (
               <span
@@ -155,7 +184,7 @@ export function MilestoneMetrics({ entityKey, className, compact = false }: Mile
       {/* Self-assessment metrics */}
       {selfAssessmentValues.size > 0 && (
         <div>
-          <p className="text-xs text-cm-coffee/50 mb-1">Self-assessment</p>
+          <p className="text-xs text-cm-coffee/50 mb-1">🎯 Self-assessment (1-5 scale)</p>
           <div className="flex flex-wrap gap-1">
             {Array.from(selfAssessmentValues.entries()).map(([type, value]) => (
               <span

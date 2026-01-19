@@ -22,15 +22,20 @@ TOOL_DEFINITIONS = [
 USE THIS WHEN: You complete or start a significant task, hit a blocker, or want to track progress.
 
 WHEN TO RECORD MILESTONES:
-- Starting a major task: status="started" (e.g., "Implementing authentication")
-- Completing a task: status="completed" (e.g., "API endpoint working")
-- Hitting a blocker: status="blocked" (e.g., "Waiting for API access")
+- Starting a major task: status="started" with goal describing what you aim to achieve
+- Completing a task: status="completed" with outcome and summary of the work
+- Hitting a blocker: status="blocked" with details about what's blocking progress
 
 WHAT IT DOES:
 - Creates a 'Milestone' entity linked to the current work session
 - Updates the session's activity timestamp (prevents auto-close)
 - Records optional metrics (auto-capture and self-assessment)
 - Updates agent's current milestone state
+
+NARRATIVE FIELDS (use markdown):
+- goal: What this milestone aims to achieve (set on "started")
+- outcome: The concrete result of the work (set on "completed")
+- summary: Narrative of how you collaborated with the user, key decisions, and exceptional metrics
 
 AUTO-CAPTURE METRICS (optional):
 - files_touched: Number of files touched during this milestone
@@ -46,9 +51,9 @@ SELF-ASSESSMENT METRICS (1-5 scale, optional):
 - complexity_rating: 1=trivial task, 5=very complex task
 
 EXAMPLES:
-- {"name": "Implementing authentication", "status": "started"}
-- {"name": "Login endpoint working", "status": "completed", "lines_added": 150, "model_accuracy": 4}
-- {"name": "API integration blocked", "status": "blocked", "properties": {"blocker": "Missing API key"}}
+- {"name": "Implementing authentication", "status": "started", "goal": "Add JWT-based auth with refresh tokens"}
+- {"name": "Auth complete", "status": "completed", "outcome": "Added `/auth/login` and `/auth/refresh` endpoints", "summary": "User requested JWT auth. I proposed...", "lines_added": 150}
+- {"name": "API blocked", "status": "blocked", "goal": "Integrate payment API", "summary": "Waiting for API credentials from user"}
 
 RETURNS: Created Milestone entity details with metrics recorded.""",
         inputSchema={
@@ -56,7 +61,11 @@ RETURNS: Created Milestone entity details with metrics recorded.""",
             "properties": {
                 "name": {"type": "string", "description": "REQUIRED: Name/description of the milestone"},
                 "status": {"type": "string", "description": "Milestone status: 'started', 'completed', or 'blocked' (default: 'completed')", "enum": ["started", "completed", "blocked"], "default": "completed"},
-                "properties": {"type": "object", "description": "Optional: Additional properties (e.g., blocker reason, files changed)"},
+                # Narrative fields
+                "goal": {"type": "string", "description": "What this milestone aims to achieve (markdown supported)"},
+                "outcome": {"type": "string", "description": "The concrete result of the work (markdown supported)"},
+                "summary": {"type": "string", "description": "Narrative of collaboration, key decisions, exceptional metrics (markdown supported)"},
+                "properties": {"type": "object", "description": "Optional: Additional properties (e.g., blocker reason, commit SHA)"},
                 "session_key": {"type": "string", "description": "Optional: Specific session (defaults to active session)"},
                 # Auto-capture metrics
                 "files_touched": {"type": "integer", "description": "Number of files touched during this milestone"},
@@ -94,8 +103,12 @@ async def record_milestone(
     Args:
         name: Required - name/description of the milestone
         status: Optional - milestone status: 'started', 'completed', or 'blocked' (default: 'completed')
-        properties: Optional - additional properties (e.g., blocker reason, files changed)
+        properties: Optional - additional properties (e.g., blocker reason, commit SHA)
         session_key: Optional - specific session (defaults to active session)
+        # Narrative fields (markdown supported)
+        goal: Optional - what this milestone aims to achieve
+        outcome: Optional - the concrete result of the work
+        summary: Optional - narrative of collaboration, key decisions, exceptional metrics
         # Auto-capture metrics
         files_touched: Optional - number of files touched
         lines_added: Optional - lines of code added
@@ -112,6 +125,11 @@ async def record_milestone(
     status = arguments.get("status", "completed")
     properties = arguments.get("properties", {})
     session_key = arguments.get("session_key")
+
+    # Narrative fields (markdown supported)
+    goal = arguments.get("goal")
+    outcome = arguments.get("outcome")
+    summary = arguments.get("summary")
 
     # Auto-capture metrics
     files_touched = arguments.get("files_touched")
@@ -182,14 +200,25 @@ async def record_milestone(
                 pass  # Fall back to no scope
 
         # Create the Milestone entity with proper scope and work_session_key
+        # Build properties with narrative fields
+        milestone_properties = {
+            **properties,
+            "status": status,
+        }
+
+        # Add narrative fields if provided (markdown supported)
+        if goal:
+            milestone_properties["goal"] = goal
+        if outcome:
+            milestone_properties["outcome"] = outcome
+        if summary:
+            milestone_properties["summary"] = summary
+
         entity_body = {
             "name": name,
             "entity_type": "Milestone",
             "work_session_key": session_key,  # Top-level field, not in properties
-            "properties": {
-                **properties,
-                "status": status,
-            }
+            "properties": milestone_properties,
         }
 
         # Add scope if determined
@@ -298,6 +327,14 @@ async def record_milestone(
             output += f"**Status:** {status}\n"
             output += f"**Entity Key:** `{entity_key}`\n"
             output += f"**Session:** `{session_key}`\n"
+
+            # Show narrative fields if provided
+            if goal:
+                output += f"\n**Goal:** {goal[:100]}{'...' if len(goal) > 100 else ''}\n"
+            if outcome:
+                output += f"\n**Outcome:** {outcome[:100]}{'...' if len(outcome) > 100 else ''}\n"
+            if summary:
+                output += f"\n**Summary:** _{summary[:80]}{'...' if len(summary) > 80 else ''}_\n"
 
             if properties:
                 output += f"**Properties:** {properties}\n"
