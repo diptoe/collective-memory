@@ -631,11 +631,16 @@ function SessionCard({
                                     {entity.properties.status}
                                   </span>
                                 )}
-                                {typeof entity.properties?.duration_seconds === 'number' && (
+                                {/* Duration display: show saved duration for completed, or calculate running duration for started */}
+                                {typeof entity.properties?.duration_seconds === 'number' && entity.properties.duration_seconds > 0 ? (
                                   <span className="px-1.5 py-0.5 text-xs bg-cm-sand rounded text-cm-charcoal">
                                     {formatDuration(entity.properties.duration_seconds)}
                                   </span>
-                                )}
+                                ) : entity.properties?.status === 'started' ? (
+                                  <span className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded animate-pulse">
+                                    {formatDuration(Math.floor((Date.now() - new Date(entity.properties?.started_at || entity.created_at).getTime()) / 1000))}
+                                  </span>
+                                ) : null}
                                 <span className="text-xs text-cm-coffee">
                                   {new Date(entity.created_at).toLocaleTimeString()}
                                 </span>

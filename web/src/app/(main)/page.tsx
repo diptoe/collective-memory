@@ -175,11 +175,9 @@ export default function StartPage() {
                               className="flex items-center justify-between py-1 px-2 bg-cm-sand/30 rounded"
                             >
                               <p className="text-sm text-cm-charcoal truncate flex-1">{milestone.name}</p>
-                              {typeof milestone.properties?.started_at === 'string' && (
-                                <span className="text-xs text-cm-coffee ml-2 flex-shrink-0">
-                                  {formatDuration(Math.floor((Date.now() - new Date(milestone.properties.started_at).getTime()) / 1000))}
-                                </span>
-                              )}
+                              <span className="text-xs text-blue-600 ml-2 flex-shrink-0 animate-pulse">
+                                {formatDuration(Math.floor((Date.now() - new Date(milestone.properties?.started_at || milestone.created_at).getTime()) / 1000))}
+                              </span>
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();

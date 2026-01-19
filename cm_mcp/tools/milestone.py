@@ -368,7 +368,7 @@ async def record_milestone(
 
         # Time tracking in properties
         if status == "started":
-            # Record start time
+            # Record start time - will be used for duration calculation
             milestone_properties["started_at"] = now_iso
         elif status in ("completed", "blocked"):
             # Record completion time
@@ -384,6 +384,12 @@ async def record_milestone(
                     milestone_properties["duration_seconds"] = duration_seconds
                 except Exception:
                     pass  # If parsing fails, skip duration
+            else:
+                # No tracked start time - this milestone was recorded directly as completed
+                # We'll set started_at to now (0 duration) - the UI can show this was instant
+                # Or if there's a prior milestone, we could use that, but for simplicity:
+                milestone_properties["started_at"] = now_iso
+                milestone_properties["duration_seconds"] = 0
 
         entity_body = {
             "name": name,
