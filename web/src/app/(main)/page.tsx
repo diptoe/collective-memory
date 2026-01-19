@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Agent, WorkSession, Entity } from '@/types';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -33,6 +34,7 @@ const formatTimeRemaining = (seconds: number) => {
 };
 
 export default function StartPage() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats>({
     activeAgents: 0,
@@ -178,6 +180,17 @@ export default function StartPage() {
                                   {formatDuration(Math.floor((Date.now() - new Date(milestone.properties.started_at).getTime()) / 1000))}
                                 </span>
                               )}
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  router.push(`/entities/milestone/${milestone.entity_key}`);
+                                }}
+                                className="text-cm-coffee/40 hover:text-cm-terracotta transition-colors ml-2 flex-shrink-0"
+                                title="View milestone entity"
+                              >
+                                →
+                              </button>
                             </div>
                           ))}
                         </div>

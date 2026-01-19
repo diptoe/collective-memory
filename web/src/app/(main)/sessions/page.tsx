@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { WorkSession, Entity, UserTeam } from '@/types';
@@ -643,6 +644,13 @@ function SessionCard({
                                     by {entity.properties.agent_id}
                                   </span>
                                 )}
+                                <Link
+                                  href={`/entities/${entity.entity_type.toLowerCase()}/${entity.entity_key}`}
+                                  className="text-cm-coffee/40 hover:text-cm-terracotta transition-colors"
+                                  title="View milestone entity"
+                                >
+                                  →
+                                </Link>
                               </div>
 
                               {/* Narrative fields - goal, outcome, summary */}
@@ -696,6 +704,13 @@ function SessionCard({
                           <span className="text-xs text-cm-coffee">
                             {new Date(entity.created_at).toLocaleTimeString()}
                           </span>
+                          <Link
+                            href={`/entities/${entity.entity_type.toLowerCase()}/${entity.entity_key}`}
+                            className="text-cm-coffee/40 hover:text-cm-terracotta transition-colors"
+                            title="View entity"
+                          >
+                            →
+                          </Link>
                         </div>
                       </div>
                     ))}
