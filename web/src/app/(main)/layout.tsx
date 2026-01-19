@@ -207,7 +207,7 @@ function NavIcon({ name }: { name: string }) {
     'brain': '🧠',
     'database': '🗄️',
     'file-text': '📄',
-    'layers': '📊',
+    'layers': '📖',
     'git-branch': '🔀',
     'inbox': '📥',
     'cpu': '⚙️',
