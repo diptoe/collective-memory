@@ -11,20 +11,12 @@ interface AgentStatusProps {
   href?: string;
 }
 
-const CLIENT_LABELS: Record<ClientType, string> = {
-  'claude-code': 'Claude Code',
-  'claude-desktop': 'Claude Desktop',
-  'codex': 'Codex',
-  'gemini-cli': 'Gemini CLI',
-  'cursor': 'Cursor',
-};
-
-const CLIENT_COLORS: Record<ClientType, string> = {
-  'claude-code': 'bg-orange-100 text-orange-800',
-  'claude-desktop': 'bg-purple-100 text-purple-800',
-  'codex': 'bg-green-100 text-green-800',
-  'gemini-cli': 'bg-blue-100 text-blue-800',
-  'cursor': 'bg-cyan-100 text-cyan-800',
+const CLIENT_CONFIG: Record<ClientType, { label: string; icon: string }> = {
+  'claude-code': { label: 'Claude Code', icon: '🔶' },
+  'claude-desktop': { label: 'Claude Desktop', icon: '🟣' },
+  'codex': { label: 'Codex', icon: '🟢' },
+  'gemini-cli': { label: 'Gemini CLI', icon: '💎' },
+  'cursor': { label: 'Cursor', icon: '▶️' },
 };
 
 export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
@@ -39,8 +31,7 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
   };
 
   // Get display values
-  const clientLabel = agent.client ? CLIENT_LABELS[agent.client] || agent.client : null;
-  const clientColor = agent.client ? CLIENT_COLORS[agent.client] || 'bg-gray-100 text-gray-800' : null;
+  const clientConfig = agent.client ? CLIENT_CONFIG[agent.client] : null;
   const personaName = agent.persona?.name || agent.role;
   const personaColor = agent.persona?.color;
   const modelName = agent.model?.name;
@@ -96,39 +87,39 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
 
       {/* Client, Model, Team, and Project badges */}
       <div className="flex flex-wrap gap-1 mb-3">
-        {clientLabel && (
-          <span className={cn('px-2 py-0.5 text-xs rounded-full', clientColor)}>
-            {clientLabel}
+        {clientConfig && (
+          <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
+            {clientConfig.icon} {clientConfig.label}
           </span>
         )}
         {modelName && (
           <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
-            {modelName}
+            🧠 {modelName}
           </span>
         )}
         {/* Team or Domain badge */}
         {agent.team_name ? (
-          <span className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">
-            {agent.team_name}
+          <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
+            👥 {agent.team_name}
           </span>
         ) : (
-          <span className="px-2 py-0.5 text-xs bg-cm-sand/50 text-cm-coffee rounded-full">
-            Domain
+          <span className="px-2 py-0.5 text-xs bg-cm-sand/50 text-cm-coffee/70 rounded-full">
+            🌐 Domain
           </span>
         )}
         {/* Project badge */}
         {agent.project_name && (
-          <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full">
-            {agent.project_name}
+          <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
+            📁 {agent.project_name}
           </span>
         )}
         {/* Current milestone badge */}
         {agent.current_milestone_name && (
           <span className={cn(
             'px-2 py-0.5 text-xs rounded-full',
-            agent.current_milestone_status === 'started' && 'bg-amber-100 text-amber-800',
-            agent.current_milestone_status === 'blocked' && 'bg-red-100 text-red-800',
-            agent.current_milestone_status === 'completed' && 'bg-green-100 text-green-800'
+            agent.current_milestone_status === 'started' && 'bg-cm-info/10 text-cm-info',
+            agent.current_milestone_status === 'blocked' && 'bg-cm-error/10 text-cm-error',
+            agent.current_milestone_status === 'completed' && 'bg-cm-success/10 text-cm-success'
           )}>
             🎯 {agent.current_milestone_name}
           </span>
@@ -179,7 +170,7 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
         <span>Last heartbeat: {formatDateTime(agent.last_heartbeat)}</span>
         <div className="flex items-center gap-2">
           {agent.is_focused && (
-            <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full font-medium">
+            <span className="px-1.5 py-0.5 text-xs bg-cm-terracotta/10 text-cm-terracotta rounded-full font-medium">
               🎯 FOCUSED
             </span>
           )}
