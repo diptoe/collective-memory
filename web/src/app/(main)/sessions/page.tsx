@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { WorkSession, Entity, UserTeam } from '@/types';
+import { WorkSession, Entity, UserTeam, Team } from '@/types';
 import { cn } from '@/lib/utils';
 import { MilestoneMetricsPanel, extractAllMetrics } from '@/components/milestone-impact';
 import { Markdown } from '@/components/markdown/markdown';
@@ -24,10 +24,38 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}m`;
 };
 
+// Refresh icon component
+function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 21h5v-5" />
+    </svg>
+  );
+}
+
+type ViewMode = 'active' | 'browse';
+
 export default function SessionsPage() {
   const { user } = useAuthStore();
   const [sessions, setSessions] = useState<WorkSession[]>([]);
+  const [userActiveSessions, setUserActiveSessions] = useState<WorkSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('browse'); // Will be set based on active sessions
+  const [viewModeInitialized, setViewModeInitialized] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'closed' | 'expired'>('all');
   const [showStartModal, setShowStartModal] = useState(false);
   const [projects, setProjects] = useState<Entity[]>([]);
@@ -36,15 +64,28 @@ export default function SessionsPage() {
   const [sessionName, setSessionName] = useState<string>('');
   const [isStarting, setIsStarting] = useState(false);
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Admin team filter state
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
+  const [teamFilter, setTeamFilter] = useState<'mine' | string>('mine'); // 'mine' or team_key
 
   // Get user's teams from auth store
   const teams: UserTeam[] = user?.teams || [];
 
-  const loadSessions = async () => {
+  // Check if user is admin (system or domain admin)
+  const isAdmin = user?.role === 'admin' || user?.role === 'domain_admin';
+
+  // Load sessions for browse view (with filters)
+  const loadSessions = useCallback(async () => {
     try {
-      const params: { status?: 'active' | 'closed' | 'expired' } = {};
+      const params: { status?: 'active' | 'closed' | 'expired'; team_key?: string } = {};
       if (filterStatus !== 'all') {
         params.status = filterStatus;
+      }
+      // In browse view, admins can filter by team
+      if (viewMode === 'browse' && isAdmin && teamFilter !== 'mine') {
+        params.team_key = teamFilter;
       }
       const res = await api.workSessions.list(params);
       if (res.success && res.data) {
@@ -55,7 +96,25 @@ export default function SessionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus, viewMode, isAdmin, teamFilter]);
+
+  // Load user's active sessions (for active view)
+  const loadUserActiveSessions = useCallback(async () => {
+    try {
+      const res = await api.workSessions.list({ status: 'active' });
+      if (res.success && res.data) {
+        const activeSessions = res.data.sessions || [];
+        setUserActiveSessions(activeSessions);
+        // Set initial view mode based on whether user has active sessions
+        if (!viewModeInitialized) {
+          setViewMode(activeSessions.length > 0 ? 'active' : 'browse');
+          setViewModeInitialized(true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load user active sessions:', err);
+    }
+  }, [viewModeInitialized]);
 
   const loadActiveSession = async () => {
     try {
@@ -79,15 +138,45 @@ export default function SessionsPage() {
     }
   };
 
+  // Load all teams for admin dropdown
+  const loadAllTeams = async () => {
+    if (!isAdmin) return;
+    try {
+      const res = await api.teams.list();
+      if (res.success && res.data) {
+        setAllTeams(res.data.teams || []);
+      }
+    } catch (err) {
+      console.error('Failed to load teams:', err);
+    }
+  };
+
+  // Refresh handler for active view
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([loadUserActiveSessions(), loadActiveSession()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [loadUserActiveSessions]);
+
+  // Initial load
   useEffect(() => {
-    loadSessions();
+    loadUserActiveSessions();
     loadActiveSession();
     loadProjects();
-  }, []);
+    if (isAdmin) {
+      loadAllTeams();
+    }
+  }, [isAdmin]);
 
+  // Load browse sessions when view mode changes to browse or filters change
   useEffect(() => {
-    loadSessions();
-  }, [filterStatus]);
+    if (viewMode === 'browse') {
+      loadSessions();
+    }
+  }, [viewMode, filterStatus, teamFilter, loadSessions]);
 
   const handleStartSession = async () => {
     if (!selectedProject) return;
@@ -104,8 +193,11 @@ export default function SessionsPage() {
         setSelectedProject('');
         setSelectedTeam('');
         setSessionName('');
-        loadSessions();
+        loadUserActiveSessions();
         loadActiveSession();
+        if (viewMode === 'browse') loadSessions();
+        // Switch to active view since user now has an active session
+        setViewMode('active');
       }
     } catch (err) {
       console.error('Failed to start session:', err);
@@ -118,8 +210,9 @@ export default function SessionsPage() {
   const handleExtendSession = async (sessionKey: string) => {
     try {
       await api.workSessions.extend(sessionKey, 1);
-      loadSessions();
+      loadUserActiveSessions();
       loadActiveSession();
+      if (viewMode === 'browse') loadSessions();
     } catch (err) {
       console.error('Failed to extend session:', err);
     }
@@ -130,8 +223,14 @@ export default function SessionsPage() {
 
     try {
       await api.workSessions.close(sessionKey);
-      loadSessions();
+      await loadUserActiveSessions();
       loadActiveSession();
+      if (viewMode === 'browse') loadSessions();
+      // If no more active sessions, switch to browse view
+      const res = await api.workSessions.list({ status: 'active' });
+      if (res.success && (!res.data?.sessions || res.data.sessions.length === 0)) {
+        setViewMode('browse');
+      }
     } catch (err) {
       console.error('Failed to close session:', err);
     }
@@ -163,149 +262,197 @@ export default function SessionsPage() {
     );
   }
 
+  // Determine if we should auto-expand the single active session
+  const shouldAutoExpand = viewMode === 'active' && userActiveSessions.length === 1;
+
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
-            Work Sessions
-          </h1>
-          <p className="text-cm-coffee mt-1">
-            Track focused work periods on projects
-          </p>
-        </div>
-        <button
-          onClick={() => setShowStartModal(true)}
-          disabled={!!activeSession}
-          className={cn(
-            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-            activeSession
-              ? 'bg-cm-sand text-cm-coffee cursor-not-allowed'
-              : 'bg-cm-terracotta text-cm-ivory hover:bg-cm-terracotta/90'
-          )}
-          title={activeSession ? 'Close current session first' : 'Start new session'}
-        >
-          Start Session
-        </button>
-      </div>
-
-      {/* Active Session Banner */}
-      {activeSession && (
-        <div className="mb-6 p-4 bg-cm-ivory border border-cm-sand rounded-xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-cm-success/10 flex items-center justify-center">
-                <div className="w-3 h-3 rounded-full bg-cm-success animate-pulse" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-cm-charcoal">Active Session</span>
-                  <code className="text-xs font-mono text-cm-coffee/70 bg-cm-sand/50 px-1.5 py-0.5 rounded">
-                    {activeSession.session_key}
-                  </code>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(activeSession.session_key)}
-                    className="p-1 text-cm-coffee/50 hover:text-cm-terracotta transition-colors"
-                    title="Copy session key"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                </div>
-                <p className="text-sm text-cm-coffee mt-1">
-                  {activeSession.name || 'Unnamed session'} - Project: {activeSession.project?.name || activeSession.project_key}
-                  {activeSession.agent_id && (
-                    <span className="ml-2 font-mono text-xs text-cm-coffee/70">
-                      (by {activeSession.agent_id})
-                    </span>
-                  )}
-                </p>
-                <div className="flex items-center gap-4 text-sm text-cm-coffee mt-1">
-                  <span>
-                    Started: {new Date(activeSession.started_at).toLocaleString()}
-                  </span>
-                  <span>
-                    Duration: {formatDuration(Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000))}
-                  </span>
-                  {activeSession.time_remaining_seconds !== undefined && (
-                    <span className={cn(
-                      activeSession.time_remaining_seconds < 600
-                        ? 'text-cm-warning font-medium'
-                        : ''
-                    )}>
-                      Expires in {formatTimeRemaining(activeSession.time_remaining_seconds)}
-                    </span>
-                  )}
-                </div>
-              </div>
+      {/* ACTIVE VIEW */}
+      {viewMode === 'active' ? (
+        <>
+          {/* Header for Active View */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+                Active Sessions
+              </h1>
+              <p className="text-cm-coffee mt-1">
+                {userActiveSessions.length === 1
+                  ? 'Your current work session'
+                  : `${userActiveSessions.length} active work sessions`}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => handleExtendSession(activeSession.session_key)}
-                className="px-3 py-1.5 text-sm bg-cm-sand text-cm-coffee rounded-lg hover:bg-cm-sand/80 transition-colors"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className={cn(
+                  "p-2 rounded-lg border border-cm-sand hover:border-cm-terracotta/50 hover:bg-cm-ivory transition-colors",
+                  isRefreshing && "opacity-50 cursor-not-allowed"
+                )}
+                title="Refresh"
               >
-                Extend 1h
+                <RefreshIcon className={cn(isRefreshing && "animate-spin")} />
               </button>
               <button
-                onClick={() => handleCloseSession(activeSession.session_key)}
-                className="px-3 py-1.5 text-sm bg-cm-error/10 text-cm-error rounded-lg hover:bg-cm-error/20 transition-colors"
+                onClick={() => setViewMode('browse')}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-cm-sand text-cm-coffee hover:bg-cm-sand/80 transition-colors"
               >
-                Close
+                Browse All
+              </button>
+              <button
+                onClick={() => setShowStartModal(true)}
+                disabled={!!activeSession}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                  activeSession
+                    ? 'bg-cm-sand text-cm-coffee cursor-not-allowed'
+                    : 'bg-cm-terracotta text-cm-ivory hover:bg-cm-terracotta/90'
+                )}
+                title={activeSession ? 'Close current session first' : 'Start new session'}
+              >
+                Start Session
               </button>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total" value={sessions.length} icon="📊" />
-        <StatCard label="Active" value={activeSessions.length} color="success" icon="⚡" />
-        <StatCard label="Closed" value={closedSessions.length} color="default" icon="✓" />
-        <StatCard label="Expired" value={expiredSessions.length} color="warning" icon="⏱️" />
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-2 mb-6">
-        {(['all', 'active', 'closed', 'expired'] as const).map((status) => (
-          <button
-            key={status}
-            onClick={() => setFilterStatus(status)}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-lg transition-colors capitalize',
-              filterStatus === status
-                ? 'bg-cm-terracotta text-cm-ivory'
-                : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
-            )}
-          >
-            {status}
-          </button>
-        ))}
-      </div>
-
-      {/* Sessions List */}
-      {sessions.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-cm-coffee mb-4">No work sessions found.</p>
-          <p className="text-sm text-cm-coffee/70">
-            Start a session to begin tracking your work on a project.
-          </p>
-        </div>
+          {/* Active Sessions List */}
+          {userActiveSessions.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-cm-coffee mb-4">No active sessions.</p>
+              <button
+                onClick={() => setShowStartModal(true)}
+                className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-terracotta/90 transition-colors"
+              >
+                Start a Session
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {userActiveSessions.map((session) => (
+                <SessionCard
+                  key={session.session_key}
+                  session={session}
+                  isActive={session.session_key === activeSession?.session_key}
+                  onExtend={() => handleExtendSession(session.session_key)}
+                  onClose={() => handleCloseSession(session.session_key)}
+                  formatTimeRemaining={formatTimeRemaining}
+                  formatDate={formatDate}
+                  autoExpand={shouldAutoExpand}
+                />
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="space-y-4">
-          {sessions.map((session) => (
-            <SessionCard
-              key={session.session_key}
-              session={session}
-              isActive={session.session_key === activeSession?.session_key}
-              onExtend={() => handleExtendSession(session.session_key)}
-              onClose={() => handleCloseSession(session.session_key)}
-              formatTimeRemaining={formatTimeRemaining}
-              formatDate={formatDate}
-            />
-          ))}
-        </div>
+        <>
+          {/* BROWSE VIEW */}
+          {/* Header for Browse View */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
+                Work Sessions
+              </h1>
+              <p className="text-cm-coffee mt-1">
+                Track focused work periods on projects
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Show "Back to Active" button if user has active sessions */}
+              {userActiveSessions.length > 0 && (
+                <button
+                  onClick={() => setViewMode('active')}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-cm-success/10 text-cm-success hover:bg-cm-success/20 transition-colors flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 rounded-full bg-cm-success animate-pulse" />
+                  Active ({userActiveSessions.length})
+                </button>
+              )}
+              <button
+                onClick={() => setShowStartModal(true)}
+                disabled={!!activeSession}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                  activeSession
+                    ? 'bg-cm-sand text-cm-coffee cursor-not-allowed'
+                    : 'bg-cm-terracotta text-cm-ivory hover:bg-cm-terracotta/90'
+                )}
+                title={activeSession ? 'Close current session first' : 'Start new session'}
+              >
+                Start Session
+              </button>
+            </div>
+          </div>
+
+          {/* Admin Team Filter */}
+          {isAdmin && allTeams.length > 0 && (
+            <div className="mb-4 flex items-center gap-2">
+              <span className="text-sm text-cm-coffee">View:</span>
+              <select
+                value={teamFilter}
+                onChange={(e) => setTeamFilter(e.target.value)}
+                className="px-3 py-1.5 text-sm border border-cm-sand rounded-lg bg-cm-ivory text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+              >
+                <option value="mine">My Sessions</option>
+                {allTeams.map((team) => (
+                  <option key={team.team_key} value={team.team_key}>
+                    {team.name} (Team)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            <StatCard label="Total" value={sessions.length} icon="📊" />
+            <StatCard label="Active" value={activeSessions.length} color="success" icon="⚡" />
+            <StatCard label="Closed" value={closedSessions.length} color="default" icon="✓" />
+            <StatCard label="Expired" value={expiredSessions.length} color="warning" icon="⏱️" />
+          </div>
+
+          {/* Filters */}
+          <div className="flex items-center gap-2 mb-6">
+            {(['all', 'active', 'closed', 'expired'] as const).map((status) => (
+              <button
+                key={status}
+                onClick={() => setFilterStatus(status)}
+                className={cn(
+                  'px-3 py-1.5 text-sm rounded-lg transition-colors capitalize',
+                  filterStatus === status
+                    ? 'bg-cm-terracotta text-cm-ivory'
+                    : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
+                )}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+
+          {/* Sessions List */}
+          {sessions.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-cm-coffee mb-4">No work sessions found.</p>
+              <p className="text-sm text-cm-coffee/70">
+                Start a session to begin tracking your work on a project.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {sessions.map((session) => (
+                <SessionCard
+                  key={session.session_key}
+                  session={session}
+                  isActive={session.session_key === activeSession?.session_key}
+                  onExtend={() => handleExtendSession(session.session_key)}
+                  onClose={() => handleCloseSession(session.session_key)}
+                  formatTimeRemaining={formatTimeRemaining}
+                  formatDate={formatDate}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Start Session Modal */}
@@ -404,6 +551,7 @@ function SessionCard({
   onClose,
   formatTimeRemaining,
   formatDate,
+  autoExpand = false,
 }: {
   session: WorkSession;
   isActive: boolean;
@@ -411,13 +559,15 @@ function SessionCard({
   onClose: () => void;
   formatTimeRemaining: (seconds: number) => string;
   formatDate: (dateStr: string) => string;
+  autoExpand?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
   const [milestoneCount, setMilestoneCount] = useState<number | null>(null);
   const [messageCount, setMessageCount] = useState<number | null>(null);
   const [otherEntityCount, setOtherEntityCount] = useState<number | null>(null);
+  const [autoExpandLoaded, setAutoExpandLoaded] = useState(false);
 
   // Load stats when component mounts
   useEffect(() => {
@@ -435,6 +585,27 @@ function SessionCard({
     };
     loadStats();
   }, [session.session_key]);
+
+  // Auto-expand: load entities when autoExpand is true
+  useEffect(() => {
+    if (autoExpand && !autoExpandLoaded && entities.length === 0) {
+      setAutoExpandLoaded(true);
+      const loadEntities = async () => {
+        setLoadingEntities(true);
+        try {
+          const res = await api.workSessions.getEntities(session.session_key, { limit: 50 });
+          if (res.success && res.data) {
+            setEntities(res.data.entities || []);
+          }
+        } catch (err) {
+          console.error('Failed to load session entities:', err);
+        } finally {
+          setLoadingEntities(false);
+        }
+      };
+      loadEntities();
+    }
+  }, [autoExpand, autoExpandLoaded, entities.length, session.session_key]);
 
   const handleExpand = async () => {
     if (!expanded && entities.length === 0) {
@@ -657,7 +828,7 @@ function SessionCard({
                                   </span>
                                 ) : entity.properties?.status === 'started' ? (
                                   <span className="px-1.5 py-0.5 text-xs bg-cm-info/10 text-cm-info rounded animate-pulse">
-                                    {formatDuration(Math.floor((Date.now() - new Date(entity.properties?.started_at || entity.created_at).getTime()) / 1000))}
+                                    {formatDuration(Math.floor((Date.now() - new Date(String(entity.properties?.started_at || entity.created_at)).getTime()) / 1000))}
                                   </span>
                                 ) : null}
                                 <span className="text-xs text-cm-coffee">
