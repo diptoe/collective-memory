@@ -203,7 +203,7 @@ function NavIcon({ name }: { name: string }) {
     'start': '🚀',
     'activity': '📈',
     'message-circle': '💬',
-    'users': '👥',
+    'users': '🎭',
     'brain': '🧠',
     'database': '🗄️',
     'file-text': '📄',
