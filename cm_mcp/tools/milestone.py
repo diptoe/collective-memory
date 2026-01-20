@@ -413,6 +413,22 @@ async def record_milestone(
                     except Exception:
                         pass
 
+            # IMPORTANT: Validate the milestone belongs to the current session
+            # This prevents updating milestones from other sessions when an agent
+            # reconnects or a new agent instance starts
+            if existing_milestone_key and session_key:
+                try:
+                    milestone_result = await _make_request(config, "GET", f"/entities/{existing_milestone_key}", agent_id=agent_id)
+                    if milestone_result.get("success"):
+                        milestone_data = milestone_result.get("data", {}).get("entity", {})
+                        milestone_session = milestone_data.get("work_session_key")
+                        if milestone_session != session_key:
+                            # Milestone belongs to a different session - don't update it
+                            existing_milestone_key = None
+                except Exception:
+                    # If we can't verify, safer to not update
+                    existing_milestone_key = None
+
         # If completing/blocking and we have an existing milestone, UPDATE it
         if existing_milestone_key and status in ("completed", "blocked"):
             # Update the existing milestone entity
