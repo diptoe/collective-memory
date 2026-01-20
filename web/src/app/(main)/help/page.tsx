@@ -28,6 +28,20 @@ const clients = [
     configPath: '~/.cursor/mcp.json',
   },
   {
+    id: 'windsurf',
+    name: 'Windsurf',
+    icon: '/icons/windsurf.svg',
+    description: 'AI-powered IDE by Codeium',
+    configPath: 'Windsurf Settings → MCP',
+  },
+  {
+    id: 'vscode',
+    name: 'VS Code + Copilot',
+    icon: '/icons/vscode.svg',
+    description: 'VS Code with MCP extensions (Cline, Continue)',
+    configPath: 'Extension Settings',
+  },
+  {
     id: 'codex',
     name: 'Codex CLI',
     icon: '/icons/gpt_codex.svg',
@@ -94,12 +108,58 @@ export default function HelpPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="font-serif text-2xl font-semibold text-cm-charcoal mb-2">
-            Help & Configuration
+            Help & Documentation
           </h1>
           <p className="text-cm-coffee">
-            Learn how to configure MCP clients to connect to Collective Memory
+            Learn about Collective Memory, explore tools, and configure your AI clients
           </p>
         </div>
+
+        {/* Quick Links - New Documentation Sections */}
+        <section className="grid md:grid-cols-3 gap-4 mb-6">
+          <Link
+            href="/help/about"
+            className="bg-cm-ivory border border-cm-sand rounded-xl p-5 hover:border-cm-terracotta transition-colors group"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-2xl">🎯</span>
+              <h3 className="font-semibold text-cm-charcoal group-hover:text-cm-terracotta transition-colors">
+                About CM
+              </h3>
+            </div>
+            <p className="text-sm text-cm-coffee">
+              Vision, core concepts, and roadmap for Collective Memory.
+            </p>
+          </Link>
+          <Link
+            href="/help/guides"
+            className="bg-cm-ivory border border-cm-sand rounded-xl p-5 hover:border-cm-terracotta transition-colors group"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-2xl">📖</span>
+              <h3 className="font-semibold text-cm-charcoal group-hover:text-cm-terracotta transition-colors">
+                Guides & Tutorials
+              </h3>
+            </div>
+            <p className="text-sm text-cm-coffee">
+              Step-by-step tutorials for sessions, personas, and collaboration.
+            </p>
+          </Link>
+          <Link
+            href="/help/tools"
+            className="bg-cm-ivory border border-cm-sand rounded-xl p-5 hover:border-cm-terracotta transition-colors group"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-2xl">🔧</span>
+              <h3 className="font-semibold text-cm-charcoal group-hover:text-cm-terracotta transition-colors">
+                Tool Reference
+              </h3>
+            </div>
+            <p className="text-sm text-cm-coffee">
+              Complete documentation for all 46 MCP tools.
+            </p>
+          </Link>
+        </section>
 
         {/* Quick Start */}
         <section className="bg-cm-ivory border border-cm-sand rounded-xl p-6 mb-6">
@@ -231,6 +291,15 @@ export default function HelpPage() {
         <section className="bg-cm-ivory border border-cm-sand rounded-xl p-6">
           <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Additional Resources</h2>
           <ul className="space-y-3">
+            <li>
+              <Link
+                href="/help/architecture"
+                className="flex items-center gap-2 text-cm-coffee hover:text-cm-terracotta transition-colors"
+              >
+                <span>🏗️</span>
+                <span>System Architecture & Technical Overview</span>
+              </Link>
+            </li>
             <li>
               <Link
                 href="/settings"

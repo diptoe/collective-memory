@@ -131,15 +131,18 @@ export default function StartPage() {
 
   return (
     <div className="h-full overflow-auto bg-cm-cream">
-      {/* User Welcome Section */}
+      {/* Header with Title */}
       <div className="p-6 pb-4">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="font-serif text-2xl font-semibold text-cm-charcoal">
-              {getGreeting()}, {user?.first_name || 'there'}
+            <h1 className="font-serif text-3xl font-semibold text-cm-charcoal">
+              Collective Memory
             </h1>
             <p className="text-cm-coffee mt-1">
-              Here's what's happening in your workspace
+              {getGreeting()}, {user?.first_name || 'there'}
+            </p>
+            <p className="text-sm text-cm-coffee/70">
+              Here&apos;s what&apos;s happening in your workspace
             </p>
           </div>
           <button
@@ -342,16 +345,65 @@ export default function StartPage() {
           </Link>
         </div>
 
-        {/* Quick Links */}
+        {/* Help & Documentation Links */}
         <div className="mt-6 pt-6 border-t border-cm-sand">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-cm-coffee">Need help getting started?</p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-medium text-cm-charcoal">Help & Documentation</p>
             <Link
               href="/help"
-              className="flex items-center gap-2 text-sm text-cm-terracotta hover:text-cm-terracotta/80 transition-colors"
+              className="text-xs text-cm-terracotta hover:underline"
             >
-              <span>Configure your MCP client</span>
-              <span>→</span>
+              View all →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Link
+              href="/help/about"
+              className="bg-cm-ivory border border-cm-sand rounded-xl p-4 hover:border-cm-terracotta transition-colors group"
+            >
+              <span className="text-xl mb-2 block">🎯</span>
+              <h3 className="font-medium text-sm text-cm-charcoal group-hover:text-cm-terracotta transition-colors">
+                About CM
+              </h3>
+              <p className="text-xs text-cm-coffee/70 mt-1">
+                Vision & roadmap
+              </p>
+            </Link>
+            <Link
+              href="/help/guides"
+              className="bg-cm-ivory border border-cm-sand rounded-xl p-4 hover:border-cm-terracotta transition-colors group"
+            >
+              <span className="text-xl mb-2 block">📖</span>
+              <h3 className="font-medium text-sm text-cm-charcoal group-hover:text-cm-terracotta transition-colors">
+                Guides
+              </h3>
+              <p className="text-xs text-cm-coffee/70 mt-1">
+                Tutorials & walkthroughs
+              </p>
+            </Link>
+            <Link
+              href="/help/tools"
+              className="bg-cm-ivory border border-cm-sand rounded-xl p-4 hover:border-cm-terracotta transition-colors group"
+            >
+              <span className="text-xl mb-2 block">🔧</span>
+              <h3 className="font-medium text-sm text-cm-charcoal group-hover:text-cm-terracotta transition-colors">
+                Tools
+              </h3>
+              <p className="text-xs text-cm-coffee/70 mt-1">
+                46 MCP tools
+              </p>
+            </Link>
+            <Link
+              href="/help"
+              className="bg-cm-ivory border border-cm-sand rounded-xl p-4 hover:border-cm-terracotta transition-colors group"
+            >
+              <span className="text-xl mb-2 block">⚙️</span>
+              <h3 className="font-medium text-sm text-cm-charcoal group-hover:text-cm-terracotta transition-colors">
+                Setup
+              </h3>
+              <p className="text-xs text-cm-coffee/70 mt-1">
+                Configure clients
+              </p>
             </Link>
           </div>
         </div>
