@@ -454,6 +454,38 @@ export interface TeamProject {
   project?: Project;
 }
 
+// Repository types (dedicated repository tracking separate from projects)
+export type RepositoryStatus = 'active' | 'archived';
+
+export interface Repository {
+  repository_key: string;
+  name: string;
+  description?: string;
+  repository_type?: RepositoryType;
+  repository_url: string;
+  repository_owner?: string;
+  repository_name?: string;
+  domain_key: string;
+  status: RepositoryStatus;
+  extra_data?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  // Extended fields (when include_projects=true)
+  projects?: ProjectRepository[];
+}
+
+// Project-Repository association (many-to-many)
+export interface ProjectRepository {
+  project_repository_key: string;
+  project_key: string;
+  repository_key: string;
+  created_at: string;
+  updated_at?: string;
+  // Extended fields
+  project?: Project;
+  repository?: Repository;
+}
+
 // Scope types for entity visibility control
 export type ScopeType = 'domain' | 'team' | 'user';
 export type ScopeAccessLevel = 'owner' | 'admin' | 'member' | 'viewer';

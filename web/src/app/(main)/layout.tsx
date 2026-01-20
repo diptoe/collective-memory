@@ -79,16 +79,12 @@ export default function MainLayout({
       {/* Sidebar Navigation */}
       <nav className="w-64 bg-cm-ivory border-r border-cm-sand flex flex-col h-screen sticky top-0">
         <div className="p-4 border-b border-cm-sand">
-          <Link href="/" className="flex items-center gap-3 group">
+          <Link href="/" className="flex justify-center group">
             <img
               src="/cm-logo.svg"
               alt="Collective Memory"
-              className="w-10 h-10 transition-transform group-hover:scale-105"
+              className="w-12 h-12 transition-transform group-hover:scale-105"
             />
-            <div className="leading-tight">
-              <span className="block font-serif text-base font-semibold text-cm-charcoal">Collective</span>
-              <span className="block font-serif text-base font-semibold text-cm-charcoal">Memory</span>
-            </div>
           </Link>
         </div>
 
@@ -119,7 +115,6 @@ export default function MainLayout({
               {user?.role === 'admin' && (
                 <>
                   <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
-                  <NavLink href="/admin/domains" icon="globe" active={pathname.startsWith('/admin/domains')}>Domains</NavLink>
                   <NavLink href="/admin/authentications" icon="key" active={pathname.startsWith('/admin/authentications')}>Authentications</NavLink>
                 </>
               )}

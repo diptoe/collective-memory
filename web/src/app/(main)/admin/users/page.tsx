@@ -93,12 +93,22 @@ export default function AdminUsersPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-cm-charcoal">User Management</h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
-        >
-          Add User
-        </button>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <Link
+              href="/admin/domains"
+              className="px-4 py-2 border border-cm-sand text-cm-charcoal rounded-md text-sm font-medium hover:bg-cm-sand/50 transition-colors"
+            >
+              Manage Domains
+            </Link>
+          )}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
+          >
+            Add User
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}

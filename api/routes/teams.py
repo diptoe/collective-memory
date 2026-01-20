@@ -100,6 +100,10 @@ def register_team_routes(api: Api):
         'data': fields.Raw(description='Response data'),
     })
 
+    move_domain_model = ns.model('MoveTeamToDomainRequest', {
+        'target_domain_key': fields.String(required=True, description='Domain key to move the team to'),
+    })
+
     @ns.route('')
     class TeamList(Resource):
         @ns.doc('list_teams')
@@ -333,6 +337,72 @@ def register_team_routes(api: Api):
                     }
                 }
 
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/<string:team_key>/move-domain')
+    @ns.param('team_key', 'Team identifier')
+    class TeamMoveDomain(Resource):
+        @ns.doc('move_team_to_domain')
+        @ns.expect(move_domain_model)
+        @require_domain_admin
+        def post(self, team_key):
+            """
+            Move a team to a different domain.
+
+            This operation:
+            - Updates the team's domain_key
+            - Removes all project associations (projects are domain-specific)
+            - Ensures slug uniqueness in target domain
+            - Keeps team memberships (users can be in teams across domains)
+
+            Requires system admin role.
+            """
+            user = g.current_user
+
+            # Only system admins can move teams between domains
+            if not user.is_admin:
+                return {'success': False, 'msg': 'Only system administrators can move teams between domains'}, 403
+
+            team = Team.get_by_key(team_key)
+            if not team:
+                return {'success': False, 'msg': 'Team not found'}, 404
+
+            data = request.json or {}
+            target_domain_key = data.get('target_domain_key')
+
+            if not target_domain_key:
+                return {'success': False, 'msg': 'target_domain_key is required'}, 400
+
+            try:
+                summary = team.move_to_domain(target_domain_key)
+
+                # Record activity
+                activity_service.record_update(
+                    actor=user.user_key,
+                    entity_type='Team',
+                    entity_key=team.team_key,
+                    entity_name=team.name,
+                    changes={
+                        'domain_key': {'old': summary['source_domain'], 'new': summary['target_domain']},
+                        'action': 'move_to_domain',
+                        'project_associations_removed': summary['project_associations_removed'],
+                    },
+                    domain_key=target_domain_key,
+                    user_key=user.user_key
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'Team moved to new domain successfully',
+                    'data': {
+                        'team': team.to_dict(),
+                        'summary': summary
+                    }
+                }
+
+            except ValueError as e:
+                return {'success': False, 'msg': str(e)}, 400
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 

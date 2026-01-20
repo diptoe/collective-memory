@@ -95,6 +95,74 @@ class Team(BaseModel):
         self.status = 'active'
         self.save()
 
+    def move_to_domain(self, target_domain_key: str) -> dict:
+        """
+        Move this team to a different domain.
+
+        This operation:
+        1. Updates the team's domain_key
+        2. Removes all project associations (projects are domain-specific)
+        3. Ensures slug uniqueness in target domain
+        4. Keeps team memberships (users can be in multiple domains)
+
+        Args:
+            target_domain_key: The domain key to move the team to
+
+        Returns:
+            dict with summary of changes made
+
+        Raises:
+            ValueError: If target domain doesn't exist or is same as current
+        """
+        from api.models.domain import Domain
+        from api.models.team_project import TeamProject
+
+        # Validate target domain
+        if target_domain_key == self.domain_key:
+            raise ValueError("Team is already in this domain")
+
+        target_domain = Domain.get_by_key(target_domain_key)
+        if not target_domain:
+            raise ValueError(f"Target domain not found: {target_domain_key}")
+
+        source_domain_key = self.domain_key
+        summary = {
+            'team_key': self.team_key,
+            'source_domain': source_domain_key,
+            'target_domain': target_domain_key,
+            'project_associations_removed': 0,
+            'slug_changed': False,
+            'original_slug': self.slug,
+            'new_slug': self.slug,
+        }
+
+        # 1. Remove project associations (projects belong to specific domains)
+        project_associations = TeamProject.get_projects_for_team(self.team_key)
+        for assoc in project_associations:
+            assoc.delete()
+            summary['project_associations_removed'] += 1
+
+        # 2. Ensure slug uniqueness in target domain
+        existing = Team.get_by_slug(target_domain_key, self.slug)
+        if existing:
+            # Generate a new unique slug
+            import re
+            base_slug = self.slug
+            counter = 1
+            new_slug = f"{base_slug}-{counter}"
+            while Team.get_by_slug(target_domain_key, new_slug):
+                counter += 1
+                new_slug = f"{base_slug}-{counter}"
+            summary['slug_changed'] = True
+            summary['new_slug'] = new_slug
+            self.slug = new_slug
+
+        # 3. Update the team itself
+        self.domain_key = target_domain_key
+        self.save()
+
+        return summary
+
     def get_members(self) -> list['TeamMembership']:
         """Get all active memberships for this team."""
         return TeamMembership.query.filter_by(team_key=self.team_key).all()

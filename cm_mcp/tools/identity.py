@@ -9,7 +9,7 @@ import subprocess
 import re
 from typing import Any
 
-from .utils import _make_request
+from .utils import _make_request, get_session_pat
 
 
 # ============================================================
@@ -102,7 +102,12 @@ async def _detect_project_from_api(config: Any, session_state: dict, repo_url: s
     """
     Query API to find project by repository URL.
 
+    Uses the new /repositories/lookup endpoint which returns:
+    - repository: The Repository record (if found)
+    - projects: Array of Project records linked to this repository (with teams)
+
     Returns dict with project and teams info if found, None otherwise.
+    For backwards compatibility, returns structure similar to old /projects/lookup.
     """
     try:
         from urllib.parse import quote
@@ -110,10 +115,36 @@ async def _detect_project_from_api(config: Any, session_state: dict, repo_url: s
         result = await _make_request(
             config,
             "GET",
-            f"/projects/lookup?repository_url={encoded_url}",
+            f"/repositories/lookup?url={encoded_url}",
         )
-        if result.get('success') and result.get('data', {}).get('project'):
-            return result['data']
+        if result.get('success'):
+            data = result.get('data', {})
+            repository = data.get('repository')
+            projects = data.get('projects', [])
+
+            if repository:
+                # Store repository info in session_state
+                session_state['repository_key'] = repository.get('repository_key')
+                session_state['repository_url'] = repository.get('repository_url')
+
+                # Return first project if available (most common case)
+                if projects:
+                    # Projects already include teams from the lookup endpoint
+                    first_project = projects[0]
+                    return {
+                        'project': first_project,
+                        'teams': first_project.get('teams', []),
+                        'repository': repository,
+                        'all_projects': projects  # Include all in case caller needs them
+                    }
+                else:
+                    # Repository exists but no projects linked
+                    return {
+                        'project': None,
+                        'teams': [],
+                        'repository': repository,
+                        'all_projects': []
+                    }
         return None
     except Exception:
         return None
@@ -693,7 +724,10 @@ async def identify(
         return [types.TextContent(type="text", text=output)]
 
     # Check if PAT is configured (required for agent registration)
-    if not hasattr(config, 'pat') or not config.pat:
+    # Priority: 1) Per-session PAT (SSE multi-user), 2) Config PAT (env/stdio)
+    session_pat = get_session_pat()
+    has_pat = session_pat or (hasattr(config, 'pat') and config.pat)
+    if not has_pat:
         output = "## Authentication Required\n\n"
         output += "**Agent registration requires a Personal Access Token (PAT).**\n\n"
         output += "To register agents with Collective Memory, you must:\n\n"
@@ -882,7 +916,7 @@ async def identify(
         available_scopes = []
         default_scope = {}
 
-        if hasattr(config, 'pat') and config.pat:
+        if has_pat:
             try:
                 me_result = await _make_request(config, "GET", "/auth/me")
                 if me_result.get("success"):

@@ -199,6 +199,88 @@ class Project(BaseModel):
             return []
         return Team.query.filter(Team.team_key.in_(team_keys)).all()
 
+    def move_to_domain(self, target_domain_key: str) -> dict:
+        """
+        Move this project to a different domain.
+
+        This operation:
+        1. Updates the project's domain_key
+        2. Updates all linked repositories' domain_key
+        3. Updates all related work_sessions' domain_key
+        4. Removes team associations (teams are domain-specific)
+        5. Clears agent project context
+
+        Args:
+            target_domain_key: The domain key to move the project to
+
+        Returns:
+            dict with summary of changes made
+
+        Raises:
+            ValueError: If target domain doesn't exist or is same as current
+        """
+        from api.models.domain import Domain
+        from api.models.team_project import TeamProject
+        from api.models.project_repository import ProjectRepository
+        from api.models.repository import Repository
+        from api.models.work_session import WorkSession
+        from api.models.agent import Agent
+
+        # Validate target domain
+        if target_domain_key == self.domain_key:
+            raise ValueError("Project is already in this domain")
+
+        target_domain = Domain.get_by_key(target_domain_key)
+        if not target_domain:
+            raise ValueError(f"Target domain not found: {target_domain_key}")
+
+        source_domain_key = self.domain_key
+        summary = {
+            'project_key': self.project_key,
+            'source_domain': source_domain_key,
+            'target_domain': target_domain_key,
+            'repositories_moved': 0,
+            'work_sessions_updated': 0,
+            'team_associations_removed': 0,
+            'agents_cleared': 0,
+        }
+
+        # 1. Remove team associations (teams belong to specific domains)
+        team_associations = TeamProject.get_teams_for_project(self.project_key)
+        for assoc in team_associations:
+            assoc.delete()
+            summary['team_associations_removed'] += 1
+
+        # 2. Update linked repositories' domain_key
+        repo_associations = ProjectRepository.get_repositories_for_project(self.project_key)
+        for assoc in repo_associations:
+            repo = Repository.get_by_key(assoc.repository_key)
+            if repo and repo.domain_key == source_domain_key:
+                repo.domain_key = target_domain_key
+                repo.save()
+                summary['repositories_moved'] += 1
+
+        # 3. Update work sessions' domain_key
+        work_sessions = WorkSession.query.filter_by(project_key=self.project_key).all()
+        for session in work_sessions:
+            if session.domain_key == source_domain_key:
+                session.domain_key = target_domain_key
+                session.save()
+                summary['work_sessions_updated'] += 1
+
+        # 4. Clear agent project context
+        agents = Agent.query.filter_by(project_key=self.project_key).all()
+        for agent in agents:
+            agent.project_key = None
+            agent.save()
+            summary['agents_cleared'] += 1
+
+        # 5. Update the project itself
+        self.domain_key = target_domain_key
+        self.save()
+
+        return summary
+
     def to_dict(self, include_teams: bool = False) -> dict:
         """Convert to dictionary for API response."""
         result = {

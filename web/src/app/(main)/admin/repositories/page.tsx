@@ -5,21 +5,20 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { Project, Team, Domain } from '@/types';
+import { Repository, Domain } from '@/types';
 
-export default function AdminProjectsPage() {
+export default function AdminRepositoriesPage() {
   const router = useRouter();
   const { user: currentUser, isAuthenticated } = useAuthStore();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [repositories, setRepositories] = useState<Repository[]>([]);
   const [stats, setStats] = useState<{
     total: number;
     active: number;
     archived: number;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<{ status?: string; team_key?: string; domain_key?: string }>({});
+  const [filter, setFilter] = useState<{ status?: string; domain_key?: string }>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [teams, setTeams] = useState<Team[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const isAdmin = currentUser?.role === 'admin';
 
@@ -32,7 +31,7 @@ export default function AdminProjectsPage() {
     }
   }, [isAuthenticated, currentUser, router]);
 
-  // Load projects, stats, and teams
+  // Load repositories and stats
   useEffect(() => {
     if (currentUser?.role === 'admin' || currentUser?.role === 'domain_admin') {
       loadData();
@@ -43,8 +42,7 @@ export default function AdminProjectsPage() {
     setIsLoading(true);
     try {
       const requests: Promise<unknown>[] = [
-        api.projects.list({ ...filter, include_teams: 'true' }),
-        api.teams.list(),
+        api.repositories.list({ ...filter, include_projects: true }),
       ];
 
       // Load domains for admin users
@@ -53,36 +51,32 @@ export default function AdminProjectsPage() {
       }
 
       const responses = await Promise.all(requests);
-      const [projectsResponse, teamsResponse] = responses as [
-        Awaited<ReturnType<typeof api.projects.list>>,
-        Awaited<ReturnType<typeof api.teams.list>>,
+      const [repositoriesResponse] = responses as [
+        Awaited<ReturnType<typeof api.repositories.list>>,
       ];
 
-      if (projectsResponse.success && projectsResponse.data) {
-        const projectsList = projectsResponse.data.projects;
-        setProjects(projectsList);
+      if (repositoriesResponse.success && repositoriesResponse.data) {
+        const repositoriesList = repositoriesResponse.data.repositories;
+        setRepositories(repositoriesList);
         // Calculate stats from the list
-        const active = projectsList.filter((p) => p.status === 'active').length;
-        const archived = projectsList.filter((p) => p.status === 'archived').length;
+        const active = repositoriesList.filter((r) => r.status === 'active').length;
+        const archived = repositoriesList.filter((r) => r.status === 'archived').length;
         setStats({
-          total: projectsList.length,
+          total: repositoriesList.length,
           active,
           archived,
         });
       }
-      if (teamsResponse.success && teamsResponse.data) {
-        setTeams(teamsResponse.data.teams);
-      }
 
       // Set domains for admin users
-      if (isAdmin && responses[2]) {
-        const domainsResponse = responses[2] as Awaited<ReturnType<typeof api.domains.list>>;
+      if (isAdmin && responses[1]) {
+        const domainsResponse = responses[1] as Awaited<ReturnType<typeof api.domains.list>>;
         if (domainsResponse.success && domainsResponse.data) {
           setDomains(domainsResponse.data.domains);
         }
       }
     } catch (err) {
-      console.error('Failed to load projects:', err);
+      console.error('Failed to load repositories:', err);
     } finally {
       setIsLoading(false);
     }
@@ -102,27 +96,19 @@ export default function AdminProjectsPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-cm-charcoal">Project Management</h1>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/admin/repositories"
-            className="px-4 py-2 border border-cm-sand text-cm-charcoal rounded-md text-sm font-medium hover:bg-cm-sand/50 transition-colors"
-          >
-            Manage Repositories
-          </Link>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
-          >
-            Create Project
-          </button>
-        </div>
+        <h1 className="text-2xl font-semibold text-cm-charcoal">Repository Management</h1>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
+        >
+          Create Repository
+        </button>
       </div>
 
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <StatCard label="Total Projects" value={stats.total} />
+          <StatCard label="Total Repositories" value={stats.total} />
           <StatCard label="Active" value={stats.active} color="green" />
           <StatCard label="Archived" value={stats.archived} color="gray" />
         </div>
@@ -153,31 +139,19 @@ export default function AdminProjectsPage() {
           <option value="active">Active</option>
           <option value="archived">Archived</option>
         </select>
-        <select
-          value={filter.team_key || ''}
-          onChange={(e) => setFilter((prev) => ({ ...prev, team_key: e.target.value || undefined }))}
-          className="px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
-        >
-          <option value="">All teams</option>
-          {teams.map((team) => (
-            <option key={team.team_key} value={team.team_key}>
-              {team.name}
-            </option>
-          ))}
-        </select>
       </div>
 
-      {/* Projects Table */}
+      {/* Repositories Table */}
       <div className="bg-cm-ivory border border-cm-sand rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-cm-sand/50">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Project</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Repository</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Type</th>
               {isAdmin && (
                 <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Domain</th>
               )}
-              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Teams</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Projects</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-cm-charcoal">Status</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-cm-charcoal">Actions</th>
             </tr>
@@ -186,66 +160,57 @@ export default function AdminProjectsPage() {
             {isLoading ? (
               <tr>
                 <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-sm text-cm-coffee">
-                  Loading projects...
+                  Loading repositories...
                 </td>
               </tr>
-            ) : projects.length === 0 ? (
+            ) : repositories.length === 0 ? (
               <tr>
                 <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-sm text-cm-coffee">
-                  No projects found. Create your first project to track a repository.
+                  No repositories found. Create your first repository to track code.
                 </td>
               </tr>
             ) : (
-              projects.map((project) => (
-                <tr key={project.project_key} className="border-t border-cm-sand hover:bg-cm-cream/50">
+              repositories.map((repository) => (
+                <tr key={repository.repository_key} className="border-t border-cm-sand hover:bg-cm-cream/50">
                   <td className="px-4 py-3">
                     <div>
-                      <span className="text-sm font-medium text-cm-charcoal">{project.name}</span>
-                      {project.description && (
-                        <p className="text-xs text-cm-coffee mt-0.5 line-clamp-1">{project.description}</p>
+                      <span className="text-sm font-medium text-cm-charcoal">{repository.name}</span>
+                      {repository.repository_owner && repository.repository_name && (
+                        <p className="text-xs text-cm-coffee font-mono mt-0.5">
+                          {repository.repository_owner}/{repository.repository_name}
+                        </p>
                       )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {project.repository_url ? (
-                      <div className="flex items-center gap-2">
-                        {project.repository_type && (
-                          <RepoTypeIcon type={project.repository_type} />
-                        )}
-                        <div>
-                          <span className="text-sm text-cm-charcoal font-mono">
-                            {project.repository_owner}/{project.repository_name}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-cm-coffee">No repository</span>
+                    {repository.repository_type && (
+                      <RepoTypeIcon type={repository.repository_type} />
                     )}
                   </td>
                   {isAdmin && (
                     <td className="px-4 py-3">
                       <span className="text-sm text-cm-charcoal">
-                        {getDomainName(project.domain_key)}
+                        {getDomainName(repository.domain_key)}
                       </span>
                     </td>
                   )}
                   <td className="px-4 py-3 text-sm text-cm-charcoal">
-                    {project.teams?.length ?? 0}
+                    {repository.projects?.length ?? 0}
                   </td>
                   <td className="px-4 py-3">
                     <span
                       className={`px-2 py-1 text-xs rounded-full ${
-                        project.status === 'active'
+                        repository.status === 'active'
                           ? 'bg-green-100 text-green-700'
                           : 'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {project.status}
+                      {repository.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
-                      href={`/admin/projects/${project.project_key}`}
+                      href={`/admin/repositories/${repository.repository_key}`}
                       className="text-sm text-cm-terracotta hover:underline"
                     >
                       View
@@ -260,10 +225,9 @@ export default function AdminProjectsPage() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <CreateProjectModal
+        <CreateRepositoryModal
           isAdmin={currentUser?.role === 'admin'}
           userDomainKey={currentUser?.domain_key}
-          teams={teams}
           onClose={() => setShowCreateModal(false)}
           onCreated={() => {
             setShowCreateModal(false);
@@ -301,7 +265,6 @@ function StatCard({
 }
 
 function RepoTypeIcon({ type }: { type: string }) {
-  // Simple icon based on repository type
   const icons: Record<string, string> = {
     github: 'GH',
     gitlab: 'GL',
@@ -317,16 +280,14 @@ function RepoTypeIcon({ type }: { type: string }) {
   );
 }
 
-function CreateProjectModal({
+function CreateRepositoryModal({
   isAdmin,
   userDomainKey,
-  teams,
   onClose,
   onCreated,
 }: {
   isAdmin?: boolean;
   userDomainKey?: string;
-  teams: Team[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -335,8 +296,6 @@ function CreateProjectModal({
   const [repositoryUrl, setRepositoryUrl] = useState('');
   const [domainKey, setDomainKey] = useState(userDomainKey || '');
   const [domains, setDomains] = useState<Domain[]>([]);
-  const [selectedTeamKey, setSelectedTeamKey] = useState('');
-  const [teamRole, setTeamRole] = useState<'owner' | 'contributor' | 'viewer'>('contributor');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -353,8 +312,8 @@ function CreateProjectModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setError('Name is required');
+    if (!repositoryUrl.trim()) {
+      setError('Repository URL is required');
       return;
     }
 
@@ -367,32 +326,21 @@ function CreateProjectModal({
     setError('');
 
     try {
-      // Create the project
-      const response = await api.projects.create({
-        name: name.trim(),
+      const response = await api.repositories.create({
+        repository_url: repositoryUrl.trim(),
+        name: name.trim() || undefined,
         description: description.trim() || undefined,
-        repository_url: repositoryUrl.trim() || undefined,
         domain_key: isAdmin ? domainKey : undefined,
       });
 
-      if (response.success && response.data) {
-        const project = response.data.project;
-
-        // Add team association if selected
-        if (selectedTeamKey && project) {
-          await api.projects.addTeam(project.project_key, {
-            team_key: selectedTeamKey,
-            role: teamRole,
-          });
-        }
-
+      if (response.success) {
         onCreated();
       } else {
-        setError(response.msg || 'Failed to create project');
+        setError(response.msg || 'Failed to create repository');
       }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { msg?: string } } };
-      setError(error.response?.data?.msg || 'Failed to create project');
+      setError(error.response?.data?.msg || 'Failed to create repository');
     } finally {
       setIsSubmitting(false);
     }
@@ -401,7 +349,7 @@ function CreateProjectModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-cm-ivory rounded-lg shadow-xl w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Create Project</h2>
+        <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Create Repository</h2>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
@@ -429,27 +377,7 @@ function CreateProjectModal({
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-cm-charcoal mb-1">Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
-                placeholder="My Project"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-cm-charcoal mb-1">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
-                placeholder="Optional description..."
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-cm-charcoal mb-1">Repository URL</label>
+              <label className="block text-sm font-medium text-cm-charcoal mb-1">Repository URL *</label>
               <input
                 type="text"
                 value={repositoryUrl}
@@ -462,32 +390,24 @@ function CreateProjectModal({
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-cm-charcoal mb-1">Associate with Team (Optional)</label>
-              <div className="flex gap-2">
-                <select
-                  value={selectedTeamKey}
-                  onChange={(e) => setSelectedTeamKey(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
-                >
-                  <option value="">No team</option>
-                  {teams.map((team) => (
-                    <option key={team.team_key} value={team.team_key}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
-                {selectedTeamKey && (
-                  <select
-                    value={teamRole}
-                    onChange={(e) => setTeamRole(e.target.value as 'owner' | 'contributor' | 'viewer')}
-                    className="w-32 px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
-                  >
-                    <option value="owner">Owner</option>
-                    <option value="contributor">Contributor</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                )}
-              </div>
+              <label className="block text-sm font-medium text-cm-charcoal mb-1">Name (optional)</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                placeholder="Defaults to repository name from URL"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-cm-charcoal mb-1">Description (optional)</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                placeholder="Optional description..."
+              />
             </div>
           </div>
 
@@ -504,7 +424,7 @@ function CreateProjectModal({
               disabled={isSubmitting}
               className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 disabled:opacity-50 transition-colors"
             >
-              {isSubmitting ? 'Creating...' : 'Create Project'}
+              {isSubmitting ? 'Creating...' : 'Create Repository'}
             </button>
           </div>
         </form>

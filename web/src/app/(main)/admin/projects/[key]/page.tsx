@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { Project, TeamProject, TeamProjectRole, Team } from '@/types';
+import { Project, TeamProject, TeamProjectRole, Team, Repository, Domain } from '@/types';
 
 function formatDateTime(dateStr?: string): string {
   if (!dateStr) return '-';
@@ -30,6 +30,9 @@ export default function ProjectDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [actionInProgress, setActionInProgress] = useState('');
   const [showAddTeamModal, setShowAddTeamModal] = useState(false);
+  const [showLinkRepositoryModal, setShowLinkRepositoryModal] = useState(false);
+  const [showMoveDomainModal, setShowMoveDomainModal] = useState(false);
+  const [projectRepositories, setProjectRepositories] = useState<{ project_repository_key: string; repository: Repository; created_at: string }[]>([]);
 
   // Edit form state
   const [editName, setEditName] = useState('');
@@ -55,9 +58,10 @@ export default function ProjectDetailPage() {
   const loadProjectData = async () => {
     setIsLoading(true);
     try {
-      const [projectResponse, teamsResponse] = await Promise.all([
+      const [projectResponse, teamsResponse, repositoriesResponse] = await Promise.all([
         api.projects.get(projectKey),
         api.projects.teams(projectKey),
+        api.projects.repositories(projectKey),
       ]);
 
       if (projectResponse.success && projectResponse.data) {
@@ -72,6 +76,10 @@ export default function ProjectDetailPage() {
 
       if (teamsResponse.success && teamsResponse.data) {
         setTeamProjects(teamsResponse.data.teams);
+      }
+
+      if (repositoriesResponse.success && repositoriesResponse.data) {
+        setProjectRepositories(repositoriesResponse.data.repositories);
       }
     } catch (err) {
       setError('Failed to load project');
@@ -165,6 +173,27 @@ export default function ProjectDetailPage() {
     } catch (err: unknown) {
       const error = err as { response?: { data?: { msg?: string } } };
       setError(error.response?.data?.msg || 'Failed to remove team');
+    } finally {
+      setActionInProgress('');
+    }
+  };
+
+  const unlinkRepository = async (repositoryKey: string) => {
+    if (!confirm('Are you sure you want to unlink this repository from the project?')) return;
+
+    setActionInProgress(`unlink-repo-${repositoryKey}`);
+    setError('');
+
+    try {
+      const response = await api.projects.removeRepository(projectKey, repositoryKey);
+      if (response.success) {
+        setProjectRepositories(projectRepositories.filter(pr => pr.repository.repository_key !== repositoryKey));
+      } else {
+        setError(response.msg || 'Failed to unlink repository');
+      }
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { msg?: string } } };
+      setError(error.response?.data?.msg || 'Failed to unlink repository');
     } finally {
       setActionInProgress('');
     }
@@ -323,6 +352,21 @@ export default function ProjectDetailPage() {
                 </button>
               </div>
             </div>
+            {/* Move to Domain - System Admins Only */}
+            {currentUser?.role === 'admin' && (
+              <div>
+                <p className="text-sm text-cm-coffee">Domain</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-cm-charcoal font-mono text-sm">{project.domain_key}</span>
+                  <button
+                    onClick={() => setShowMoveDomainModal(true)}
+                    className="text-xs text-cm-terracotta hover:underline"
+                  >
+                    Move to Another Domain
+                  </button>
+                </div>
+              </div>
+            )}
             <div>
               <p className="text-sm text-cm-coffee">Name</p>
               <p className="text-cm-charcoal">{project.name}</p>
@@ -436,6 +480,65 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
+      {/* Linked Repositories */}
+      <div className="bg-cm-ivory border border-cm-sand rounded-lg p-6 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-cm-charcoal">
+            Linked Repositories ({projectRepositories.length})
+          </h2>
+          <button
+            onClick={() => setShowLinkRepositoryModal(true)}
+            className="px-3 py-1.5 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90"
+          >
+            Link Repository
+          </button>
+        </div>
+
+        {projectRepositories.length === 0 ? (
+          <p className="text-sm text-cm-coffee">No repositories linked to this project yet. Link a repository to enable code tracking.</p>
+        ) : (
+          <div className="space-y-3">
+            {projectRepositories.map((pr) => (
+              <div
+                key={pr.project_repository_key}
+                className="flex items-center justify-between p-3 bg-cm-cream rounded-md"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-cm-terracotta flex items-center justify-center text-cm-ivory text-sm">
+                    <RepoTypeIcon type={pr.repository.repository_type || ''} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-cm-charcoal">
+                      {pr.repository.name}
+                    </p>
+                    {pr.repository.repository_owner && pr.repository.repository_name && (
+                      <p className="text-xs text-cm-coffee font-mono">
+                        {pr.repository.repository_owner}/{pr.repository.repository_name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href={`/admin/repositories/${pr.repository.repository_key}`}
+                    className="text-xs text-cm-terracotta hover:underline"
+                  >
+                    View Repository
+                  </Link>
+                  <button
+                    onClick={() => unlinkRepository(pr.repository.repository_key)}
+                    disabled={actionInProgress === `unlink-repo-${pr.repository.repository_key}`}
+                    className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                  >
+                    {actionInProgress === `unlink-repo-${pr.repository.repository_key}` ? 'Unlinking...' : 'Unlink'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Add Team Modal */}
       {showAddTeamModal && (
         <AddTeamModal
@@ -444,6 +547,31 @@ export default function ProjectDetailPage() {
           onClose={() => setShowAddTeamModal(false)}
           onAdded={() => {
             setShowAddTeamModal(false);
+            loadProjectData();
+          }}
+        />
+      )}
+
+      {/* Link Repository Modal */}
+      {showLinkRepositoryModal && (
+        <LinkRepositoryModal
+          projectKey={projectKey}
+          existingRepositoryKeys={projectRepositories.map(pr => pr.repository.repository_key)}
+          onClose={() => setShowLinkRepositoryModal(false)}
+          onLinked={() => {
+            setShowLinkRepositoryModal(false);
+            loadProjectData();
+          }}
+        />
+      )}
+
+      {/* Move to Domain Modal - System Admins Only */}
+      {showMoveDomainModal && (
+        <MoveDomainModal
+          project={project}
+          onClose={() => setShowMoveDomainModal(false)}
+          onMoved={() => {
+            setShowMoveDomainModal(false);
             loadProjectData();
           }}
         />
@@ -608,6 +736,405 @@ function AddTeamModal({
                 className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 disabled:opacity-50 transition-colors"
               >
                 {isSubmitting ? 'Adding...' : 'Add Team'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LinkRepositoryModal({
+  projectKey,
+  existingRepositoryKeys,
+  onClose,
+  onLinked,
+}: {
+  projectKey: string;
+  existingRepositoryKeys: string[];
+  onClose: () => void;
+  onLinked: () => void;
+}) {
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [selectedRepositoryKey, setSelectedRepositoryKey] = useState('');
+  const [repositoryUrl, setRepositoryUrl] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [mode, setMode] = useState<'existing' | 'new'>('existing');
+
+  useEffect(() => {
+    loadRepositories();
+  }, []);
+
+  const loadRepositories = async () => {
+    try {
+      const response = await api.repositories.list({ status: 'active' });
+      if (response.success && response.data) {
+        // Filter out repositories that are already linked
+        const availableRepositories = response.data.repositories.filter(
+          r => !existingRepositoryKeys.includes(r.repository_key)
+        );
+        setRepositories(availableRepositories);
+      }
+    } catch (err) {
+      setError('Failed to load repositories');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (mode === 'existing' && !selectedRepositoryKey) {
+      setError('Please select a repository');
+      return;
+    }
+    if (mode === 'new' && !repositoryUrl.trim()) {
+      setError('Please enter a repository URL');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      const data = mode === 'existing'
+        ? { repository_key: selectedRepositoryKey }
+        : { repository_url: repositoryUrl.trim() };
+
+      const response = await api.projects.addRepository(projectKey, data);
+
+      if (response.success) {
+        onLinked();
+      } else {
+        setError(response.msg || 'Failed to link repository');
+      }
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { msg?: string } } };
+      setError(error.response?.data?.msg || 'Failed to link repository');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-cm-ivory rounded-lg shadow-xl w-full max-w-md p-6">
+        <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Link Repository to Project</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Mode Toggle */}
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setMode('existing')}
+            className={`flex-1 px-3 py-2 text-sm rounded-md ${
+              mode === 'existing'
+                ? 'bg-cm-terracotta text-cm-ivory'
+                : 'bg-cm-sand text-cm-charcoal hover:bg-cm-sand/80'
+            }`}
+          >
+            Existing Repository
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('new')}
+            className={`flex-1 px-3 py-2 text-sm rounded-md ${
+              mode === 'new'
+                ? 'bg-cm-terracotta text-cm-ivory'
+                : 'bg-cm-sand text-cm-charcoal hover:bg-cm-sand/80'
+            }`}
+          >
+            New Repository
+          </button>
+        </div>
+
+        {mode === 'existing' ? (
+          isLoading ? (
+            <p className="text-sm text-cm-coffee">Loading repositories...</p>
+          ) : repositories.length === 0 ? (
+            <div className="text-sm text-cm-coffee">
+              <p>No available repositories to link.</p>
+              <button
+                type="button"
+                onClick={() => setMode('new')}
+                className="text-cm-terracotta hover:underline mt-2"
+              >
+                Create a new repository instead
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-cm-charcoal mb-1">Repository</label>
+                  <select
+                    value={selectedRepositoryKey}
+                    onChange={(e) => setSelectedRepositoryKey(e.target.value)}
+                    className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                  >
+                    <option value="">Select a repository...</option>
+                    {repositories.map((repository) => (
+                      <option key={repository.repository_key} value={repository.repository_key}>
+                        {repository.name} ({repository.repository_owner}/{repository.repository_name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-sm text-cm-coffee hover:text-cm-charcoal"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !selectedRepositoryKey}
+                  className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 disabled:opacity-50 transition-colors"
+                >
+                  {isSubmitting ? 'Linking...' : 'Link Repository'}
+                </button>
+              </div>
+            </form>
+          )
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-cm-charcoal mb-1">Repository URL</label>
+                <input
+                  type="text"
+                  value={repositoryUrl}
+                  onChange={(e) => setRepositoryUrl(e.target.value)}
+                  className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                  placeholder="https://github.com/owner/repo"
+                />
+                <p className="text-xs text-cm-coffee mt-1">
+                  A new repository will be created and linked to this project
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-cm-coffee hover:text-cm-charcoal"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || !repositoryUrl.trim()}
+                className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 disabled:opacity-50 transition-colors"
+              >
+                {isSubmitting ? 'Creating & Linking...' : 'Create & Link Repository'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MoveDomainModal({
+  project,
+  onClose,
+  onMoved,
+}: {
+  project: Project;
+  onClose: () => void;
+  onMoved: () => void;
+}) {
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [selectedDomainKey, setSelectedDomainKey] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [moveSummary, setMoveSummary] = useState<{
+    repositories_moved: number;
+    work_sessions_updated: number;
+    team_associations_removed: number;
+    agents_cleared: number;
+  } | null>(null);
+
+  useEffect(() => {
+    loadDomains();
+  }, []);
+
+  const loadDomains = async () => {
+    try {
+      const response = await api.domains.list({ status: 'active' });
+      if (response.success && response.data) {
+        // Filter out the current domain
+        const availableDomains = response.data.domains.filter(
+          d => d.domain_key !== project.domain_key
+        );
+        setDomains(availableDomains);
+      }
+    } catch (err) {
+      setError('Failed to load domains');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDomainKey) {
+      setError('Please select a domain');
+      return;
+    }
+
+    const selectedDomain = domains.find(d => d.domain_key === selectedDomainKey);
+    if (!confirm(`Are you sure you want to move "${project.name}" to domain "${selectedDomain?.name || selectedDomainKey}"?\n\nThis action will:\n• Remove all team associations\n• Move linked repositories to the new domain\n• Update work sessions\n• Clear agent project context`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      const response = await api.projects.moveToDomain(project.project_key, selectedDomainKey);
+
+      if (response.success && response.data) {
+        setMoveSummary(response.data.summary);
+      } else {
+        setError(response.msg || 'Failed to move project');
+      }
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { msg?: string } } };
+      setError(error.response?.data?.msg || 'Failed to move project');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Show success summary
+  if (moveSummary) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-cm-ivory rounded-lg shadow-xl w-full max-w-md p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-cm-charcoal">Project Moved Successfully</h2>
+          </div>
+
+          <div className="bg-cm-cream rounded-md p-4 mb-4">
+            <h3 className="text-sm font-medium text-cm-charcoal mb-2">Migration Summary</h3>
+            <ul className="text-sm text-cm-coffee space-y-1">
+              <li>• <strong>{moveSummary.team_associations_removed}</strong> team association(s) removed</li>
+              <li>• <strong>{moveSummary.repositories_moved}</strong> repository(ies) moved</li>
+              <li>• <strong>{moveSummary.work_sessions_updated}</strong> work session(s) updated</li>
+              <li>• <strong>{moveSummary.agents_cleared}</strong> agent(s) cleared</li>
+            </ul>
+          </div>
+
+          <p className="text-sm text-cm-coffee mb-4">
+            The project has been moved to the new domain. You may need to re-add team associations in the new domain.
+          </p>
+
+          <div className="flex justify-end">
+            <button
+              onClick={onMoved}
+              className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-cm-ivory rounded-lg shadow-xl w-full max-w-md p-6">
+        <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Move Project to Another Domain</h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Warning Box */}
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="text-sm text-amber-800">
+              <p className="font-medium mb-1">This action will:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Remove all team associations (teams are domain-specific)</li>
+                <li>Move linked repositories to the new domain</li>
+                <li>Update work sessions to the new domain</li>
+                <li>Clear project context from agents</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <p className="text-sm text-cm-coffee">Loading domains...</p>
+        ) : domains.length === 0 ? (
+          <p className="text-sm text-cm-coffee">No other domains available to move to.</p>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-cm-charcoal mb-1">Current Domain</label>
+                <p className="text-sm text-cm-coffee font-mono">{project.domain_key}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-cm-charcoal mb-1">Target Domain</label>
+                <select
+                  value={selectedDomainKey}
+                  onChange={(e) => setSelectedDomainKey(e.target.value)}
+                  className="w-full px-3 py-2 border border-cm-sand rounded-md bg-cm-cream text-cm-charcoal focus:outline-none focus:ring-2 focus:ring-cm-terracotta/50"
+                >
+                  <option value="">Select a domain...</option>
+                  {domains.map((domain) => (
+                    <option key={domain.domain_key} value={domain.domain_key}>
+                      {domain.name} ({domain.domain_key})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-cm-coffee hover:text-cm-charcoal"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || !selectedDomainKey}
+                className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 disabled:opacity-50 transition-colors"
+              >
+                {isSubmitting ? 'Moving Project...' : 'Move Project'}
               </button>
             </div>
           </form>

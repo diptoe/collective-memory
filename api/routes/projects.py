@@ -6,7 +6,7 @@ Endpoints for project management with team associations.
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Project, TeamProject, Team, db
+from api.models import Project, TeamProject, Team, Repository, ProjectRepository, db
 from api.services.auth import require_auth_strict, require_domain_admin
 from api.services.activity import activity_service
 
@@ -74,6 +74,10 @@ def register_project_routes(api: Api):
 
     update_team_role_model = ns.model('UpdateTeamRoleRequest', {
         'role': fields.String(required=True, description='New role: owner, contributor, viewer'),
+    })
+
+    move_domain_model = ns.model('MoveDomainRequest', {
+        'target_domain_key': fields.String(required=True, description='Target domain key to move project to'),
     })
 
     response_model = ns.model('Response', {
@@ -517,6 +521,75 @@ def register_project_routes(api: Api):
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
 
+    @ns.route('/<string:project_key>/move-domain')
+    @ns.param('project_key', 'Project identifier')
+    class ProjectMoveDomain(Resource):
+        @ns.doc('move_project_to_domain')
+        @ns.expect(move_domain_model)
+        @require_domain_admin
+        def post(self, project_key):
+            """
+            Move a project to a different domain.
+
+            This operation:
+            - Updates the project's domain
+            - Moves all linked repositories to the new domain
+            - Updates all related work sessions
+            - Removes team associations (teams are domain-specific)
+            - Clears agent project context
+
+            Only system admins can move projects between any domains.
+            Domain admins can only move projects OUT of their domain.
+            """
+            user = g.current_user
+            project = Project.get_by_key(project_key)
+
+            if not project:
+                return {'success': False, 'msg': 'Project not found'}, 404
+
+            # Only system admins can move projects
+            if not user.is_admin:
+                return {'success': False, 'msg': 'Only system administrators can move projects between domains'}, 403
+
+            data = request.json or {}
+            target_domain_key = data.get('target_domain_key')
+
+            if not target_domain_key:
+                return {'success': False, 'msg': 'target_domain_key is required'}, 400
+
+            try:
+                source_domain_key = project.domain_key
+                summary = project.move_to_domain(target_domain_key)
+
+                # Record activity
+                activity_service.record_update(
+                    actor=user.user_key,
+                    entity_type='Project',
+                    entity_key=project.project_key,
+                    entity_name=project.name,
+                    changes={
+                        'domain_key': {'old': source_domain_key, 'new': target_domain_key},
+                        'move_summary': summary
+                    },
+                    domain_key=target_domain_key,
+                    user_key=user.user_key
+                )
+
+                return {
+                    'success': True,
+                    'msg': f'Project moved to domain {target_domain_key}',
+                    'data': {
+                        'project': project.to_dict(),
+                        'summary': summary
+                    }
+                }
+
+            except ValueError as e:
+                return {'success': False, 'msg': str(e)}, 400
+            except Exception as e:
+                db.session.rollback()
+                return {'success': False, 'msg': str(e)}, 500
+
     @ns.route('/<string:project_key>/teams')
     @ns.param('project_key', 'Project identifier')
     class ProjectTeams(Resource):
@@ -700,6 +773,194 @@ def register_project_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Team removed from project'
+                }
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    # Repository linking models
+    link_repository_model = ns.model('LinkRepositoryRequest', {
+        'repository_key': fields.String(description='Repository key to link (if repository exists)'),
+        'repository_url': fields.String(description='Repository URL to link (creates repository if not found)'),
+    })
+
+    project_repository_model = ns.model('ProjectRepositoryAssociation', {
+        'project_repository_key': fields.String(readonly=True, description='Association identifier'),
+        'project_key': fields.String(description='Project key'),
+        'repository_key': fields.String(description='Repository key'),
+        'created_at': fields.DateTime(readonly=True),
+    })
+
+    @ns.route('/<string:project_key>/repositories')
+    @ns.param('project_key', 'Project identifier')
+    class ProjectRepositories(Resource):
+        @ns.doc('list_project_repositories')
+        @require_auth_strict
+        def get(self, project_key):
+            """List repositories linked to a project."""
+            project = Project.get_by_key(project_key)
+
+            if not project:
+                return {'success': False, 'msg': 'Project not found'}, 404
+
+            associations = ProjectRepository.get_repositories_for_project(project_key)
+            repositories = []
+            for assoc in associations:
+                repo = Repository.get_by_key(assoc.repository_key)
+                if repo:
+                    repositories.append({
+                        'project_repository_key': assoc.project_repository_key,
+                        'repository': repo.to_dict(),
+                        'created_at': assoc.created_at.isoformat() if assoc.created_at else None
+                    })
+
+            return {
+                'success': True,
+                'msg': f'Found {len(repositories)} linked repositories',
+                'data': {
+                    'project': {'project_key': project.project_key, 'name': project.name},
+                    'repositories': repositories
+                }
+            }
+
+        @ns.doc('link_repository_to_project')
+        @ns.expect(link_repository_model)
+        @require_domain_admin
+        def post(self, project_key):
+            """
+            Link a repository to a project.
+
+            Can provide either:
+            - repository_key: Link to an existing repository
+            - repository_url: Find or create repository, then link
+
+            If repository_url is provided and no repository exists, one will be created.
+            """
+            user = g.current_user
+            project = Project.get_by_key(project_key)
+
+            if not project:
+                return {'success': False, 'msg': 'Project not found'}, 404
+
+            # Check domain access
+            if project.domain_key != user.domain_key and not user.is_admin:
+                return {'success': False, 'msg': 'Access denied'}, 403
+
+            data = request.json or {}
+
+            repository = None
+
+            # First try by repository_key
+            if data.get('repository_key'):
+                repository = Repository.get_by_key(data['repository_key'])
+                if not repository:
+                    return {'success': False, 'msg': 'Repository not found'}, 404
+            # Then try by repository_url
+            elif data.get('repository_url'):
+                repository = Repository.find_by_url(data['repository_url'])
+                if not repository:
+                    # Create the repository
+                    try:
+                        repository = Repository.create_repository(
+                            domain_key=project.domain_key,
+                            repository_url=data['repository_url'],
+                            name=data.get('name'),
+                            description=data.get('description')
+                        )
+                        # Record activity for repository creation
+                        activity_service.record_create(
+                            actor=user.user_key,
+                            entity_type='Repository',
+                            entity_key=repository.repository_key,
+                            entity_name=repository.name,
+                            changes={
+                                'repository_url': repository.repository_url,
+                                'domain_key': repository.domain_key,
+                                'created_via': 'project_link'
+                            },
+                            domain_key=project.domain_key,
+                            user_key=user.user_key
+                        )
+                    except Exception as e:
+                        return {'success': False, 'msg': f'Failed to create repository: {str(e)}'}, 500
+            else:
+                return {'success': False, 'msg': 'Either repository_key or repository_url is required'}, 400
+
+            # Ensure repository is in the same domain
+            if repository.domain_key != project.domain_key:
+                return {'success': False, 'msg': 'Repository must be in the same domain as the project'}, 400
+
+            try:
+                association = ProjectRepository.create_association(
+                    project_key=project.project_key,
+                    repository_key=repository.repository_key
+                )
+
+                # Record activity
+                activity_service.record_create(
+                    actor=user.user_key,
+                    entity_type='ProjectRepository',
+                    entity_key=association.project_repository_key,
+                    entity_name=f'{project.name} -> {repository.name}',
+                    changes={'project_key': project.project_key, 'repository_key': repository.repository_key},
+                    domain_key=project.domain_key,
+                    user_key=user.user_key
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'Repository linked to project',
+                    'data': {
+                        'association': association.to_dict(include_repository=True)
+                    }
+                }, 201
+
+            except ValueError as e:
+                return {'success': False, 'msg': str(e)}, 409
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
+    @ns.route('/<string:project_key>/repositories/<string:repository_key>')
+    @ns.param('project_key', 'Project identifier')
+    @ns.param('repository_key', 'Repository identifier')
+    class ProjectRepositoryDetail(Resource):
+        @ns.doc('unlink_repository_from_project')
+        @require_domain_admin
+        def delete(self, project_key, repository_key):
+            """Unlink a repository from a project."""
+            user = g.current_user
+            project = Project.get_by_key(project_key)
+
+            if not project:
+                return {'success': False, 'msg': 'Project not found'}, 404
+
+            # Check domain access
+            if project.domain_key != user.domain_key and not user.is_admin:
+                return {'success': False, 'msg': 'Access denied'}, 403
+
+            association = ProjectRepository.get_association(project_key, repository_key)
+            if not association:
+                return {'success': False, 'msg': 'Repository association not found'}, 404
+
+            try:
+                repository = Repository.get_by_key(repository_key)
+                repo_name = repository.name if repository else repository_key
+
+                association.delete()
+
+                # Record activity
+                activity_service.record_delete(
+                    actor=user.user_key,
+                    entity_type='ProjectRepository',
+                    entity_key=association.project_repository_key,
+                    entity_name=f'{project.name} -> {repo_name}',
+                    domain_key=project.domain_key,
+                    user_key=user.user_key
+                )
+
+                return {
+                    'success': True,
+                    'msg': 'Repository unlinked from project'
                 }
 
             except Exception as e:

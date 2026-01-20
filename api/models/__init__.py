@@ -30,6 +30,8 @@ from api.models.team import Team, TeamMembership
 from api.models.work_session import WorkSession
 from api.models.project import Project
 from api.models.team_project import TeamProject
+from api.models.repository import Repository
+from api.models.project_repository import ProjectRepository
 
 __all__ = [
     'db',
@@ -70,4 +72,6 @@ __all__ = [
     'WorkSession',
     'Project',
     'TeamProject',
+    'Repository',
+    'ProjectRepository',
 ]

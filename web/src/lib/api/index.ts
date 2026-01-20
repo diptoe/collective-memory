@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric, KnowledgeStatsData, KnowledgeDomain, Project, TeamProject, TeamProjectRole } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric, KnowledgeStatsData, KnowledgeDomain, Project, TeamProject, TeamProjectRole, Repository, ProjectRepository } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
@@ -73,6 +73,15 @@ interface ProjectResponse { project: Project }
 interface ProjectLookupResponse { project: Project | null; teams: TeamProject[] }
 interface ProjectTeamsResponse { project: Project; teams: TeamProject[] }
 interface TeamProjectResponse { team_project: TeamProject }
+interface ProjectRepositoriesResponse { project: { project_key: string; name: string }; repositories: { project_repository_key: string; repository: Repository; created_at: string }[] }
+interface ProjectRepositoryResponse { association: ProjectRepository }
+
+// Repository response types
+interface RepositoriesResponse { repositories: Repository[]; total: number }
+interface RepositoryResponse { repository: Repository }
+interface RepositoryLookupResponse { repository: Repository | null; projects: Project[] }
+interface RepositoryProjectsResponse { repository: { repository_key: string; name: string }; projects: { project_repository_key: string; project: Project; created_at: string }[] }
+interface RepositoryProjectResponse { association: ProjectRepository }
 
 /**
  * API Response type from the backend
@@ -476,6 +485,9 @@ export const api = {
       apiClient.delete(`/teams/${teamKey}/members/${userKey}`),
     stats: () =>
       apiClient.get<TeamStatsResponse>('/teams/stats'),
+    // Domain move (admin only)
+    moveToDomain: (teamKey: string, targetDomainKey: string) =>
+      apiClient.post<{ team: Team; summary: { team_key: string; source_domain: string; target_domain: string; project_associations_removed: number; slug_changed: boolean; original_slug: string; new_slug: string } }>(`/teams/${teamKey}/move-domain`, { target_domain_key: targetDomainKey }),
   },
 
   // Work Sessions
@@ -544,5 +556,38 @@ export const api = {
       apiClient.put<TeamProjectResponse>(`/projects/${projectKey}/teams/${teamKey}`, data),
     removeTeam: (projectKey: string, teamKey: string) =>
       apiClient.delete(`/projects/${projectKey}/teams/${teamKey}`),
+    // Repository linking
+    repositories: (projectKey: string) =>
+      apiClient.get<ProjectRepositoriesResponse>(`/projects/${projectKey}/repositories`),
+    addRepository: (projectKey: string, data: { repository_key?: string; repository_url?: string; name?: string; description?: string }) =>
+      apiClient.post<ProjectRepositoryResponse>(`/projects/${projectKey}/repositories`, data),
+    removeRepository: (projectKey: string, repositoryKey: string) =>
+      apiClient.delete(`/projects/${projectKey}/repositories/${repositoryKey}`),
+    // Domain move (admin only)
+    moveToDomain: (projectKey: string, targetDomainKey: string) =>
+      apiClient.post<{ project: Project; summary: { project_key: string; source_domain: string; target_domain: string; repositories_moved: number; work_sessions_updated: number; team_associations_removed: number; agents_cleared: number } }>(`/projects/${projectKey}/move-domain`, { target_domain_key: targetDomainKey }),
+  },
+
+  // Repositories
+  repositories: {
+    list: (params?: { status?: string; domain_key?: string; include_projects?: boolean; limit?: number; offset?: number }) =>
+      apiClient.get<RepositoriesResponse>('/repositories', { params }),
+    get: (repositoryKey: string, params?: { include_projects?: boolean }) =>
+      apiClient.get<RepositoryResponse>(`/repositories/${repositoryKey}`, { params }),
+    create: (data: { repository_url: string; name?: string; description?: string; domain_key?: string }) =>
+      apiClient.post<RepositoryResponse>('/repositories', data),
+    update: (repositoryKey: string, data: { name?: string; description?: string; repository_url?: string; status?: string }) =>
+      apiClient.put<RepositoryResponse>(`/repositories/${repositoryKey}`, data),
+    archive: (repositoryKey: string) =>
+      apiClient.delete(`/repositories/${repositoryKey}`),
+    lookup: (url: string) =>
+      apiClient.get<RepositoryLookupResponse>('/repositories/lookup', { params: { url } }),
+    // Project linking
+    projects: (repositoryKey: string) =>
+      apiClient.get<RepositoryProjectsResponse>(`/repositories/${repositoryKey}/projects`),
+    addProject: (repositoryKey: string, data: { project_key: string }) =>
+      apiClient.post<RepositoryProjectResponse>(`/repositories/${repositoryKey}/projects`, data),
+    removeProject: (repositoryKey: string, projectKey: string) =>
+      apiClient.delete(`/repositories/${repositoryKey}/projects/${projectKey}`),
   },
 };
