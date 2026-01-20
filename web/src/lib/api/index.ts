@@ -565,7 +565,7 @@ export const api = {
       apiClient.delete(`/projects/${projectKey}/repositories/${repositoryKey}`),
     // Domain move (admin only)
     moveToDomain: (projectKey: string, targetDomainKey: string) =>
-      apiClient.post<{ project: Project; summary: { project_key: string; source_domain: string; target_domain: string; repositories_moved: number; work_sessions_updated: number; team_associations_removed: number; agents_cleared: number } }>(`/projects/${projectKey}/move-domain`, { target_domain_key: targetDomainKey }),
+      apiClient.post<{ project: Project; summary: { project_key: string; source_domain: string; target_domain: string; repositories_moved: number; work_sessions_updated: number; entities_updated: number; team_associations_removed: number; agents_cleared: number } }>(`/projects/${projectKey}/move-domain`, { target_domain_key: targetDomainKey }),
   },
 
   // Repositories

@@ -967,6 +967,7 @@ function MoveDomainModal({
   const [moveSummary, setMoveSummary] = useState<{
     repositories_moved: number;
     work_sessions_updated: number;
+    entities_updated: number;
     team_associations_removed: number;
     agents_cleared: number;
   } | null>(null);
@@ -1000,7 +1001,7 @@ function MoveDomainModal({
     }
 
     const selectedDomain = domains.find(d => d.domain_key === selectedDomainKey);
-    if (!confirm(`Are you sure you want to move "${project.name}" to domain "${selectedDomain?.name || selectedDomainKey}"?\n\nThis action will:\n• Remove all team associations\n• Move linked repositories to the new domain\n• Update work sessions\n• Clear agent project context`)) {
+    if (!confirm(`Are you sure you want to move "${project.name}" to domain "${selectedDomain?.name || selectedDomainKey}"?\n\nThis action will:\n• Remove all team associations\n• Move linked repositories to the new domain\n• Update work sessions and their entities\n• Clear agent project context`)) {
       return;
     }
 
@@ -1043,6 +1044,7 @@ function MoveDomainModal({
               <li>• <strong>{moveSummary.team_associations_removed}</strong> team association(s) removed</li>
               <li>• <strong>{moveSummary.repositories_moved}</strong> repository(ies) moved</li>
               <li>• <strong>{moveSummary.work_sessions_updated}</strong> work session(s) updated</li>
+              <li>• <strong>{moveSummary.entities_updated}</strong> entity(ies) updated</li>
               <li>• <strong>{moveSummary.agents_cleared}</strong> agent(s) cleared</li>
             </ul>
           </div>

@@ -207,8 +207,10 @@ class Project(BaseModel):
         1. Updates the project's domain_key
         2. Updates all linked repositories' domain_key
         3. Updates all related work_sessions' domain_key
-        4. Removes team associations (teams are domain-specific)
-        5. Clears agent project context
+        4. Updates all entities created in those work sessions
+        5. Updates the project's linked entity (if any)
+        6. Removes team associations (teams are domain-specific)
+        7. Clears agent project context
 
         Args:
             target_domain_key: The domain key to move the project to
@@ -225,6 +227,7 @@ class Project(BaseModel):
         from api.models.repository import Repository
         from api.models.work_session import WorkSession
         from api.models.agent import Agent
+        from api.models.entity import Entity
 
         # Validate target domain
         if target_domain_key == self.domain_key:
@@ -241,6 +244,7 @@ class Project(BaseModel):
             'target_domain': target_domain_key,
             'repositories_moved': 0,
             'work_sessions_updated': 0,
+            'entities_updated': 0,
             'team_associations_removed': 0,
             'agents_cleared': 0,
         }
@@ -260,22 +264,45 @@ class Project(BaseModel):
                 repo.save()
                 summary['repositories_moved'] += 1
 
-        # 3. Update work sessions' domain_key
+        # 3. Update work sessions' domain_key and collect session keys
         work_sessions = WorkSession.query.filter_by(project_key=self.project_key).all()
+        session_keys = []
         for session in work_sessions:
+            session_keys.append(session.session_key)
             if session.domain_key == source_domain_key:
                 session.domain_key = target_domain_key
                 session.save()
                 summary['work_sessions_updated'] += 1
 
-        # 4. Clear agent project context
+        # 4. Update entities created in those work sessions
+        if session_keys:
+            entities = Entity.query.filter(
+                Entity.work_session_key.in_(session_keys),
+                Entity.domain_key == source_domain_key
+            ).all()
+            for entity in entities:
+                entity.domain_key = target_domain_key
+                entity.save()
+                summary['entities_updated'] += 1
+
+        # 5. Update the project's linked entity (if any)
+        if self.entity_key:
+            project_entity = Entity.get_by_key(self.entity_key)
+            if project_entity and project_entity.domain_key == source_domain_key:
+                project_entity.domain_key = target_domain_key
+                project_entity.save()
+                # Only count if not already counted above
+                if self.entity_key not in [e.entity_key for e in entities] if session_keys else True:
+                    summary['entities_updated'] += 1
+
+        # 6. Clear agent project context
         agents = Agent.query.filter_by(project_key=self.project_key).all()
         for agent in agents:
             agent.project_key = None
             agent.save()
             summary['agents_cleared'] += 1
 
-        # 5. Update the project itself
+        # 7. Update the project itself
         self.domain_key = target_domain_key
         self.save()
 
