@@ -13,9 +13,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --upgrade pip && python -m pip install -r /app/requirements.txt
 
+# Install SSE dependencies (starlette, uvicorn)
+RUN python -m pip install starlette uvicorn
+
 COPY api/ /app/api/
 COPY cm_mcp/ /app/cm_mcp/
 
-# MCP servers speak over stdio; Claude Code/Claude Desktop will manage the process.
+# SSE transport mode for Cloud Run deployment
+# Clients authenticate via Authorization header with their PAT
+ENV CM_MCP_TRANSPORT=sse \
+    CM_MCP_SSE_HOST=0.0.0.0 \
+    CM_MCP_SSE_PORT=8080
+
+EXPOSE 8080
+
 CMD ["python", "-m", "cm_mcp"]
 
