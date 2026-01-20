@@ -44,3 +44,5 @@ htmlcov/
 *.egg
 *.whl
 web/tsconfig.tsbuildinfo
+backups/collective_memory_clean.dump
+/backups

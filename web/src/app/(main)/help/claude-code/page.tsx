@@ -6,30 +6,46 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 
 export default function ClaudeCodeHelpPage() {
   const { user } = useAuthStore();
-  const [copied, setCopied] = useState(false);
+  const [copiedSSE, setCopiedSSE] = useState(false);
+  const [copiedStdio, setCopiedStdio] = useState(false);
 
-  const apiUrl = typeof window !== 'undefined'
-    ? window.location.origin.replace(':3000', ':5001').replace('cm.diptoe.ai', 'cm-api.diptoe.ai')
-    : 'http://localhost:5001';
   const pat = user?.pat || 'your-personal-access-token';
 
-  const configSnippet = `{
+  // SSE config (recommended) - no Python needed
+  const sseConfigSnippet = `{
+  "mcpServers": {
+    "collective-memory": {
+      "url": "https://cm-sse.diptoe.ai/sse",
+      "headers": {
+        "Authorization": "Bearer ${pat}"
+      }
+    }
+  }
+}`;
+
+  // Stdio config (alternative) - requires Python/uvx
+  const stdioConfigSnippet = `{
   "mcpServers": {
     "collective-memory": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/diptoe/collective-memory", "cm-mcp"],
       "env": {
-        "CM_API_URL": "${apiUrl}",
         "CM_PAT": "${pat}"
       }
     }
   }
 }`;
 
-  const copyToClipboard = async () => {
-    await navigator.clipboard.writeText(configSnippet);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copySSEConfig = async () => {
+    await navigator.clipboard.writeText(sseConfigSnippet);
+    setCopiedSSE(true);
+    setTimeout(() => setCopiedSSE(false), 2000);
+  };
+
+  const copyStdioConfig = async () => {
+    await navigator.clipboard.writeText(stdioConfigSnippet);
+    setCopiedStdio(true);
+    setTimeout(() => setCopiedStdio(false), 2000);
   };
 
   return (
@@ -46,7 +62,7 @@ export default function ClaudeCodeHelpPage() {
         <div className="flex items-center gap-4 mb-8">
           <div className="w-16 h-16 rounded-xl bg-cm-sand/50 flex items-center justify-center">
             <img
-              src="/icons/clients/claude-code.svg"
+              src="/icons/claude_code.svg"
               alt="Claude Code"
               className="w-10 h-10"
               onError={(e) => {
@@ -65,9 +81,15 @@ export default function ClaudeCodeHelpPage() {
           </div>
         </div>
 
-        {/* Configuration Steps */}
+        {/* SSE Configuration (Recommended) */}
         <section className="bg-cm-ivory border border-cm-sand rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Configuration Steps</h2>
+          <div className="flex items-center gap-2 mb-4">
+            <h2 className="text-lg font-semibold text-cm-charcoal">SSE Configuration</h2>
+            <span className="px-2 py-0.5 bg-cm-success/20 text-cm-success text-xs font-medium rounded">Recommended</span>
+          </div>
+          <p className="text-sm text-cm-coffee mb-4">
+            Connect to the hosted SSE server — no Python installation required.
+          </p>
 
           <div className="space-y-6">
             {/* Step 1 */}
@@ -99,13 +121,13 @@ export default function ClaudeCodeHelpPage() {
               </p>
               <div className="ml-8 relative">
                 <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
-                  {configSnippet}
+                  {sseConfigSnippet}
                 </pre>
                 <button
-                  onClick={copyToClipboard}
+                  onClick={copySSEConfig}
                   className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
                 >
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copiedSSE ? 'Copied!' : 'Copy'}
                 </button>
               </div>
             </div>
@@ -138,29 +160,25 @@ export default function ClaudeCodeHelpPage() {
           </div>
         </section>
 
-        {/* Alternative: Local Development */}
+        {/* Alternative: stdio (Local) */}
         <section className="bg-cm-ivory border border-cm-sand rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Alternative: Local Development Setup</h2>
+          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Alternative: Local stdio Setup</h2>
           <p className="text-sm text-cm-coffee mb-4">
-            If you're running the Collective Memory server locally or want to use a local clone:
+            Run the MCP server locally using uvx. Requires Python 3.10+ and uv installed.
           </p>
-          <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
-{`{
-  "mcpServers": {
-    "collective-memory": {
-      "command": "python",
-      "args": ["-m", "cm_mcp.server"],
-      "cwd": "/path/to/collective-memory",
-      "env": {
-        "CM_API_URL": "http://localhost:5001",
-        "CM_PAT": "${pat}"
-      }
-    }
-  }
-}`}
-          </pre>
+          <div className="relative">
+            <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
+              {stdioConfigSnippet}
+            </pre>
+            <button
+              onClick={copyStdioConfig}
+              className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
+            >
+              {copiedStdio ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
           <p className="text-xs text-cm-coffee mt-2">
-            Replace <code className="bg-cm-sand/50 px-1 rounded">/path/to/collective-memory</code> with the actual path to your local repository.
+            Install uv with <code className="bg-cm-sand/50 px-1 rounded">pip install uv</code> if needed.
           </p>
         </section>
 
