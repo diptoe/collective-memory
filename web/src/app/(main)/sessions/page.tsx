@@ -4,10 +4,19 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { WorkSession, Entity, UserTeam, Team } from '@/types';
+import { WorkSession, Entity, UserTeam, Team, ClientType } from '@/types';
 import { cn } from '@/lib/utils';
 import { MilestoneMetricsPanel, extractAllMetrics } from '@/components/milestone-impact';
 import { Markdown } from '@/components/markdown/markdown';
+
+// Client configuration for icons
+const CLIENT_CONFIG: Record<ClientType, { label: string; icon: string }> = {
+  'claude-code': { label: 'Claude Code', icon: '/icons/claude_code.svg' },
+  'claude-desktop': { label: 'Claude Desktop', icon: '/icons/claude_desktop.svg' },
+  'codex': { label: 'Codex', icon: '/icons/gpt_codex.svg' },
+  'gemini-cli': { label: 'Gemini CLI', icon: '/icons/gemini_cli.svg' },
+  'cursor': { label: 'Cursor', icon: '/icons/cursor.svg' },
+};
 
 const STATUS_COLORS = {
   active: 'bg-cm-success/10 text-cm-success',
@@ -692,15 +701,55 @@ function SessionCard({
             </div>
 
             <div className="text-sm text-cm-coffee space-y-1">
-              <p>
-                <span className="text-cm-charcoal/70">Project:</span>{' '}
-                {session.project?.name || session.project_key}
-              </p>
-              {session.agent_id && (
-                <p>
-                  <span className="text-cm-charcoal/70">Started by:</span>{' '}
-                  <span className="font-mono text-xs bg-cm-sand/50 px-1 py-0.5 rounded">{session.agent_id}</span>
-                </p>
+              {/* Project info */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-cm-charcoal/70">Project:</span>
+                <span className="font-medium text-cm-charcoal">{session.project?.name || session.project_key}</span>
+                {session.project?.repository_url && (
+                  <a
+                    href={session.project.repository_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-cm-terracotta hover:underline flex items-center gap-1"
+                  >
+                    {session.project.repository_owner}/{session.project.repository_name}
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                )}
+              </div>
+              {/* Agent info with icons */}
+              {(session.agent_id || session.agent) && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-cm-charcoal/70">Started by:</span>
+                  {session.agent?.client && CLIENT_CONFIG[session.agent.client as ClientType] && (
+                    <img
+                      src={CLIENT_CONFIG[session.agent.client as ClientType].icon}
+                      alt={CLIENT_CONFIG[session.agent.client as ClientType].label}
+                      className="w-4 h-4"
+                      title={CLIENT_CONFIG[session.agent.client as ClientType].label}
+                    />
+                  )}
+                  <span className="font-mono text-xs bg-cm-sand/50 px-1 py-0.5 rounded">
+                    {session.agent?.agent_id || session.agent_id}
+                  </span>
+                  {session.agent?.model_name && (
+                    <span className="text-xs text-cm-coffee/70 flex items-center gap-1">
+                      · {session.agent.model_name}
+                    </span>
+                  )}
+                  {session.agent?.persona_name && (
+                    <span className="text-xs px-1.5 py-0.5 bg-cm-sand/50 rounded text-cm-coffee/70">
+                      {session.agent.persona_name}
+                    </span>
+                  )}
+                  {session.agent?.user_name && (
+                    <span className="text-xs text-cm-coffee/60">
+                      ({session.agent.user_name})
+                    </span>
+                  )}
+                </div>
               )}
               <p>
                 <span className="text-cm-charcoal/70">Started:</span>{' '}

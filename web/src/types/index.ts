@@ -570,15 +570,33 @@ export interface WorkSession {
   // Computed fields
   time_remaining_seconds?: number;
   is_expired?: boolean;
-  // Extended fields (when include_user=true or include_project=true)
+  // Extended fields (always included by default)
   user?: {
     user_key: string;
     display_name: string;
     email: string;
   };
   project?: {
-    entity_key: string;
+    project_key?: string;  // From Project table
+    entity_key?: string;   // From Entity (legacy)
     name: string;
+    description?: string;
+    repository_type?: string;
+    repository_url?: string;
+    repository_owner?: string;
+    repository_name?: string;
+  };
+  agent?: {
+    agent_id: string;
+    agent_key: string;
+    client?: string;
+    user_key?: string;
+    user_name?: string;
+    user_initials?: string;
+    persona_name?: string;
+    persona_role?: string;
+    model_name?: string;
+    model_id?: string;
   };
   // Stats (when include_stats=true)
   stats?: {

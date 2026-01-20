@@ -192,7 +192,7 @@ class WorkSession(BaseModel):
             count += 1
         return count
 
-    def to_dict(self, include_relationships: bool = False) -> dict:
+    def to_dict(self, include_relationships: bool = False, include_project: bool = True, include_agent: bool = True) -> dict:
         """Convert to dictionary for API response."""
         result = {
             'session_key': self.session_key,
@@ -218,5 +218,79 @@ class WorkSession(BaseModel):
         remaining = self.time_remaining()
         if remaining is not None:
             result['time_remaining_seconds'] = int(remaining.total_seconds())
+
+        # Include enriched project data
+        if include_project and self.project_key:
+            result['project'] = self._get_project_info()
+
+        # Include enriched agent data
+        if include_agent and self.agent_id:
+            result['agent'] = self._get_agent_info()
+
+        return result
+
+    def _get_project_info(self) -> Optional[dict]:
+        """Get enriched project information."""
+        from api.models.project import Project
+
+        # First try to find in Project table (new style)
+        project = Project.query.get(self.project_key)
+        if project:
+            return {
+                'project_key': project.project_key,
+                'name': project.name,
+                'description': project.description,
+                'repository_type': project.repository_type,
+                'repository_url': project.repository_url,
+                'repository_owner': project.repository_owner,
+                'repository_name': project.repository_name,
+            }
+
+        # Fall back to Entity (old style - project_key is an entity_key)
+        from api.models.entity import Entity
+        entity = Entity.get_by_key(self.project_key)
+        if entity:
+            return {
+                'entity_key': entity.entity_key,
+                'name': entity.name,
+                'description': entity.description,
+                # Try to extract repo info from entity properties
+                'repository_url': entity.properties.get('repository_url') if entity.properties else None,
+            }
+
+        return None
+
+    def _get_agent_info(self) -> Optional[dict]:
+        """Get enriched agent information."""
+        from api.models.agent import Agent
+        from api.models.persona import Persona
+        from api.models.model import Model
+
+        agent = Agent.query.filter_by(agent_id=self.agent_id).first()
+        if not agent:
+            return None
+
+        result = {
+            'agent_id': agent.agent_id,
+            'agent_key': agent.agent_key,
+            'client': agent.client,
+            'user_key': agent.user_key,
+            'user_name': agent.user_name,
+            'user_initials': agent.user_initials,
+        }
+
+        # Get persona name
+        if agent.persona_key:
+            persona = Persona.query.get(agent.persona_key)
+            if persona:
+                result['persona_name'] = persona.name
+                result['persona_role'] = persona.role
+
+        # Get model name
+        if agent.model_key:
+            model = Model.query.get(agent.model_key)
+            if model:
+                result['model_name'] = model.name
+                result['model_id'] = model.model_id
 
         return result
