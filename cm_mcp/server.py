@@ -230,6 +230,9 @@ _session_state = {
     "focus": None,          # Current work focus
     "affinity_warning": None,  # Warning if persona doesn't match client
     "registered": False,
+    # Repository context (from git remote detection)
+    "repository_key": None,     # Repository key (from /repositories/lookup)
+    "repository_url": None,     # Normalized repository URL
     # Current milestone tracking (from heartbeat response)
     "current_milestone": None,  # {key, name, status, started_at}
     # Tool call counting for milestone metrics
@@ -774,13 +777,6 @@ def create_sse_app():
             )
         return Response()
 
-    async def handle_messages(request):
-        """Handle POST messages for SSE"""
-        await sse_transport.handle_post_message(
-            request.scope, request.receive, request._send
-        )
-        return Response()
-
     async def health_check(request):
         """Health check endpoint"""
         return Response(
@@ -788,15 +784,23 @@ def create_sse_app():
             media_type="application/json"
         )
 
-    # Create Starlette app with routes
-    app = Starlette(
+    # Create Starlette app with standard routes
+    inner_app = Starlette(
         debug=config.debug,
         routes=[
             Route("/health", health_check, methods=["GET"]),
             Route("/sse", handle_sse, methods=["GET"]),
-            Route("/messages/", handle_messages, methods=["POST"]),
         ],
     )
+
+    # Wrap to handle /messages/ as raw ASGI (bypasses Starlette's response handling)
+    # handle_post_message sends its own response via 'send', so we can't use Route wrapper
+    async def app(scope, receive, send):
+        if scope["type"] == "http" and scope["path"] == "/messages/" and scope["method"] == "POST":
+            # Handle messages directly - handle_post_message sends its own response
+            await sse_transport.handle_post_message(scope, receive, send)
+        else:
+            await inner_app(scope, receive, send)
 
     return app
 
