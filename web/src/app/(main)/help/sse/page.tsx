@@ -6,26 +6,38 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 
 export default function SSEHelpPage() {
   const { user } = useAuthStore();
+  const [copiedPersonal, setCopiedPersonal] = useState(false);
+  const [copiedShared, setCopiedShared] = useState(false);
   const [copiedServer, setCopiedServer] = useState(false);
   const [copiedClient, setCopiedClient] = useState(false);
+  const [copiedClientAuth, setCopiedClientAuth] = useState(false);
 
   const apiUrl = typeof window !== 'undefined'
     ? window.location.origin.replace(':3000', ':5001').replace('cm.diptoe.ai', 'cm-api.diptoe.ai')
     : 'http://localhost:5001';
   const pat = user?.pat || 'your-personal-access-token';
 
-  const serverCommand = `# Install with SSE dependencies
+  // Personal deployment - PAT baked into server
+  const personalServerCommand = `# Install with SSE dependencies
 pip install "collective-memory[sse]"
 
-# Or install manually
-pip install starlette uvicorn
-
-# Run the SSE server
+# Run with your PAT baked in (single-user)
 CM_MCP_TRANSPORT=sse \\
 CM_MCP_SSE_PORT=8080 \\
-CM_API_URL="${apiUrl}" \\
 CM_PAT="${pat}" \\
 python -m cm_mcp.server`;
+
+  // Shared deployment - PAT from client headers
+  const sharedServerCommand = `# Install with SSE dependencies
+pip install "collective-memory[sse]"
+
+# Run without PAT (multi-user mode)
+CM_MCP_TRANSPORT=sse \\
+CM_MCP_SSE_PORT=8080 \\
+python -m cm_mcp.server`;
+
+  // Legacy serverCommand for backwards compatibility
+  const serverCommand = personalServerCommand;
 
   const clientConfig = `{
   "mcpServers": {
@@ -34,6 +46,30 @@ python -m cm_mcp.server`;
     }
   }
 }`;
+
+  // Client config with Authorization header (for shared deployment)
+  const clientConfigWithAuth = `{
+  "mcpServers": {
+    "collective-memory": {
+      "url": "http://your-sse-server:8080/sse",
+      "headers": {
+        "Authorization": "Bearer ${pat}"
+      }
+    }
+  }
+}`;
+
+  const copyPersonalCommand = async () => {
+    await navigator.clipboard.writeText(personalServerCommand);
+    setCopiedPersonal(true);
+    setTimeout(() => setCopiedPersonal(false), 2000);
+  };
+
+  const copySharedCommand = async () => {
+    await navigator.clipboard.writeText(sharedServerCommand);
+    setCopiedShared(true);
+    setTimeout(() => setCopiedShared(false), 2000);
+  };
 
   const copyServerCommand = async () => {
     await navigator.clipboard.writeText(serverCommand);
@@ -45,6 +81,12 @@ python -m cm_mcp.server`;
     await navigator.clipboard.writeText(clientConfig);
     setCopiedClient(true);
     setTimeout(() => setCopiedClient(false), 2000);
+  };
+
+  const copyClientAuthConfig = async () => {
+    await navigator.clipboard.writeText(clientConfigWithAuth);
+    setCopiedClientAuth(true);
+    setTimeout(() => setCopiedClientAuth(false), 2000);
   };
 
   return (
@@ -134,53 +176,109 @@ python -m cm_mcp.server`;
           </div>
         </section>
 
-        {/* Server Setup */}
+        {/* Deployment Modes */}
         <section className="bg-cm-ivory border border-cm-sand rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Step 1: Run the SSE Server</h2>
+          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Deployment Modes</h2>
           <p className="text-sm text-cm-coffee mb-4">
-            Run these commands on the machine that will host the MCP server:
+            Choose the deployment mode that fits your use case:
           </p>
-          <div className="relative">
-            <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto whitespace-pre-wrap">
-              {serverCommand}
-            </pre>
-            <button
-              onClick={copyServerCommand}
-              className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
-            >
-              {copiedServer ? 'Copied!' : 'Copy'}
-            </button>
+
+          {/* Personal Deployment */}
+          <div className="mb-6">
+            <h3 className="font-medium text-cm-charcoal mb-2">Option A: Personal Deployment (Recommended for Getting Started)</h3>
+            <p className="text-sm text-cm-coffee mb-3">
+              Your PAT is configured on the server. Simple setup, but each user needs their own server instance.
+            </p>
+            <div className="relative">
+              <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto whitespace-pre-wrap">
+                {personalServerCommand}
+              </pre>
+              <button
+                onClick={copyPersonalCommand}
+                className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
+              >
+                {copiedPersonal ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
           </div>
-          <div className="mt-4 p-4 bg-cm-sand/30 rounded-lg">
+
+          {/* Shared Deployment */}
+          <div className="mb-4">
+            <h3 className="font-medium text-cm-charcoal mb-2">Option B: Shared Deployment (Multi-User)</h3>
+            <p className="text-sm text-cm-coffee mb-3">
+              Multiple users share one server. Each client passes their PAT via the Authorization header.
+              Ideal for team or cloud deployments.
+            </p>
+            <div className="relative">
+              <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto whitespace-pre-wrap">
+                {sharedServerCommand}
+              </pre>
+              <button
+                onClick={copySharedCommand}
+                className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
+              >
+                {copiedShared ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 bg-cm-sand/30 rounded-lg">
             <p className="text-xs font-medium text-cm-charcoal mb-2">Environment Variables:</p>
             <ul className="text-xs text-cm-coffee space-y-1">
               <li><code className="bg-cm-sand/50 px-1 rounded">CM_MCP_TRANSPORT=sse</code> — Enable SSE mode</li>
               <li><code className="bg-cm-sand/50 px-1 rounded">CM_MCP_SSE_HOST=0.0.0.0</code> — Bind to all interfaces (default)</li>
               <li><code className="bg-cm-sand/50 px-1 rounded">CM_MCP_SSE_PORT=8080</code> — Server port (default: 8080)</li>
-              <li><code className="bg-cm-sand/50 px-1 rounded">CM_API_URL</code> — Collective Memory API URL</li>
-              <li><code className="bg-cm-sand/50 px-1 rounded">CM_PAT</code> — Your Personal Access Token</li>
+              <li><code className="bg-cm-sand/50 px-1 rounded">CM_PAT</code> — Your PAT (Option A only, optional fallback for Option B)</li>
             </ul>
           </div>
         </section>
 
         {/* Client Configuration */}
         <section className="bg-cm-ivory border border-cm-sand rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Step 2: Configure AI Clients</h2>
-          <p className="text-sm text-cm-coffee mb-4">
-            Configure your AI clients to connect to the SSE server URL:
-          </p>
-          <div className="relative">
-            <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
-              {clientConfig}
-            </pre>
-            <button
-              onClick={copyClientConfig}
-              className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
-            >
-              {copiedClient ? 'Copied!' : 'Copy'}
-            </button>
+          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Client Configuration</h2>
+
+          {/* Basic config (for personal deployment) */}
+          <div className="mb-6">
+            <h3 className="font-medium text-cm-charcoal mb-2">For Personal Deployment (Option A)</h3>
+            <p className="text-sm text-cm-coffee mb-3">
+              Simple URL-only configuration when PAT is on the server:
+            </p>
+            <div className="relative">
+              <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
+                {clientConfig}
+              </pre>
+              <button
+                onClick={copyClientConfig}
+                className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
+              >
+                {copiedClient ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-cm-coffee mt-2">
+
+          {/* Config with headers (for shared deployment) */}
+          <div className="mb-4">
+            <h3 className="font-medium text-cm-charcoal mb-2">For Shared Deployment (Option B)</h3>
+            <p className="text-sm text-cm-coffee mb-3">
+              Include your PAT in the Authorization header:
+            </p>
+            <div className="relative">
+              <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
+                {clientConfigWithAuth}
+              </pre>
+              <button
+                onClick={copyClientAuthConfig}
+                className="absolute top-2 right-2 px-3 py-1 bg-cm-ivory/20 hover:bg-cm-ivory/30 text-cm-cream text-xs rounded transition-colors"
+              >
+                {copiedClientAuth ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-xs text-cm-coffee mt-2">
+              Note: Header support varies by MCP client. Check your client's documentation.
+            </p>
+          </div>
+
+          <p className="text-xs text-cm-coffee">
             Replace <code className="bg-cm-sand/50 px-1 rounded">your-sse-server:8080</code> with your actual server address.
           </p>
         </section>
@@ -208,13 +306,24 @@ python -m cm_mcp.server`;
         <section className="bg-cm-ivory border border-cm-sand rounded-xl p-6 mb-6">
           <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Cloud Deployment</h2>
           <p className="text-sm text-cm-coffee mb-4">
-            The SSE server can be deployed to cloud services. Example Docker command:
+            The SSE server can be deployed to cloud services like Google Cloud Run. For shared multi-user
+            deployments, don't set CM_PAT — clients will provide their own PAT via the Authorization header.
           </p>
           <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
-{`docker run -d \\
+{`# Shared deployment (multi-user, no PAT baked in)
+docker run -d \\
   -p 8080:8080 \\
   -e CM_MCP_TRANSPORT=sse \\
-  -e CM_API_URL=${apiUrl} \\
+  collective-memory-mcp`}
+          </pre>
+          <p className="text-xs text-cm-coffee mt-4 mb-2">
+            Or for personal deployment with PAT:
+          </p>
+          <pre className="p-4 bg-cm-charcoal text-cm-cream rounded-lg font-mono text-sm overflow-x-auto">
+{`# Personal deployment (single-user, PAT on server)
+docker run -d \\
+  -p 8080:8080 \\
+  -e CM_MCP_TRANSPORT=sse \\
   -e CM_PAT=${pat} \\
   collective-memory-mcp`}
           </pre>
@@ -251,7 +360,16 @@ python -m cm_mcp.server`;
             <div>
               <h3 className="font-medium text-cm-charcoal mb-1">Authentication errors?</h3>
               <p className="text-sm text-cm-coffee">
-                The PAT is set on the server, not the client. Verify your PAT in <Link href="/settings" className="text-cm-terracotta hover:underline">Settings</Link>.
+                For <strong>personal deployment</strong>: Verify CM_PAT is set on the server.
+                For <strong>shared deployment</strong>: Ensure your client is sending the Authorization header
+                with your PAT. Verify your PAT in <Link href="/settings" className="text-cm-terracotta hover:underline">Settings</Link>.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-medium text-cm-charcoal mb-1">Client doesn't support headers?</h3>
+              <p className="text-sm text-cm-coffee">
+                If your MCP client doesn't support custom headers, use the personal deployment mode
+                (Option A) with CM_PAT set on the server instead.
               </p>
             </div>
           </div>

@@ -5,7 +5,23 @@ Common utilities for MCP tool implementations.
 """
 
 import httpx
+from contextvars import ContextVar
 from typing import Any, Optional
+
+
+# Context variable for per-session PAT (used in SSE multi-user mode)
+# This allows each SSE connection to have its own authentication
+_session_pat: ContextVar[Optional[str]] = ContextVar('session_pat', default=None)
+
+
+def set_session_pat(pat: str) -> None:
+    """Set the PAT for the current async context (SSE connection)."""
+    _session_pat.set(pat)
+
+
+def get_session_pat() -> Optional[str]:
+    """Get the PAT for the current async context."""
+    return _session_pat.get()
 
 
 async def _make_request(
@@ -34,8 +50,12 @@ async def _make_request(
     if agent_id:
         headers['X-Agent-Id'] = agent_id
 
-    # Include PAT authentication if configured
-    if hasattr(config, 'pat') and config.pat:
+    # Include PAT authentication
+    # Priority: 1) Per-session PAT (SSE multi-user), 2) Config PAT (env/stdio)
+    session_pat = get_session_pat()
+    if session_pat:
+        headers['Authorization'] = f'Bearer {session_pat}'
+    elif hasattr(config, 'pat') and config.pat:
         headers['Authorization'] = f'Bearer {config.pat}'
 
     try:

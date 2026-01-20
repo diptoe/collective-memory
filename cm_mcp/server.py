@@ -34,6 +34,9 @@ from .tools import TOOL_DEFINITIONS, TOOL_HANDLERS
 # Import specific functions needed for heartbeat unread notice
 from .tools import get_messages
 
+# Import session PAT setter for SSE multi-user mode
+from .tools.utils import set_session_pat
+
 
 # Server instructions for Claude
 SERVER_INSTRUCTIONS = """
@@ -745,7 +748,22 @@ def create_sse_app():
     sse_transport = SseServerTransport("/messages/")
 
     async def handle_sse(request):
-        """Handle SSE connections"""
+        """Handle SSE connections with per-client PAT authentication"""
+        # Extract PAT from Authorization header for multi-user SSE mode
+        # Format: "Bearer <pat>" or just "<pat>"
+        auth_header = request.headers.get("authorization", "")
+        if auth_header:
+            if auth_header.lower().startswith("bearer "):
+                pat = auth_header[7:].strip()
+            else:
+                pat = auth_header.strip()
+            if pat:
+                set_session_pat(pat)
+                if config.debug:
+                    print(f"SSE: Client authenticated with PAT (length: {len(pat)})", file=sys.stderr)
+        elif config.debug:
+            print("SSE: No Authorization header - using server PAT (if configured)", file=sys.stderr)
+
         async with sse_transport.connect_sse(
             request.scope, request.receive, request._send
         ) as streams:
@@ -798,6 +816,9 @@ async def main():
         print(f"\nStarting SSE server on {config.sse_url}", file=sys.stderr)
         print(f"SSE endpoint: {config.sse_url}/sse", file=sys.stderr)
         print(f"Messages endpoint: {config.sse_url}/messages/", file=sys.stderr)
+        print(f"Auth: Per-client PAT via Authorization header", file=sys.stderr)
+        if config.pat:
+            print(f"      (Server fallback PAT configured)", file=sys.stderr)
         print("=" * 60 + "\n", file=sys.stderr)
 
         # Create and run the SSE app
