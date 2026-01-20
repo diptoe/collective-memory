@@ -15,6 +15,7 @@ export default function CursorHelpPage() {
   const sseConfigSnippet = `{
   "mcpServers": {
     "collective-memory": {
+      "type": "sse",
       "url": "https://cm-sse.diptoe.ai/sse",
       "headers": {
         "Authorization": "Bearer ${pat}"
