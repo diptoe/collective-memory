@@ -131,6 +131,44 @@ For local development, point the MCP server to your local API:
 }
 ```
 
+### MCP Server (SSE Transport)
+
+The MCP server supports Server-Sent Events (SSE) transport for remote/hosted deployments. This allows AI clients to connect over HTTP instead of running a local process.
+
+**Install SSE dependencies:**
+```bash
+pip install collective-memory[sse]
+# or manually:
+pip install starlette uvicorn
+```
+
+**Run the SSE server:**
+```bash
+CM_MCP_TRANSPORT=sse CM_MCP_SSE_PORT=8080 CM_API_URL=https://cm-api.diptoe.ai CM_PAT=your-pat python -m cm_mcp.server
+```
+
+**Configure AI clients to use SSE:**
+```json
+{
+  "mcpServers": {
+    "collective-memory": {
+      "url": "http://your-server:8080/sse"
+    }
+  }
+}
+```
+
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `CM_MCP_TRANSPORT` | Transport mode: `stdio` or `sse` | `stdio` |
+| `CM_MCP_SSE_HOST` | SSE server host | `0.0.0.0` |
+| `CM_MCP_SSE_PORT` | SSE server port | `8080` |
+
+**SSE Endpoints:**
+- `GET /sse` — SSE connection endpoint
+- `POST /messages/` — Message handling endpoint
+- `GET /health` — Health check endpoint
+
 ## Architecture
 
 ```

@@ -2,7 +2,11 @@
 Collective Memory MCP Server
 
 MCP server for Collective Memory knowledge graph platform.
-Uses MCP Python SDK 1.1.1 with stdio transport for Claude Desktop.
+Uses MCP Python SDK 1.1.1.
+
+Supports two transport modes:
+- stdio: Local process communication (default, for Claude Code, Cursor, etc.)
+- sse: Server-Sent Events over HTTP (for remote/hosted deployments)
 """
 
 import asyncio
@@ -12,6 +16,17 @@ import mcp.types as types
 import mcp.server.stdio
 
 from .config import config
+
+# SSE transport imports (loaded conditionally)
+try:
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.responses import Response
+    import uvicorn
+    SSE_AVAILABLE = True
+except ImportError:
+    SSE_AVAILABLE = False
 
 # Import aggregated tool definitions and handlers
 from .tools import TOOL_DEFINITIONS, TOOL_HANDLERS
@@ -509,6 +524,12 @@ async def startup_checks():
     # Configuration check
     print("\nConfiguration:", file=sys.stderr)
     print(f"  Server Name: {config.server_name}", file=sys.stderr)
+    print(f"  Transport: {config.transport.upper()}", file=sys.stderr)
+    if config.is_sse:
+        print(f"  SSE URL: {config.sse_url}", file=sys.stderr)
+        if not SSE_AVAILABLE:
+            print("  WARNING: SSE dependencies not installed!", file=sys.stderr)
+            print("           Run: pip install starlette uvicorn", file=sys.stderr)
     print(f"  API URL: {config.api_url}", file=sys.stderr)
     print(f"  API Endpoint: {config.api_endpoint}", file=sys.stderr)
 
@@ -684,12 +705,9 @@ async def heartbeat_loop():
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
-async def main():
-    """Main entry point"""
+async def main_stdio():
+    """Run server with stdio transport (for local AI clients)"""
     global _heartbeat_running
-
-    # Perform startup checks
-    await startup_checks()
 
     # Start heartbeat background task
     heartbeat_task = None
@@ -715,6 +733,85 @@ async def main():
                 await heartbeat_task
             except asyncio.CancelledError:
                 pass
+
+
+def create_sse_app():
+    """Create Starlette ASGI app for SSE transport"""
+    if not SSE_AVAILABLE:
+        raise RuntimeError("SSE dependencies not installed. Run: pip install starlette uvicorn")
+
+    # Create SSE transport
+    sse_transport = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        """Handle SSE connections"""
+        async with sse_transport.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await server.run(
+                streams[0],
+                streams[1],
+                server.create_initialization_options()
+            )
+        return Response()
+
+    async def handle_messages(request):
+        """Handle POST messages for SSE"""
+        await sse_transport.handle_post_message(
+            request.scope, request.receive, request._send
+        )
+        return Response()
+
+    async def health_check(request):
+        """Health check endpoint"""
+        return Response(
+            content='{"status":"healthy","server":"collective-memory-mcp"}',
+            media_type="application/json"
+        )
+
+    # Create Starlette app with routes
+    app = Starlette(
+        debug=config.debug,
+        routes=[
+            Route("/health", health_check, methods=["GET"]),
+            Route("/sse", handle_sse, methods=["GET"]),
+            Route("/messages/", handle_messages, methods=["POST"]),
+        ],
+    )
+
+    return app
+
+
+async def main():
+    """Main entry point"""
+    # Perform startup checks
+    await startup_checks()
+
+    if config.is_sse:
+        # SSE transport mode
+        if not SSE_AVAILABLE:
+            print("ERROR: SSE dependencies not installed!", file=sys.stderr)
+            print("Run: pip install starlette uvicorn", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"\nStarting SSE server on {config.sse_url}", file=sys.stderr)
+        print(f"SSE endpoint: {config.sse_url}/sse", file=sys.stderr)
+        print(f"Messages endpoint: {config.sse_url}/messages/", file=sys.stderr)
+        print("=" * 60 + "\n", file=sys.stderr)
+
+        # Create and run the SSE app
+        app = create_sse_app()
+        uvicorn_config = uvicorn.Config(
+            app,
+            host=config.sse_host,
+            port=config.sse_port,
+            log_level="info" if config.debug else "warning",
+        )
+        uvicorn_server = uvicorn.Server(uvicorn_config)
+        await uvicorn_server.serve()
+    else:
+        # stdio transport mode (default)
+        await main_stdio()
 
 
 def run():

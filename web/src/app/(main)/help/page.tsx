@@ -95,9 +95,35 @@ export default function HelpPage() {
           </div>
         </section>
 
+        {/* SSE Transport Option */}
+        <section className="bg-cm-amber/10 border border-cm-amber/30 rounded-xl p-6 mb-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-cm-amber/20 flex items-center justify-center flex-shrink-0 text-2xl">
+              🌐
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-cm-charcoal mb-2">SSE Transport (Remote Server)</h2>
+              <p className="text-cm-coffee mb-3">
+                For remote/hosted deployments, you can run the MCP server with SSE transport instead of requiring each client to run it locally.
+                This eliminates the need for Python on client machines.
+              </p>
+              <Link
+                href="/help/sse"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-terracotta/90 transition-colors text-sm"
+              >
+                <span>Configure SSE Transport</span>
+                <span>→</span>
+              </Link>
+            </div>
+          </div>
+        </section>
+
         {/* Client Configuration Guides */}
         <section className="mb-6">
-          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Client Configuration Guides</h2>
+          <h2 className="text-lg font-semibold text-cm-charcoal mb-4">Client Configuration Guides (stdio)</h2>
+          <p className="text-sm text-cm-coffee mb-4">
+            These guides show how to configure clients to run the MCP server locally using stdio transport (default).
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {clients.map((client) => (
               <Link

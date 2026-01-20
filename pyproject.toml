@@ -28,6 +28,10 @@ semantic = [
     "pgvector>=0.2.0",
     "spacy>=3.7.0",
 ]
+sse = [
+    "starlette>=0.38.0",
+    "uvicorn>=0.30.0",
+]
 
 [project.scripts]
 cm-mcp = "cm_mcp.server:run"

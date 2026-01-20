@@ -5,10 +5,14 @@ Configuration settings for the Collective Memory MCP server.
 
 Each AI agent connecting to Collective Memory must have an identity
 so that contributions can be attributed and collaboration tracked.
+
+Supports two transport modes:
+- stdio: Local process communication (default, for Claude Code, Cursor, etc.)
+- sse: Server-Sent Events over HTTP (for remote/hosted deployments)
 """
 
 import os
-from typing import Optional
+from typing import Optional, Literal
 from dataclasses import dataclass
 
 
@@ -20,6 +24,13 @@ class MCPConfig:
     name: str = "collective-memory"
     version: str = "1.0.0"
     description: str = "MCP server for Collective Memory knowledge graph platform"
+
+    # Transport configuration
+    # stdio: Local process communication (default)
+    # sse: Server-Sent Events over HTTP for remote access
+    transport: Literal["stdio", "sse"] = os.getenv("CM_MCP_TRANSPORT", "stdio")  # type: ignore
+    sse_host: str = os.getenv("CM_MCP_SSE_HOST", "0.0.0.0")
+    sse_port: int = int(os.getenv("CM_MCP_SSE_PORT", "8080"))
 
     # Agent Identity (REQUIRED for collaboration)
     # Each AI instance should have a unique agent_id and link to a persona
@@ -83,6 +94,16 @@ class MCPConfig:
         return bool(self.agent_id)
 
     @property
+    def is_sse(self) -> bool:
+        """Check if SSE transport is configured"""
+        return self.transport == "sse"
+
+    @property
+    def sse_url(self) -> str:
+        """Get SSE server URL"""
+        return f"http://{self.sse_host}:{self.sse_port}"
+
+    @property
     def detected_client(self) -> str:
         """
         Auto-detect client from environment clues if not explicitly set.
@@ -143,6 +164,10 @@ class MCPConfig:
         """
         if not self.api_url:
             return False, "CM_API_URL is required"
+        if self.transport not in ("stdio", "sse"):
+            return False, f"Invalid transport '{self.transport}' - must be 'stdio' or 'sse'"
+        if self.is_sse and (self.sse_port < 1 or self.sse_port > 65535):
+            return False, f"Invalid SSE port {self.sse_port} - must be between 1 and 65535"
         if not self.agent_id:
             # This is now a valid configuration - return warning, not error
             return True, "CM_AGENT_ID not set - dynamic self-identification enabled (AI will choose its own identity)"
