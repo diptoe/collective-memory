@@ -57,7 +57,9 @@ class MCPConfig:
     pat: str = os.getenv("CM_PAT", "")  # Personal Access Token for user authentication
 
     # API configuration
-    api_url: str = os.getenv("CM_API_URL", "http://localhost:5001")
+    # Note: Using CM_MCP_API_URL to avoid conflicts with other CM_API_URL settings
+    # Default to production API - override with CM_MCP_API_URL=http://localhost:5001 for local dev
+    api_url: str = os.getenv("CM_MCP_API_URL", "https://cm-api.diptoe.ai")
     api_base_path: str = "/api"
 
     # Server settings
@@ -163,7 +165,7 @@ class MCPConfig:
         The AI can choose its own identity at runtime based on context.
         """
         if not self.api_url:
-            return False, "CM_API_URL is required"
+            return False, "CM_MCP_API_URL is required"
         if self.transport not in ("stdio", "sse"):
             return False, f"Invalid transport '{self.transport}' - must be 'stdio' or 'sse'"
         if self.is_sse and (self.sse_port < 1 or self.sse_port > 65535):

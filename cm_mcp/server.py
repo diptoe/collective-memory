@@ -518,7 +518,8 @@ async def startup_checks():
     """Perform startup checks and report status"""
     print("=" * 60, file=sys.stderr)
     print(f"Starting MCP Server: {config.server_name} v{config.version}", file=sys.stderr)
-    print(f"Environment: {config.environment_display}", file=sys.stderr)
+    print(f"API: {config.api_url}", file=sys.stderr)
+    print(f"Transport: {config.transport.upper()}", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
 
     # Configuration check
