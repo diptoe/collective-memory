@@ -239,7 +239,7 @@ def register_work_session_routes(api: Api):
             Requires a project_key. Only one active session per user per project is allowed.
             """
             user = g.current_user
-            data = request.json or {}
+            data = request.get_json(silent=True) or {}
 
             if not data.get('project_key'):
                 return {'success': False, 'msg': 'project_key is required'}, 400
@@ -401,7 +401,7 @@ def register_work_session_routes(api: Api):
             if session.user_key != user.user_key and not user.is_admin:
                 return {'success': False, 'msg': 'Access denied'}, 403
 
-            data = request.json or {}
+            data = request.get_json(silent=True) or {}
             changes = {}
 
             if 'name' in data:
@@ -463,7 +463,7 @@ def register_work_session_routes(api: Api):
             if session.status != 'active':
                 return {'success': False, 'msg': 'Can only extend active sessions'}, 400
 
-            data = request.json or {}
+            data = request.get_json(silent=True) or {}
             hours = float(data.get('hours', 1.0))
 
             if hours <= 0 or hours > 8:
@@ -505,7 +505,7 @@ def register_work_session_routes(api: Api):
             if session.status != 'active':
                 return {'success': False, 'msg': 'Session is already closed'}, 400
 
-            data = request.json or {}
+            data = request.get_json(silent=True) or {}
 
             try:
                 # If no summary provided, generate one using AI
