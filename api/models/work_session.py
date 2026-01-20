@@ -250,12 +250,15 @@ class WorkSession(BaseModel):
         from api.models.entity import Entity
         entity = Entity.get_by_key(self.project_key)
         if entity:
+            props = entity.properties or {}
             return {
                 'entity_key': entity.entity_key,
                 'name': entity.name,
-                'description': entity.description,
+                'description': props.get('description'),
                 # Try to extract repo info from entity properties
-                'repository_url': entity.properties.get('repository_url') if entity.properties else None,
+                'repository_url': props.get('repository_url'),
+                'repository_owner': props.get('repository_owner'),
+                'repository_name': props.get('repository_name'),
             }
 
         return None
