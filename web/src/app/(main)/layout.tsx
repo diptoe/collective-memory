@@ -106,6 +106,7 @@ export default function MainLayout({
           <NavLink href="/messages" icon="inbox" active={pathname.startsWith('/messages')}>Messages</NavLink>
           <NavLink href="/agents" icon="cpu" active={pathname.startsWith('/agents')}>Agents</NavLink>
           <NavLink href="/sessions" icon="timer" active={pathname.startsWith('/sessions')}>Sessions</NavLink>
+          <NavLink href="/help" icon="help" active={pathname.startsWith('/help')}>Help</NavLink>
 
           {/* Admin section */}
           {(user?.role === 'admin' || user?.role === 'domain_admin') && (
@@ -218,6 +219,7 @@ function NavIcon({ name }: { name: string }) {
     'team': '👥',
     'project': '📁',
     'timer': '⏱️',
+    'help': '❓',
   };
   return <span className="w-5 text-center">{icons[name] || '•'}</span>;
 }

@@ -52,6 +52,13 @@ def create_app() -> Flask:
         "supports_credentials": True,
     }})
 
+    # Health check endpoints for Cloud Run
+    @app.route('/')
+    @app.route('/health')
+    def health_check():
+        """Health check endpoint for Cloud Run."""
+        return {'status': 'healthy', 'service': 'cm-api'}, 200
+
     # Global exception handler for unhandled errors
     @app.errorhandler(Exception)
     def handle_exception(e):

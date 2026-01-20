@@ -118,7 +118,7 @@ class Team(BaseModel):
 
         # Get user for default slug
         from api.models.user import User
-        user = User.get(user_key)
+        user = User.get_by_key(user_key)
         default_slug = slug or (user.initials.lower() if user and user.initials else None)
 
         membership = TeamMembership(

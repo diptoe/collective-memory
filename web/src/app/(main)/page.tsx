@@ -341,6 +341,20 @@ export default function StartPage() {
             </div>
           </Link>
         </div>
+
+        {/* Quick Links */}
+        <div className="mt-6 pt-6 border-t border-cm-sand">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-cm-coffee">Need help getting started?</p>
+            <Link
+              href="/help"
+              className="flex items-center gap-2 text-sm text-cm-terracotta hover:text-cm-terracotta/80 transition-colors"
+            >
+              <span>Configure your MCP client</span>
+              <span>→</span>
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );

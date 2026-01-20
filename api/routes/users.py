@@ -49,6 +49,7 @@ def register_user_routes(api: Api):
     })
 
     user_update_model = ns.model('UserUpdate', {
+        'email': fields.String(description='User email'),
         'first_name': fields.String(description='First name'),
         'last_name': fields.String(description='Last name'),
         'status': fields.String(description='User status: active, suspended'),
@@ -258,6 +259,19 @@ def register_user_routes(api: Api):
             changes = {}
 
             # Update allowed fields
+            if 'email' in data and data['email']:
+                new_email = data['email'].strip().lower()
+                # Validate email format
+                if '@' not in new_email or '.' not in new_email:
+                    return {'success': False, 'msg': 'Invalid email format'}, 400
+                # Check if email is already used by another user
+                if new_email != user.email:
+                    existing = User.get_by_email(new_email)
+                    if existing:
+                        return {'success': False, 'msg': 'This email is already in use by another user'}, 400
+                    changes['email'] = {'from': user.email, 'to': new_email}
+                    user.email = new_email
+
             if 'first_name' in data and data['first_name']:
                 changes['first_name'] = {'from': user.first_name, 'to': data['first_name']}
                 user.first_name = data['first_name'].strip()

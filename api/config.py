@@ -60,6 +60,9 @@ CORS_ORIGINS = [
     'http://127.0.0.1:3000',
     'http://localhost:3001',
     'http://127.0.0.1:3001',
+    # Production domains
+    'https://cm.diptoe.ai',
+    'https://cm-ui-66828719256.europe-west1.run.app',
 ]
 
 # Default Models (seeded on first run)

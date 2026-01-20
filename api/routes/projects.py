@@ -111,12 +111,14 @@ def register_project_routes(api: Api):
             # Build query
             if user.is_admin:
                 # System admin can filter by domain or see all
-                if domain_filter:
+                # Use domain_key=all to explicitly see all domains
+                if domain_filter and domain_filter != 'all':
                     query = Project.query.filter_by(domain_key=domain_filter)
-                elif domain_key:
-                    query = Project.query.filter_by(domain_key=domain_key)
+                elif domain_filter == 'all':
+                    # Explicitly requested all domains
+                    query = Project.query
                 else:
-                    # No filter - see all projects
+                    # No filter specified - show all for admins
                     query = Project.query
             else:
                 query = Project.query.filter_by(domain_key=domain_key)

@@ -21,6 +21,6 @@ COPY run.py /app/run.py
 
 EXPOSE 5002
 
-# Default production-ish command (override in docker-compose if needed)
-CMD ["gunicorn", "-b", "0.0.0.0:5002", "--workers", "2", "--threads", "8", "--timeout", "120", "run:app"]
+# Cloud Run optimized: single worker with threads, longer timeout for cold starts
+CMD ["gunicorn", "-b", "0.0.0.0:5002", "--workers", "1", "--threads", "8", "--timeout", "0", "run:app"]
 
