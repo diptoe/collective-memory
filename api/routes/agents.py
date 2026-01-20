@@ -9,7 +9,7 @@ from flask_restx import Api, Resource, Namespace, fields
 from api.models import Agent, AgentCheckpoint, Model, Persona, Session, Team, is_valid_client, get_client_affinities
 from api.services.checkpoint import checkpoint_service
 from api.services.activity import activity_service
-from api.services.auth import require_auth
+from api.services.auth import require_auth, require_auth_strict
 
 
 def get_user_domain_key() -> str | None:
@@ -408,9 +408,9 @@ def register_agent_routes(api: Api):
 
         @ns.doc('delete_agent')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self, agent_key):
-            """Delete an agent. Only inactive agents can be deleted."""
+            """Delete an agent. Only inactive agents can be deleted. Requires authentication."""
             agent, error, status = _check_agent_access(agent_key)
             if error:
                 return error, status
@@ -437,9 +437,9 @@ def register_agent_routes(api: Api):
     class InactiveAgents(Resource):
         @ns.doc('delete_inactive_agents')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self):
-            """Delete all inactive agents owned by the authenticated user."""
+            """Delete all inactive agents owned by the authenticated user. Requires authentication."""
             user_key = g.current_user.user_key if g.current_user else None
             if not user_key:
                 return {'success': False, 'msg': 'Authentication required'}, 401
@@ -909,9 +909,9 @@ def register_agent_routes(api: Api):
 
         @ns.doc('delete_checkpoint')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self, agent_id, checkpoint_key):
-            """Delete a checkpoint."""
+            """Delete a checkpoint. Requires authentication."""
             agent, error, status = _check_agent_access(agent_id)
             if error:
                 return error, status
@@ -937,9 +937,9 @@ def register_agent_routes(api: Api):
         @ns.doc('restore_checkpoint')
         @ns.expect(checkpoint_restore)
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def post(self, agent_id, checkpoint_key):
-            """Restore an agent to a checkpoint state."""
+            """Restore an agent to a checkpoint state. Requires authentication."""
             agent, error, status = _check_agent_access(agent_id)
             if error:
                 return error, status

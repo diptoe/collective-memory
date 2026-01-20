@@ -8,7 +8,7 @@ from flask_restx import Api, Resource, Namespace, fields
 import json
 
 from api.models import Conversation, ChatMessage, Persona, db
-from api.services.auth import require_auth
+from api.services.auth import require_auth, require_auth_strict
 
 
 def register_conversation_routes(api: Api):
@@ -199,9 +199,9 @@ def register_conversation_routes(api: Api):
 
         @ns.doc('delete_conversation')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self, conversation_key):
-            """Delete a conversation and its messages."""
+            """Delete a conversation and its messages. Requires authentication."""
             conversation, error, status = _check_conversation_access(conversation_key)
             if error:
                 return error, status
@@ -470,9 +470,9 @@ def register_conversation_routes(api: Api):
     class ConversationClear(Resource):
         @ns.doc('clear_conversation')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self, conversation_key):
-            """Remove all messages from a conversation (conversation remains)."""
+            """Remove all messages from a conversation (conversation remains). Requires authentication."""
             conversation, error, status = _check_conversation_access(conversation_key)
             if error:
                 return error, status

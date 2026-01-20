@@ -8,7 +8,7 @@ from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Entity, db
 from api.services.activity import activity_service
-from api.services.auth import require_auth, require_domain_admin
+from api.services.auth import require_auth, require_auth_strict, require_domain_admin
 from api.services.scope import scope_service
 
 
@@ -289,7 +289,7 @@ def register_entity_routes(api: Api):
     def _check_entity_access(entity, user):
         """Check if user has access to entity based on scope."""
         if not user:
-            return True  # No user, allow access (legacy behavior)
+            return False  # No user, deny access
 
         # Use scope service to check access
         return scope_service.can_access_scope(
@@ -337,9 +337,9 @@ def register_entity_routes(api: Api):
         @ns.doc('update_entity')
         @ns.expect(entity_create)
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def put(self, entity_key):
-            """Update an entity. Must be accessible in user's scope."""
+            """Update an entity. Requires authentication. Must be accessible in user's scope."""
             entity = Entity.get_by_key(entity_key)
             if not entity:
                 return {'success': False, 'msg': 'Entity not found'}, 404
@@ -373,9 +373,9 @@ def register_entity_routes(api: Api):
 
         @ns.doc('delete_entity')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self, entity_key):
-            """Delete an entity and all its relationships. Must be accessible in user's scope."""
+            """Delete an entity and all its relationships. Requires authentication. Must be accessible in user's scope."""
             from api.models.relationship import Relationship
 
             entity = Entity.get_by_key(entity_key)

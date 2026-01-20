@@ -8,7 +8,7 @@ from flask_restx import Api, Resource, Namespace, fields
 
 from api.models import Relationship, Entity
 from api.services.activity import activity_service
-from api.services.auth import require_auth
+from api.services.auth import require_auth, require_auth_strict
 
 
 def get_actor() -> str:
@@ -77,6 +77,7 @@ def register_relationship_routes(api: Api):
         @ns.param('limit', 'Maximum results', type=int, default=100)
         @ns.param('offset', 'Offset for pagination', type=int, default=0)
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self):
             """List relationships with optional filtering."""
             rel_type = request.args.get('type')
@@ -111,8 +112,9 @@ def register_relationship_routes(api: Api):
         @ns.doc('create_relationship')
         @ns.expect(relationship_create)
         @ns.marshal_with(response_model, code=201)
+        @require_auth_strict
         def post(self):
-            """Create a new relationship."""
+            """Create a new relationship. Requires authentication."""
             data = request.json
 
             # Validate required fields
@@ -169,6 +171,7 @@ def register_relationship_routes(api: Api):
     class RelationshipDetail(Resource):
         @ns.doc('get_relationship')
         @ns.marshal_with(response_model)
+        @require_auth
         def get(self, relationship_key):
             """Get a relationship by key."""
             relationship = Relationship.get_by_key(relationship_key)
@@ -184,8 +187,9 @@ def register_relationship_routes(api: Api):
         @ns.doc('update_relationship')
         @ns.expect(relationship_create)
         @ns.marshal_with(response_model)
+        @require_auth_strict
         def put(self, relationship_key):
-            """Update a relationship."""
+            """Update a relationship. Requires authentication."""
             relationship = Relationship.get_by_key(relationship_key)
             if not relationship:
                 return {'success': False, 'msg': 'Relationship not found'}, 404
@@ -205,8 +209,9 @@ def register_relationship_routes(api: Api):
 
         @ns.doc('delete_relationship')
         @ns.marshal_with(response_model)
+        @require_auth_strict
         def delete(self, relationship_key):
-            """Delete a relationship."""
+            """Delete a relationship. Requires authentication."""
             relationship = Relationship.get_by_key(relationship_key)
             if not relationship:
                 return {'success': False, 'msg': 'Relationship not found'}, 404

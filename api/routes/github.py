@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from api.models import Entity, RepositoryStats, Commit, Metric, MetricTypes, db
 from api.services.github import github_service, store_commits, store_repository_metrics
+from api.services.auth import require_auth_strict
 from collections import defaultdict
 
 
@@ -36,9 +37,10 @@ def register_github_routes(api: Api):
         @ns.doc('sync_repository')
         @ns.expect(sync_model)
         @ns.marshal_with(response_model)
+        @require_auth_strict
         def post(self):
             """
-            Sync a GitHub repository to the knowledge graph.
+            Sync a GitHub repository to the knowledge graph. Requires authentication.
 
             Fetches current repository data from GitHub and updates or creates
             a Repository entity with the latest information.
@@ -335,9 +337,10 @@ def register_github_routes(api: Api):
         @ns.doc('sync_repository_stats')
         @ns.expect(sync_model)
         @ns.marshal_with(response_model)
+        @require_auth_strict
         def post(self):
             """
-            Sync repository commit stats to time-series table.
+            Sync repository commit stats to time-series table. Requires authentication.
 
             Fetches recent commits and aggregates daily statistics
             for charting and analysis.

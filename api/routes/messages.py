@@ -22,7 +22,7 @@ from flask_restx import Api, Resource, Namespace, fields
 from api.models import Message, MessageRead
 from api.models.message import VALID_SCOPES
 from api.services.activity import activity_service
-from api.services.auth import require_auth
+from api.services.auth import require_auth, require_auth_strict
 
 
 def get_user_domain_key() -> str | None:
@@ -561,9 +561,9 @@ def register_message_routes(api: Api):
     class ClearAllMessages(Resource):
         @ns.doc('clear_all_messages')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self):
-            """Delete all messages for user's domain."""
+            """Delete all messages for user's domain. Requires authentication."""
             from api.models import db
 
             user_domain = get_user_domain_key()
@@ -689,9 +689,9 @@ def register_message_routes(api: Api):
 
         @ns.doc('unconfirm_message')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self, message_key):
-            """Remove confirmation from a message."""
+            """Remove confirmation from a message. Requires authentication."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
@@ -833,9 +833,9 @@ def register_message_routes(api: Api):
 
         @ns.doc('delete_message_thread')
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_auth_strict
         def delete(self, message_key):
-            """Delete a message and all its replies."""
+            """Delete a message and all its replies. Requires authentication."""
             from api.models import db
 
             message = Message.get_by_key(message_key)
