@@ -15,6 +15,15 @@
                 "Web: Next.js (dev server)",
                 "Web: Next.js (Chrome)"
             ]
+        },
+        {
+            "name": "Full Stack: API + SSE + Web",
+            "configurations": [
+                "API: Flask (debug run.py)",
+                "MCP: SSE Server",
+                "Web: Next.js (dev server)",
+                "Web: Next.js (Chrome)"
+            ]
         }
     ],
     "configurations": [
@@ -88,6 +97,38 @@
             "request": "launch",
             "url": "http://127.0.0.1:3001",
             "webRoot": "${workspaceFolder}/web"
+        },
+        {
+            "name": "MCP: SSE Server",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "module": "cm_mcp",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "CM_MCP_TRANSPORT": "sse",
+                "CM_MCP_SSE_HOST": "127.0.0.1",
+                "CM_MCP_SSE_PORT": "5002",
+                "CM_API_URL": "http://127.0.0.1:5001"
+            }
+        },
+        {
+            "name": "MCP: stdio Server",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "module": "cm_mcp",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "CM_MCP_TRANSPORT": "stdio",
+                "CM_API_URL": "http://127.0.0.1:5001"
+            }
         }
     ]
 }
