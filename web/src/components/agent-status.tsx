@@ -12,11 +12,11 @@ interface AgentStatusProps {
 }
 
 const CLIENT_CONFIG: Record<ClientType, { label: string; icon: string }> = {
-  'claude-code': { label: 'Claude Code', icon: '🔶' },
-  'claude-desktop': { label: 'Claude Desktop', icon: '🟣' },
-  'codex': { label: 'Codex', icon: '🟢' },
-  'gemini-cli': { label: 'Gemini CLI', icon: '💎' },
-  'cursor': { label: 'Cursor', icon: '▶️' },
+  'claude-code': { label: 'Claude Code', icon: '/icons/claude_code.svg' },
+  'claude-desktop': { label: 'Claude Desktop', icon: '/icons/claude_desktop.svg' },
+  'codex': { label: 'Codex', icon: '/icons/gpt_codex.svg' },
+  'gemini-cli': { label: 'Gemini CLI', icon: '/icons/gemini_cli.svg' },
+  'cursor': { label: 'Cursor', icon: '/icons/cursor.svg' },
 };
 
 export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
@@ -88,8 +88,9 @@ export function AgentStatus({ agent, onClick, href }: AgentStatusProps) {
       {/* Client, Model, Team, and Project badges */}
       <div className="flex flex-wrap gap-1 mb-3">
         {clientConfig && (
-          <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee">
-            {clientConfig.icon} {clientConfig.label}
+          <span className="px-2 py-0.5 text-xs bg-cm-sand rounded-full text-cm-coffee flex items-center gap-1">
+            <img src={clientConfig.icon} alt="" className="w-4 h-4" />
+            {clientConfig.label}
           </span>
         )}
         {modelName && (

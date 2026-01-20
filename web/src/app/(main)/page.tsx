@@ -77,7 +77,7 @@ export default function StartPage() {
         api.agents.list({ active_only: true }),
         api.messages.list(undefined, { limit: 100, unread_only: true }),
         api.workSessions.list({ status: 'active', limit: 10 }),
-        api.entities.list({ type: 'Milestone', limit: 50 }),
+        api.entities.list({ type: 'Milestone', limit: '50' }),
       ]);
 
       const agents = agentsRes.data?.agents || [];
@@ -218,7 +218,7 @@ export default function StartPage() {
                             >
                               <p className="text-sm text-cm-charcoal truncate flex-1">{milestone.name}</p>
                               <span className="text-xs text-blue-600 ml-2 flex-shrink-0 animate-pulse">
-                                {formatDuration(Math.floor((Date.now() - new Date(milestone.properties?.started_at || milestone.created_at).getTime()) / 1000))}
+                                {formatDuration(Math.floor((Date.now() - new Date(String(milestone.properties?.started_at || milestone.created_at)).getTime()) / 1000))}
                               </span>
                               <button
                                 onClick={(e) => {

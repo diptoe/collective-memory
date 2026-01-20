@@ -8,20 +8,12 @@ import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
 import { useAuthStore } from '@/lib/stores/auth-store';
 
-const CLIENT_LABELS: Record<ClientType, string> = {
-  'claude-code': 'Claude Code',
-  'claude-desktop': 'Claude Desktop',
-  'codex': 'Codex',
-  'gemini-cli': 'Gemini CLI',
-  'cursor': 'Cursor',
-};
-
-const CLIENT_COLORS: Record<ClientType, string> = {
-  'claude-code': 'bg-orange-100 text-orange-800',
-  'claude-desktop': 'bg-purple-100 text-purple-800',
-  'codex': 'bg-green-100 text-green-800',
-  'gemini-cli': 'bg-blue-100 text-blue-800',
-  'cursor': 'bg-cyan-100 text-cyan-800',
+const CLIENT_CONFIG: Record<ClientType, { label: string; icon: string }> = {
+  'claude-code': { label: 'Claude Code', icon: '/icons/claude_code.svg' },
+  'claude-desktop': { label: 'Claude Desktop', icon: '/icons/claude_desktop.svg' },
+  'codex': { label: 'Codex', icon: '/icons/gpt_codex.svg' },
+  'gemini-cli': { label: 'Gemini CLI', icon: '/icons/gemini_cli.svg' },
+  'cursor': { label: 'Cursor', icon: '/icons/cursor.svg' },
 };
 
 type ScopeFilter = 'my-agents' | 'all-domain' | string; // string for team_key
@@ -147,13 +139,14 @@ export default function AgentsPage() {
               key={client}
               onClick={() => setFilterClient(client)}
               className={cn(
-                'px-3 py-1.5 text-sm rounded-lg transition-colors',
+                'px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-2',
                 filterClient === client
                   ? 'bg-cm-terracotta text-cm-ivory'
                   : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
               )}
             >
-              {CLIENT_LABELS[client] || client}
+              <img src={CLIENT_CONFIG[client]?.icon} alt="" className="w-4 h-4" />
+              {CLIENT_CONFIG[client]?.label || client}
             </button>
           ))}
         </div>

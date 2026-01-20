@@ -8,16 +8,10 @@ import { Model, ModelProvider } from '@/types';
 import { cn } from '@/lib/utils';
 import { useAuthStore, isAdmin } from '@/lib/stores/auth-store';
 
-const PROVIDER_COLORS: Record<ModelProvider, string> = {
-  anthropic: 'bg-orange-100 text-orange-800',
-  openai: 'bg-green-100 text-green-800',
-  google: 'bg-blue-100 text-blue-800',
-};
-
-const PROVIDER_LABELS: Record<ModelProvider, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  google: 'Google',
+const PROVIDER_CONFIG: Record<ModelProvider, { label: string; icon: string }> = {
+  anthropic: { label: 'Anthropic', icon: '/icons/claude.svg' },
+  openai: { label: 'OpenAI', icon: '/icons/gpt.svg' },
+  google: { label: 'Google', icon: '/icons/gemini.svg' },
 };
 
 export default function ModelsPage() {
@@ -106,13 +100,14 @@ export default function ModelsPage() {
               key={provider}
               onClick={() => setFilterProvider(provider)}
               className={cn(
-                'px-3 py-1.5 text-sm rounded-lg transition-colors',
+                'px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-2',
                 filterProvider === provider
                   ? 'bg-cm-terracotta text-cm-ivory'
                   : 'bg-cm-sand text-cm-coffee hover:bg-cm-sand/80'
               )}
             >
-              {PROVIDER_LABELS[provider]}
+              <img src={PROVIDER_CONFIG[provider].icon} alt="" className="w-4 h-4" />
+              {PROVIDER_CONFIG[provider].label}
             </button>
           ))}
         </div>
@@ -141,10 +136,13 @@ export default function ModelsPage() {
         <div className="space-y-8">
           {Object.entries(modelsByProvider).map(([provider, providerModels]) => (
             <div key={provider}>
-              <h2 className="font-serif text-lg font-semibold text-cm-charcoal mb-4 flex items-center gap-2">
-                <span className={cn('px-2 py-0.5 rounded text-xs font-normal', PROVIDER_COLORS[provider as ModelProvider])}>
-                  {PROVIDER_LABELS[provider as ModelProvider]}
-                </span>
+              <h2 className="font-serif text-lg font-semibold text-cm-charcoal mb-4 flex items-center gap-3">
+                <img
+                  src={PROVIDER_CONFIG[provider as ModelProvider].icon}
+                  alt={PROVIDER_CONFIG[provider as ModelProvider].label}
+                  className="w-8 h-8"
+                />
+                <span>{PROVIDER_CONFIG[provider as ModelProvider].label}</span>
                 <span className="text-cm-coffee font-normal text-sm">
                   ({providerModels.length} models)
                 </span>
