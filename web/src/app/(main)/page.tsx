@@ -394,7 +394,7 @@ export default function StartPage() {
               </p>
             </Link>
             <Link
-              href="/help"
+              href="/help/setup"
               className="bg-cm-ivory border border-cm-sand rounded-xl p-4 hover:border-cm-terracotta transition-colors group"
             >
               <span className="text-xl mb-2 block">⚙️</span>
