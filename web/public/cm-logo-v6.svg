@@ -1,0 +1,51 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- CM Logo v6: Letters formed by connected nodes -->
+
+  <!-- Background subtle glow -->
+  <defs>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D97757"/>
+      <stop offset="100%" style="stop-color:#a85a3b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Connection lines (draw first so nodes appear on top) -->
+  <!-- C connections -->
+  <line x1="18" y1="30" x2="38" y2="22" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="38" y1="22" x2="44" y2="40" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="18" y1="30" x2="14" y2="60" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="14" y1="60" x2="18" y2="90" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="18" y1="90" x2="38" y2="98" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="38" y1="98" x2="44" y2="80" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+
+  <!-- M connections -->
+  <line x1="56" y1="98" x2="56" y2="22" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="56" y1="22" x2="76" y2="60" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="76" y1="60" x2="96" y2="22" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+  <line x1="96" y1="22" x2="96" y2="98" stroke="#D97757" stroke-width="2" opacity="0.6"/>
+
+  <!-- Cross-connections between C and M -->
+  <line x1="44" y1="40" x2="56" y2="22" stroke="#D97757" stroke-width="1.5" opacity="0.4"/>
+  <line x1="44" y1="80" x2="56" y2="98" stroke="#D97757" stroke-width="1.5" opacity="0.4"/>
+  <line x1="44" y1="60" x2="56" y2="60" stroke="#D97757" stroke-width="1.5" opacity="0.4"/>
+
+  <!-- C letter nodes -->
+  <circle cx="18" cy="30" r="7" fill="url(#nodeGrad)"/>
+  <circle cx="38" cy="22" r="5" fill="url(#nodeGrad)"/>
+  <circle cx="44" cy="40" r="4" fill="url(#nodeGrad)"/>
+  <circle cx="14" cy="60" r="6" fill="url(#nodeGrad)"/>
+  <circle cx="18" cy="90" r="7" fill="url(#nodeGrad)"/>
+  <circle cx="38" cy="98" r="5" fill="url(#nodeGrad)"/>
+  <circle cx="44" cy="80" r="4" fill="url(#nodeGrad)"/>
+
+  <!-- M letter nodes -->
+  <circle cx="56" cy="98" r="7" fill="url(#nodeGrad)"/>
+  <circle cx="56" cy="22" r="7" fill="url(#nodeGrad)"/>
+  <circle cx="76" cy="60" r="8" fill="url(#nodeGrad)"/>
+  <circle cx="96" cy="22" r="7" fill="url(#nodeGrad)"/>
+  <circle cx="96" cy="98" r="7" fill="url(#nodeGrad)"/>
+
+  <!-- Central connecting node (shared memory) -->
+  <circle cx="44" cy="60" r="5" fill="#FFF8F0"/>
+  <circle cx="56" cy="60" r="5" fill="#FFF8F0"/>
+</svg>

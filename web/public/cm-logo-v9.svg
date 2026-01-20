@@ -1,0 +1,53 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- CM Logo v9: Abstract neural CM with gradient -->
+
+  <defs>
+    <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FFF8F0;stop-opacity:0.3"/>
+      <stop offset="100%" style="stop-color:#FFF8F0;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Central glow -->
+  <circle cx="60" cy="60" r="45" fill="url(#centerGlow)"/>
+
+  <!-- Connection mesh -->
+  <g stroke="#D97757" stroke-width="1" opacity="0.35">
+    <!-- Dense interconnections -->
+    <line x1="30" y1="30" x2="45" y2="50"/>
+    <line x1="30" y1="30" x2="20" y2="60"/>
+    <line x1="20" y1="60" x2="30" y2="90"/>
+    <line x1="30" y1="90" x2="45" y2="70"/>
+    <line x1="45" y1="50" x2="45" y2="70"/>
+    <line x1="45" y1="50" x2="60" y2="30"/>
+    <line x1="45" y1="70" x2="60" y2="90"/>
+    <line x1="60" y1="30" x2="60" y2="90"/>
+    <line x1="60" y1="30" x2="80" y2="55"/>
+    <line x1="80" y1="55" x2="100" y2="30"/>
+    <line x1="100" y1="30" x2="100" y2="90"/>
+    <line x1="60" y1="90" x2="100" y2="90"/>
+    <line x1="80" y1="55" x2="60" y2="60"/>
+    <line x1="45" y1="50" x2="60" y2="60"/>
+    <line x1="45" y1="70" x2="60" y2="60"/>
+    <line x1="20" y1="60" x2="45" y2="50"/>
+    <line x1="20" y1="60" x2="45" y2="70"/>
+  </g>
+
+  <!-- C shape nodes -->
+  <circle cx="30" cy="30" r="8" fill="#D97757"/>
+  <circle cx="20" cy="60" r="10" fill="#D97757"/>
+  <circle cx="30" cy="90" r="8" fill="#D97757"/>
+  <circle cx="45" cy="50" r="5" fill="#e8a756"/>
+  <circle cx="45" cy="70" r="5" fill="#e8a756"/>
+
+  <!-- M shape nodes -->
+  <circle cx="60" cy="30" r="8" fill="#a85a3b"/>
+  <circle cx="80" cy="55" r="9" fill="#a85a3b"/>
+  <circle cx="100" cy="30" r="8" fill="#a85a3b"/>
+  <circle cx="60" cy="90" r="8" fill="#a85a3b"/>
+  <circle cx="100" cy="90" r="8" fill="#a85a3b"/>
+
+  <!-- Central collective node -->
+  <circle cx="60" cy="60" r="7" fill="#FFF8F0"/>
+  <circle cx="60" cy="60" r="4" fill="#D97757"/>
+</svg>

@@ -1,0 +1,51 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- CM Logo v10: Clean CM with subtle network overlay -->
+
+  <defs>
+    <linearGradient id="letterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D97757"/>
+      <stop offset="100%" style="stop-color:#a85a3b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background network pattern -->
+  <g stroke="#D97757" stroke-width="0.75" opacity="0.2">
+    <line x1="10" y1="20" x2="50" y2="60"/>
+    <line x1="10" y1="100" x2="50" y2="60"/>
+    <line x1="50" y1="60" x2="70" y2="60"/>
+    <line x1="70" y1="60" x2="110" y2="20"/>
+    <line x1="70" y1="60" x2="110" y2="100"/>
+    <line x1="10" y1="20" x2="10" y2="100"/>
+    <line x1="110" y1="20" x2="110" y2="100"/>
+  </g>
+
+  <!-- Letter C - bold curved stroke -->
+  <path d="M 48 30
+           C 28 30, 16 45, 16 60
+           C 16 75, 28 90, 48 90"
+        fill="none"
+        stroke="url(#letterGrad)"
+        stroke-width="14"
+        stroke-linecap="round"/>
+
+  <!-- Letter M - bold angular stroke -->
+  <path d="M 56 88 L 56 32 L 76 58 L 96 32 L 96 88"
+        fill="none"
+        stroke="url(#letterGrad)"
+        stroke-width="12"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Connection nodes at intersections -->
+  <circle cx="48" cy="30" r="4" fill="#FFF8F0"/>
+  <circle cx="48" cy="90" r="4" fill="#FFF8F0"/>
+  <circle cx="16" cy="60" r="5" fill="#FFF8F0"/>
+
+  <circle cx="56" cy="32" r="4" fill="#FFF8F0"/>
+  <circle cx="76" cy="58" r="5" fill="#FFF8F0"/>
+  <circle cx="96" cy="32" r="4" fill="#FFF8F0"/>
+
+  <!-- Bridge connection highlight -->
+  <line x1="48" y1="60" x2="56" y2="60" stroke="#FFF8F0" stroke-width="3" opacity="0.8"/>
+  <circle cx="52" cy="60" r="3" fill="#FFF8F0"/>
+</svg>

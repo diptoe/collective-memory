@@ -1,0 +1,47 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- CM Logo v7: Intertwined CM with orbital connections -->
+
+  <defs>
+    <linearGradient id="cGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D97757"/>
+      <stop offset="100%" style="stop-color:#CD853F"/>
+    </linearGradient>
+    <linearGradient id="mGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a85a3b"/>
+      <stop offset="100%" style="stop-color:#8B4513"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Orbital connection rings -->
+  <ellipse cx="60" cy="60" rx="50" ry="20" fill="none" stroke="#D97757" stroke-width="1" opacity="0.3" transform="rotate(-30 60 60)"/>
+  <ellipse cx="60" cy="60" rx="50" ry="20" fill="none" stroke="#a85a3b" stroke-width="1" opacity="0.3" transform="rotate(30 60 60)"/>
+
+  <!-- Letter C - curved arc -->
+  <path d="M 52 28
+           A 32 32 0 1 0 52 92"
+        fill="none"
+        stroke="url(#cGrad)"
+        stroke-width="12"
+        stroke-linecap="round"/>
+
+  <!-- Letter M - angular paths -->
+  <path d="M 58 92 L 58 32 L 78 62 L 98 32 L 98 92"
+        fill="none"
+        stroke="url(#mGrad)"
+        stroke-width="10"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Connection nodes at key points -->
+  <circle cx="52" cy="28" r="5" fill="#FFF8F0"/>
+  <circle cx="52" cy="92" r="5" fill="#FFF8F0"/>
+  <circle cx="20" cy="60" r="6" fill="#FFF8F0"/>
+  <circle cx="58" cy="32" r="5" fill="#FFF8F0"/>
+  <circle cx="78" cy="62" r="6" fill="#FFF8F0"/>
+  <circle cx="98" cy="32" r="5" fill="#FFF8F0"/>
+  <circle cx="98" cy="92" r="5" fill="#FFF8F0"/>
+
+  <!-- Connecting lines between C and M -->
+  <line x1="52" y1="28" x2="58" y2="32" stroke="#FFF8F0" stroke-width="2" opacity="0.7"/>
+  <line x1="52" y1="92" x2="58" y2="92" stroke="#FFF8F0" stroke-width="2" opacity="0.7"/>
+</svg>
