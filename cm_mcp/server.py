@@ -767,14 +767,30 @@ def create_sse_app():
         elif config.debug:
             print("SSE: No Authorization header - using server PAT (if configured)", file=sys.stderr)
 
-        async with sse_transport.connect_sse(
-            request.scope, request.receive, request._send
-        ) as streams:
-            await server.run(
-                streams[0],
-                streams[1],
-                server.create_initialization_options()
-            )
+        try:
+            async with sse_transport.connect_sse(
+                request.scope, request.receive, request._send
+            ) as streams:
+                await server.run(
+                    streams[0],
+                    streams[1],
+                    server.create_initialization_options()
+                )
+        except BaseExceptionGroup as eg:
+            # Handle ExceptionGroup from task group cleanup (client disconnect)
+            # Filter out CancelledError which is expected on disconnect
+            non_cancelled = [e for e in eg.exceptions if not isinstance(e, asyncio.CancelledError)]
+            if non_cancelled:
+                print(f"SSE: Connection errors: {non_cancelled}", file=sys.stderr)
+            elif config.debug:
+                print("SSE: Client disconnected", file=sys.stderr)
+        except asyncio.CancelledError:
+            # Direct cancellation - client disconnected
+            if config.debug:
+                print("SSE: Client disconnected (CancelledError)", file=sys.stderr)
+        except Exception as e:
+            # Log unexpected errors but don't crash the server
+            print(f"SSE: Connection error: {type(e).__name__}: {e}", file=sys.stderr)
         return Response()
 
     async def health_check(request):
