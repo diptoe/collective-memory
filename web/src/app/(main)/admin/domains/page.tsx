@@ -68,12 +68,20 @@ export default function AdminDomainsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-cm-charcoal">Domain Management</h1>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
-        >
-          Create Domain
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/users"
+            className="px-4 py-2 border border-cm-sand text-cm-charcoal rounded-md text-sm font-medium hover:bg-cm-sand/50 transition-colors"
+          >
+            ← Users
+          </Link>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm font-medium hover:bg-cm-terracotta/90 transition-colors"
+          >
+            Create Domain
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}

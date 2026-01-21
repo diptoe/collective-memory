@@ -95,12 +95,20 @@ export default function AdminUsersPage() {
         <h1 className="text-2xl font-semibold text-cm-charcoal">User Management</h1>
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <Link
-              href="/admin/domains"
-              className="px-4 py-2 border border-cm-sand text-cm-charcoal rounded-md text-sm font-medium hover:bg-cm-sand/50 transition-colors"
-            >
-              Manage Domains
-            </Link>
+            <>
+              <Link
+                href="/admin/domains"
+                className="px-4 py-2 border border-cm-sand text-cm-charcoal rounded-md text-sm font-medium hover:bg-cm-sand/50 transition-colors"
+              >
+                Manage Domains
+              </Link>
+              <Link
+                href="/admin/authentications"
+                className="px-4 py-2 border border-cm-sand text-cm-charcoal rounded-md text-sm font-medium hover:bg-cm-sand/50 transition-colors"
+              >
+                Authentications
+              </Link>
+            </>
           )}
           <button
             onClick={() => setShowAddModal(true)}

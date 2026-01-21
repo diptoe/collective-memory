@@ -113,11 +113,9 @@ export default function MainLayout({
               <NavLink href="/admin/teams" icon="team" active={pathname.startsWith('/admin/teams')}>Teams</NavLink>
               <NavLink href="/admin/projects" icon="project" active={pathname.startsWith('/admin/projects')}>Projects</NavLink>
               {user?.role === 'admin' && (
-                <>
-                  <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
-                  <NavLink href="/admin/authentications" icon="key" active={pathname.startsWith('/admin/authentications')}>Authentications</NavLink>
-                </>
+                <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
               )}
+              <NavLink href="/admin/database" icon="database" active={pathname.startsWith('/admin/database')}>Database</NavLink>
             </>
           )}
         </div>

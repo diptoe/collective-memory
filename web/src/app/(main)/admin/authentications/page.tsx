@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { Session } from '@/types';
@@ -114,13 +115,21 @@ export default function AdminSessionsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-cm-charcoal">Authentication Sessions</h1>
-        <button
-          onClick={handleCleanup}
-          disabled={isCleaningUp}
-          className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm hover:bg-cm-terracotta/90 disabled:opacity-50"
-        >
-          {isCleaningUp ? 'Cleaning...' : 'Cleanup Expired'}
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/users"
+            className="px-4 py-2 border border-cm-sand text-cm-charcoal rounded-md text-sm font-medium hover:bg-cm-sand/50 transition-colors"
+          >
+            ← Users
+          </Link>
+          <button
+            onClick={handleCleanup}
+            disabled={isCleaningUp}
+            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-md text-sm hover:bg-cm-terracotta/90 disabled:opacity-50"
+          >
+            {isCleaningUp ? 'Cleaning...' : 'Cleanup Expired'}
+          </button>
+        </div>
       </div>
 
       {cleanupResult && (

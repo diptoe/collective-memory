@@ -590,4 +590,31 @@ export const api = {
     removeProject: (repositoryKey: string, projectKey: string) =>
       apiClient.delete(`/repositories/${repositoryKey}/projects/${projectKey}`),
   },
+
+  // Database Admin
+  database: {
+    stats: (domainKey?: string) =>
+      apiClient.get<{
+        tables: Array<{
+          table_name: string;
+          row_count: number;
+          has_domain_key: boolean;
+          domain_filtered_count: number | null;
+        }>;
+        total_tables: number;
+        total_rows: number;
+        total_domain_rows: number | null;
+        domain_key: string | null;
+        scope: 'all' | 'domain';
+      }>('/database/stats', { params: domainKey ? { domain_key: domainKey } : {} }),
+    health: () =>
+      apiClient.get<{
+        status: 'healthy' | 'unhealthy';
+        database: string;
+        user: string;
+        version: string;
+        size: string;
+        error?: string;
+      }>('/database/health'),
+  },
 };
