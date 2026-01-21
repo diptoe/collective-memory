@@ -9,6 +9,7 @@ import traceback
 from flask import Flask, request
 from flask_cors import CORS
 from flask_restx import Api
+from werkzeug.exceptions import NotFound, MethodNotAllowed, HTTPException
 
 from api import config
 from api.models import db
@@ -58,6 +59,48 @@ def create_app() -> Flask:
     def health_check():
         """Health check endpoint for Cloud Run."""
         return {'status': 'healthy', 'service': 'cm-api'}, 200
+
+    # Handle common probe requests gracefully (favicon, robots.txt, etc.)
+    # These come from browsers, security scanners, and health checks
+    @app.route('/favicon.ico')
+    @app.route('/robots.txt')
+    def handle_probe_requests():
+        """Return 404 for common probe requests without logging errors."""
+        return '', 404
+
+    # HTTP 404 handler - return clean JSON without error logging
+    @app.errorhandler(NotFound)
+    def handle_not_found(e):
+        """Handle 404 errors cleanly - no error logging for expected probes."""
+        path = request.path
+        # Only log at debug level for unexpected paths (not common probes)
+        common_probes = ['/favicon.ico', '/robots.txt', '/apps', '/.env', '/wp-admin', '/wp-login.php']
+        if not any(path.startswith(probe) or path == probe for probe in common_probes):
+            logger.debug(f"404 Not Found: {request.method} {path}")
+        return {
+            'success': False,
+            'msg': 'Not found',
+            'path': path
+        }, 404
+
+    # HTTP 405 Method Not Allowed handler
+    @app.errorhandler(MethodNotAllowed)
+    def handle_method_not_allowed(e):
+        """Handle 405 errors cleanly."""
+        return {
+            'success': False,
+            'msg': f'Method {request.method} not allowed for {request.path}',
+        }, 405
+
+    # Generic HTTP exception handler (covers other 4xx/5xx)
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(e):
+        """Handle HTTP exceptions with proper JSON response."""
+        return {
+            'success': False,
+            'msg': e.description,
+            'error_type': type(e).__name__
+        }, e.code
 
     # Global exception handler for unhandled errors
     @app.errorhandler(Exception)
