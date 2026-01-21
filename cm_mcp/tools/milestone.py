@@ -322,13 +322,23 @@ async def record_milestone(
         await _make_request(config, "POST", f"/work-sessions/{session_key}/activity", agent_id=agent_id)
 
         # Get scope from the active session (need to fetch it if we don't have it)
+        # Priority: project > team > domain
         scope_type = None
         scope_key = None
+        project_key = None
+        team_key = None
+
         if active_session:
-            # Use team scope if session has a team, otherwise domain scope
-            if active_session.get("team_key"):
+            project_key = active_session.get("project_key")
+            team_key = active_session.get("team_key")
+
+            # Use project scope if session has a project
+            if project_key:
+                scope_type = "project"
+                scope_key = project_key
+            elif team_key:
                 scope_type = "team"
-                scope_key = active_session.get("team_key")
+                scope_key = team_key
             elif active_session.get("domain_key"):
                 scope_type = "domain"
                 scope_key = active_session.get("domain_key")
@@ -339,9 +349,15 @@ async def record_milestone(
                 session_result = await _make_request(config, "GET", f"/work-sessions/{session_key}", agent_id=agent_id)
                 if session_result.get("success"):
                     session_data = session_result.get("data", {}).get("session", {})
-                    if session_data.get("team_key"):
+                    project_key = session_data.get("project_key")
+                    team_key = session_data.get("team_key")
+
+                    if project_key:
+                        scope_type = "project"
+                        scope_key = project_key
+                    elif team_key:
                         scope_type = "team"
-                        scope_key = session_data.get("team_key")
+                        scope_key = team_key
                     elif session_data.get("domain_key"):
                         scope_type = "domain"
                         scope_key = session_data.get("domain_key")
@@ -463,6 +479,70 @@ async def record_milestone(
         if result.get("success"):
             entity = result.get("data", {}).get("entity", {})
             entity_key = entity.get("entity_key")
+
+            # Create relationships to Project/Team entities (if not updating existing)
+            # This links Milestone → Project or Milestone → Team for graph traversal
+            if not existing_milestone_key:  # Only for new milestones
+                try:
+                    if project_key:
+                        # Create BELONGS_TO relationship from Milestone → Project entity
+                        # Project entities should have entity_key = project_key (strong link)
+                        await _make_request(
+                            config, "POST", "/relationships",
+                            json={
+                                "from_entity_key": entity_key,
+                                "to_entity_key": project_key,  # Assumes Project entity uses project_key as entity_key
+                                "relationship_type": "BELONGS_TO",
+                                "properties": {"auto_created": True, "source": "milestone_recording"}
+                            },
+                            agent_id=agent_id
+                        )
+                    elif team_key:
+                        # Create BELONGS_TO relationship from Milestone → Team entity
+                        # Team entities should have entity_key = team_key (strong link)
+                        await _make_request(
+                            config, "POST", "/relationships",
+                            json={
+                                "from_entity_key": entity_key,
+                                "to_entity_key": team_key,  # Assumes Team entity uses team_key as entity_key
+                                "relationship_type": "BELONGS_TO",
+                                "properties": {"auto_created": True, "source": "milestone_recording"}
+                            },
+                            agent_id=agent_id
+                        )
+
+                    # Create CREATED_BY relationship from Milestone → Person entity
+                    # Person entities use user_key as entity_key (strong link)
+                    user_key = session_state.get("user_key")
+                    if user_key:
+                        await _make_request(
+                            config, "POST", "/relationships",
+                            json={
+                                "from_entity_key": entity_key,
+                                "to_entity_key": user_key,  # Person entity uses user_key as entity_key
+                                "relationship_type": "CREATED_BY",
+                                "properties": {"auto_created": True, "source": "milestone_recording"}
+                            },
+                            agent_id=agent_id
+                        )
+
+                    # Create EXECUTED_BY relationship from Milestone → Client entity
+                    # Client entities use client_key as entity_key (strong link)
+                    # This tracks which client tool (Claude Code, Cursor, etc.) executed the work
+                    client_key = session_state.get("client_key")
+                    if client_key:
+                        await _make_request(
+                            config, "POST", "/relationships",
+                            json={
+                                "from_entity_key": entity_key,
+                                "to_entity_key": client_key,  # Client entity uses client_key as entity_key
+                                "relationship_type": "EXECUTED_BY",
+                                "properties": {"auto_created": True, "source": "milestone_recording"}
+                            },
+                            agent_id=agent_id
+                        )
+                except Exception:
+                    pass  # Non-critical - relationship creation is supplementary
 
             # Handle milestone state tracking in session_state
             metrics_recorded = 0

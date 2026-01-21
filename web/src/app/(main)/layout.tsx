@@ -92,8 +92,6 @@ export default function MainLayout({
           <NavLink href="/" icon="start" active={pathname === '/'}>Start</NavLink>
           <NavLink href="/activity" icon="activity" active={pathname.startsWith('/activity')}>Activity</NavLink>
           <NavLink href="/chat" icon="message-circle" active={pathname.startsWith('/chat')}>Chat</NavLink>
-          <NavLink href="/personas" icon="users" active={pathname.startsWith('/personas')}>Personas</NavLink>
-          <NavLink href="/models" icon="brain" active={pathname.startsWith('/models')}>Models</NavLink>
           <NavLink
             href="/knowledge"
             icon="layers"
@@ -113,7 +111,14 @@ export default function MainLayout({
               <NavLink href="/admin/teams" icon="team" active={pathname.startsWith('/admin/teams')}>Teams</NavLink>
               <NavLink href="/admin/projects" icon="project" active={pathname.startsWith('/admin/projects')}>Projects</NavLink>
               {user?.role === 'admin' && (
-                <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
+                <>
+                  <NavLink href="/admin/users" icon="shield" active={pathname.startsWith('/admin/users')}>Users</NavLink>
+                  <NavLink
+                    href="/admin/clients"
+                    icon="client"
+                    active={pathname.startsWith('/admin/clients') || pathname.startsWith('/admin/models') || pathname.startsWith('/admin/personas')}
+                  >Clients</NavLink>
+                </>
               )}
               <NavLink href="/admin/database" icon="database" active={pathname.startsWith('/admin/database')}>Database</NavLink>
             </>
@@ -213,6 +218,7 @@ function NavIcon({ name }: { name: string }) {
     'project': '📁',
     'timer': '⏱️',
     'help': '❓',
+    'client': '🖥️',
   };
   return <span className="w-5 text-center">{icons[name] || '•'}</span>;
 }

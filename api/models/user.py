@@ -186,42 +186,50 @@ class User(BaseModel):
         """
         Ensure this user has a linked Person entity in the knowledge graph.
 
-        Creates a new Person entity if one doesn't exist, or updates the existing one.
-        The entity stores user_key in properties for bidirectional linking.
+        Creates a new Person entity with entity_key = user_key (strong link) if one
+        doesn't exist, or updates the existing one. Uses domain scope for visibility.
 
         Returns:
             The linked Person entity
         """
         from api.models.entity import Entity
 
-        # Check if user already has a linked entity
-        if self.entity_key:
-            entity = Entity.get_by_key(self.entity_key)
-            if entity:
-                # Update entity with current user info
-                entity.name = self.display_name
-                props = entity.properties or {}
-                props['user_key'] = self.user_key
-                props['email'] = self.email
-                props['role'] = self.role
-                entity.properties = props
-                entity.save()
-                return entity
+        # Check if entity exists with user_key as entity_key (strong link)
+        entity = Entity.get_by_key(self.user_key)
 
-        # Search for existing Person entity with this user_key
-        existing = Entity.query.filter(
-            Entity.entity_type == 'Person',
-            Entity.properties['user_key'].astext == self.user_key
-        ).first()
+        if entity:
+            # Update entity with current user info
+            entity.name = self.display_name
+            entity.entity_type = 'Person'  # Ensure correct type
+            props = entity.properties or {}
+            props['user_key'] = self.user_key
+            props['email'] = self.email
+            props['role'] = self.role
+            entity.properties = props
+            entity.domain_key = self.domain_key
+            entity.scope_type = 'domain'
+            entity.scope_key = self.domain_key
+            entity.save()
 
-        if existing:
-            # Link existing entity to user
-            self.entity_key = existing.entity_key
-            self.save()
-            return existing
+            # Ensure user.entity_key is linked
+            if self.entity_key != self.user_key:
+                self.entity_key = self.user_key
+                self.save()
 
-        # Create new Person entity
+            return entity
+
+        # Check if user already has a linked entity with different key (legacy)
+        if self.entity_key and self.entity_key != self.user_key:
+            old_entity = Entity.get_by_key(self.entity_key)
+            if old_entity:
+                # Update existing entity to use user_key (migrate to strong link)
+                # Note: This changes the entity_key which may break existing relationships
+                # For now, just update the link and create new entity
+                pass
+
+        # Create new Person entity with entity_key = user_key (strong link)
         entity = Entity(
+            entity_key=self.user_key,  # Strong link: entity_key matches user_key
             entity_type='Person',
             name=self.display_name,
             properties={
@@ -230,13 +238,15 @@ class User(BaseModel):
                 'role': self.role,
             },
             domain_key=self.domain_key,
-            source=f'user:{self.user_key}',
+            scope_type='domain',
+            scope_key=self.domain_key,
+            source=Entity.create_source_bridge('user', self.user_key),
             confidence=1.0
         )
         entity.save()
 
         # Link entity to user
-        self.entity_key = entity.entity_key
+        self.entity_key = self.user_key
         self.save()
 
         return entity

@@ -6,7 +6,7 @@ CRUD operations for AI models.
 from flask import request
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Model, db
+from api.models import Model, Client, db
 from api.services.auth import require_admin
 
 
@@ -30,6 +30,7 @@ def register_model_routes(api: Api):
         'max_output_tokens': fields.Integer(description='Maximum output tokens'),
         'description': fields.String(description='Model description'),
         'status': fields.String(description='Status: active, deprecated, disabled'),
+        'client_key': fields.String(description='Linked client key'),
         'created_at': fields.DateTime(readonly=True),
         'updated_at': fields.DateTime(readonly=True),
     })
@@ -43,6 +44,7 @@ def register_model_routes(api: Api):
         'max_output_tokens': fields.Integer(description='Maximum output tokens'),
         'description': fields.String(description='Model description'),
         'status': fields.String(description='Status: active, deprecated, disabled', default='active'),
+        'client_key': fields.String(description='Linked client key (e.g., client-claude-code)'),
     })
 
     response_model = ns.model('Response', {
@@ -51,25 +53,45 @@ def register_model_routes(api: Api):
         'data': fields.Raw(description='Response data'),
     })
 
+    def _expand_model(model: Model) -> dict:
+        """Expand model to include client info."""
+        data = model.to_dict()
+        if model.client_key and model.client:
+            data['client'] = {
+                'client_key': model.client.client_key,
+                'name': model.client.name,
+                'publisher': model.client.publisher,
+            }
+        return data
+
     @ns.route('')
     class ModelList(Resource):
         @ns.doc('list_models')
         @ns.param('provider', 'Filter by provider (anthropic, openai, google)')
+        @ns.param('client_key', 'Filter by client key')
         @ns.param('status', 'Filter by status', default='active')
         @ns.param('limit', 'Maximum results', type=int, default=100)
         @ns.param('offset', 'Offset for pagination', type=int, default=0)
+        @ns.param('expand', 'Include related objects (client)', type=bool, default=True)
         @ns.marshal_with(response_model)
         def get(self):
             """List AI models with optional filtering."""
             provider = request.args.get('provider')
+            client_key = request.args.get('client_key')
             status = request.args.get('status', 'active')
             limit = request.args.get('limit', 100, type=int)
             offset = request.args.get('offset', 0, type=int)
+            expand = request.args.get('expand', 'true').lower() == 'true'
 
             query = Model.query
 
             if provider:
                 query = query.filter_by(provider=provider)
+            if client_key:
+                # Support both formats: client-claude-code and claude-code
+                if not client_key.startswith('client-'):
+                    client_key = f'client-{client_key}'
+                query = query.filter_by(client_key=client_key)
             if status:
                 query = query.filter_by(status=status)
 
@@ -80,7 +102,7 @@ def register_model_routes(api: Api):
                 'success': True,
                 'msg': f'Found {total} models',
                 'data': {
-                    'models': [m.to_dict() for m in models],
+                    'models': [_expand_model(m) if expand else m.to_dict() for m in models],
                     'total': total,
                     'limit': limit,
                     'offset': offset
@@ -107,6 +129,15 @@ def register_model_routes(api: Api):
             if existing:
                 return {'success': False, 'msg': f"Model with model_id '{data['model_id']}' already exists"}, 400
 
+            # Validate client_key if provided
+            client_key = data.get('client_key')
+            if client_key:
+                if not client_key.startswith('client-'):
+                    client_key = f'client-{client_key}'
+                client = Client.get_by_key(client_key)
+                if not client:
+                    return {'success': False, 'msg': f"Client not found: '{client_key}'"}, 400
+
             model = Model(
                 name=data['name'],
                 provider=data['provider'],
@@ -115,7 +146,8 @@ def register_model_routes(api: Api):
                 context_window=data.get('context_window'),
                 max_output_tokens=data.get('max_output_tokens'),
                 description=data.get('description'),
-                status=data.get('status', 'active')
+                status=data.get('status', 'active'),
+                client_key=client_key
             )
 
             try:
@@ -123,7 +155,7 @@ def register_model_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Model created',
-                    'data': model.to_dict()
+                    'data': _expand_model(model)
                 }, 201
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -167,7 +199,7 @@ def register_model_routes(api: Api):
                 'success': True,
                 'msg': f'Found {len(models)} models for provider {provider}',
                 'data': {
-                    'models': [m.to_dict() for m in models]
+                    'models': [_expand_model(m) for m in models]
                 }
             }
 
@@ -189,7 +221,7 @@ def register_model_routes(api: Api):
             return {
                 'success': True,
                 'msg': 'Model retrieved',
-                'data': model.to_dict()
+                'data': _expand_model(model)
             }
 
     @ns.route('/<string:model_key>')
@@ -206,7 +238,7 @@ def register_model_routes(api: Api):
             return {
                 'success': True,
                 'msg': 'Model retrieved',
-                'data': model.to_dict()
+                'data': _expand_model(model)
             }
 
         @ns.doc('update_model')
@@ -227,6 +259,17 @@ def register_model_routes(api: Api):
                 if existing:
                     return {'success': False, 'msg': f"Model with model_id '{data['model_id']}' already exists"}, 400
 
+            # Validate client_key if provided
+            if 'client_key' in data:
+                client_key = data['client_key']
+                if client_key:
+                    if not client_key.startswith('client-'):
+                        client_key = f'client-{client_key}'
+                    client = Client.get_by_key(client_key)
+                    if not client:
+                        return {'success': False, 'msg': f"Client not found: '{client_key}'"}, 400
+                    data['client_key'] = client_key
+
             model.update_from_dict(data)
 
             try:
@@ -234,7 +277,7 @@ def register_model_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Model updated',
-                    'data': model.to_dict()
+                    'data': _expand_model(model)
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -275,7 +318,7 @@ def register_model_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Model deprecated',
-                    'data': model.to_dict()
+                    'data': _expand_model(model)
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500

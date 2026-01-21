@@ -7,7 +7,7 @@ Persona modifications require system admin role.
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Persona, is_valid_client
+from api.models import Persona, Client, is_valid_client
 from api.services.auth import require_admin
 
 
@@ -28,7 +28,8 @@ def register_persona_routes(api: Api):
         'system_prompt': fields.String(description='System prompt for the persona'),
         'personality': fields.Raw(description='Personality traits as JSON'),
         'capabilities': fields.List(fields.String, description='Persona capabilities'),
-        'suggested_clients': fields.List(fields.String, description='Suggested client types'),
+        'suggested_clients': fields.List(fields.String, description='Suggested client types (deprecated)'),
+        'client_key': fields.String(description='Linked client key'),
         'avatar_url': fields.String(description='Avatar image URL'),
         'color': fields.String(description='Theme color (hex)'),
         'status': fields.String(description='Status: active, inactive, archived'),
@@ -42,7 +43,8 @@ def register_persona_routes(api: Api):
         'system_prompt': fields.String(description='System prompt'),
         'personality': fields.Raw(description='Personality traits'),
         'capabilities': fields.List(fields.String, description='Capabilities'),
-        'suggested_clients': fields.List(fields.String, description='Suggested client types'),
+        'suggested_clients': fields.List(fields.String, description='Suggested client types (deprecated)'),
+        'client_key': fields.String(description='Linked client key (e.g., client-claude-code)'),
         'avatar_url': fields.String(description='Avatar URL'),
         'color': fields.String(description='Theme color', default='#d97757'),
     })
@@ -53,18 +55,33 @@ def register_persona_routes(api: Api):
         'data': fields.Raw(description='Response data'),
     })
 
+    def _expand_persona(persona: Persona, include_system_prompt: bool = False) -> dict:
+        """Expand persona to include client info."""
+        data = persona.to_dict(include_system_prompt=include_system_prompt)
+        if persona.client_key and persona.client:
+            data['client'] = {
+                'client_key': persona.client.client_key,
+                'name': persona.client.name,
+                'publisher': persona.client.publisher,
+            }
+        return data
+
     @ns.route('')
     class PersonaList(Resource):
         @ns.doc('list_personas')
         @ns.param('role', 'Filter by role')
-        @ns.param('client', 'Filter by suggested client type')
+        @ns.param('client', 'Filter by suggested client type (legacy)')
+        @ns.param('client_key', 'Filter by client key')
         @ns.param('include_archived', 'Include archived personas', type=bool, default=False)
+        @ns.param('expand', 'Include related objects (client)', type=bool, default=True)
         @ns.marshal_with(response_model)
         def get(self):
             """List all personas."""
             role = request.args.get('role')
-            client = request.args.get('client')
+            client = request.args.get('client')  # Legacy filter
+            client_key = request.args.get('client_key')
             include_archived = request.args.get('include_archived', 'false').lower() == 'true'
+            expand = request.args.get('expand', 'true').lower() == 'true'
 
             if include_archived:
                 personas = Persona.get_all()
@@ -74,13 +91,19 @@ def register_persona_routes(api: Api):
             if role:
                 personas = [p for p in personas if p.role == role]
             if client:
+                # Legacy: filter by suggested_clients list
                 personas = [p for p in personas if client in (p.suggested_clients or [])]
+            if client_key:
+                # New: filter by client_key FK
+                if not client_key.startswith('client-'):
+                    client_key = f'client-{client_key}'
+                personas = [p for p in personas if p.client_key == client_key]
 
             return {
                 'success': True,
                 'msg': f'Found {len(personas)} personas',
                 'data': {
-                    'personas': [p.to_dict() for p in personas]
+                    'personas': [_expand_persona(p) if expand else p.to_dict() for p in personas]
                 }
             }
 
@@ -97,11 +120,20 @@ def register_persona_routes(api: Api):
             if not data.get('role'):
                 return {'success': False, 'msg': 'role is required'}, 400
 
-            # Validate suggested_clients if provided
+            # Validate suggested_clients if provided (legacy)
             suggested_clients = data.get('suggested_clients', [])
             for client in suggested_clients:
                 if not is_valid_client(client):
                     return {'success': False, 'msg': f"Invalid client type: '{client}'"}, 400
+
+            # Validate client_key if provided (new way)
+            client_key = data.get('client_key')
+            if client_key:
+                if not client_key.startswith('client-'):
+                    client_key = f'client-{client_key}'
+                client = Client.get_by_key(client_key)
+                if not client:
+                    return {'success': False, 'msg': f"Client not found: '{client_key}'"}, 400
 
             # Check for duplicate role
             existing = Persona.get_by_role(data['role'])
@@ -115,6 +147,7 @@ def register_persona_routes(api: Api):
                 personality=data.get('personality', {}),
                 capabilities=data.get('capabilities', []),
                 suggested_clients=suggested_clients,
+                client_key=client_key,
                 avatar_url=data.get('avatar_url'),
                 color=data.get('color', '#d97757'),
                 status='active'
@@ -125,7 +158,7 @@ def register_persona_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Persona created',
-                    'data': persona.to_dict(include_system_prompt=True)
+                    'data': _expand_persona(persona, include_system_prompt=True)
                 }, 201
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -147,7 +180,7 @@ def register_persona_routes(api: Api):
             return {
                 'success': True,
                 'msg': 'Persona retrieved',
-                'data': persona.to_dict(include_system_prompt=include_prompt)
+                'data': _expand_persona(persona, include_system_prompt=include_prompt)
             }
 
         @ns.doc('update_persona')
@@ -161,6 +194,18 @@ def register_persona_routes(api: Api):
                 return {'success': False, 'msg': 'Persona not found'}, 404
 
             data = request.json
+
+            # Validate client_key if provided
+            if 'client_key' in data:
+                client_key = data['client_key']
+                if client_key:
+                    if not client_key.startswith('client-'):
+                        client_key = f'client-{client_key}'
+                    client = Client.get_by_key(client_key)
+                    if not client:
+                        return {'success': False, 'msg': f"Client not found: '{client_key}'"}, 400
+                    data['client_key'] = client_key
+
             persona.update_from_dict(data)
 
             try:
@@ -168,7 +213,7 @@ def register_persona_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Persona updated',
-                    'data': persona.to_dict(include_system_prompt=True)
+                    'data': _expand_persona(persona, include_system_prompt=True)
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -187,7 +232,7 @@ def register_persona_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Persona archived',
-                    'data': persona.to_dict()
+                    'data': _expand_persona(persona)
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -209,7 +254,7 @@ def register_persona_routes(api: Api):
                 return {
                     'success': True,
                     'msg': 'Persona activated',
-                    'data': persona.to_dict()
+                    'data': _expand_persona(persona)
                 }
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
@@ -234,5 +279,5 @@ def register_persona_routes(api: Api):
             return {
                 'success': True,
                 'msg': 'Persona retrieved',
-                'data': persona.to_dict(include_system_prompt=include_prompt)
+                'data': _expand_persona(persona, include_system_prompt=include_prompt)
             }

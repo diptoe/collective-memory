@@ -893,6 +893,9 @@ async def identify(
 
         if client_type:
             registration_data["client"] = client_type
+            # Map client type to client_key (e.g., 'claude-code' → 'client-claude-code')
+            client_key = f"client-{client_type}" if not client_type.startswith("client-") else client_type
+            registration_data["client_key"] = client_key
         if resolved_model_key:
             registration_data["model_key"] = resolved_model_key
         if focus:
@@ -1061,6 +1064,9 @@ async def identify(
             session_state["model_resolved"] = model_resolved
             session_state["focus"] = focus
             session_state["client"] = client_type
+            # Store client_key for milestone EXECUTED_BY relationships
+            if client_type:
+                session_state["client_key"] = f"client-{client_type}" if not client_type.startswith("client-") else client_type
             session_state["registered"] = True
 
             # Store affinity warning if present

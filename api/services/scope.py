@@ -27,14 +27,22 @@ class ScopeService:
         Return all scopes a user can access.
 
         Returns a list of scope dictionaries with:
-        - scope_type: 'domain', 'team', or 'user'
-        - scope_key: The corresponding key
+        - scope_type: 'domain', 'team', 'user', or 'system'
+        - scope_key: The corresponding key (None for system scope)
         - name: Human-readable name
         - access_level: 'admin', 'owner', 'member', or 'viewer'
         """
         from api.models.team import TeamMembership
 
         scopes = []
+
+        # System scope (always accessible to everyone)
+        scopes.append({
+            'scope_type': 'system',
+            'scope_key': None,
+            'name': 'System',
+            'access_level': 'viewer'
+        })
 
         # Domain scope (if user has domain)
         if user.domain_key:
@@ -86,6 +94,11 @@ class ScopeService:
 
         conditions = []
 
+        # System-scoped entities are visible to everyone (e.g., Client entities)
+        conditions.append(
+            and_(model_class.scope_type == 'system', model_class.scope_key.is_(None))
+        )
+
         # Domain-scoped (NULL scope_type or explicit domain)
         if user.domain_key:
             conditions.append(
@@ -118,13 +131,17 @@ class ScopeService:
 
         Args:
             user: The user to check
-            scope_type: 'domain', 'team', or 'user'
+            scope_type: 'domain', 'team', 'user', or 'system'
             scope_key: The key for the scope
 
         Returns:
             True if user can access the scope
         """
         if user.is_admin:
+            return True
+
+        # System scope is accessible to everyone (read-only)
+        if scope_type == 'system':
             return True
 
         if scope_type == 'domain':
@@ -220,10 +237,14 @@ class ScopeService:
         Returns:
             tuple of (is_valid, error_message)
         """
-        valid_scope_types = ('domain', 'team', 'user', None)
+        valid_scope_types = ('domain', 'team', 'user', 'system', None)
 
         if scope_type and scope_type not in valid_scope_types:
-            return False, f"Invalid scope_type: {scope_type}. Must be one of: domain, team, user"
+            return False, f"Invalid scope_type: {scope_type}. Must be one of: domain, team, user, system"
+
+        # System scope has null scope_key, other types require scope_key
+        if scope_type == 'system':
+            return True, ""  # System scope doesn't need scope_key
 
         if scope_type and not scope_key:
             return False, f"scope_key is required when scope_type is set"

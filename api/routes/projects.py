@@ -220,11 +220,14 @@ def register_project_routes(api: Api):
                     existing_entity.source = Entity.create_source_bridge('project', project.project_key)
                     existing_entity.save()
                 elif not entity_key:
-                    # Create a new Project entity and link it
+                    # Create a new Project entity with entity_key = project_key (strong link)
                     new_entity = Entity(
+                        entity_key=project.project_key,  # Strong link: entity_key matches project_key
                         entity_type='Project',
                         name=data['name'].strip(),
                         domain_key=domain_key,
+                        scope_type='domain',
+                        scope_key=domain_key,
                         properties={
                             'description': data.get('description'),
                             'repository_url': data.get('repository_url'),

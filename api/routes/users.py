@@ -201,6 +201,9 @@ def register_user_routes(api: Api):
                 )
                 user.save()
 
+                # Create linked Person entity in the knowledge graph
+                user.ensure_person_entity()
+
                 # Record activity
                 activity_service.record_create(
                     actor=current_user.user_key,

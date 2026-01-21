@@ -4,10 +4,16 @@ Collective Memory Platform - Agent Model
 Agent registration and status tracking.
 """
 from datetime import datetime, timezone, timedelta
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 
 from api.models.base import BaseModel, db, get_key, get_now
+
+if TYPE_CHECKING:
+    from api.models.client import Client
 
 
 class Agent(BaseModel):
@@ -22,6 +28,13 @@ class Agent(BaseModel):
     - Focus (current work description)
     """
     __tablename__ = 'agents'
+    _schema_version = 7
+
+    __schema_updates__ = {
+        7: [
+            ("client_key", Column(String(50), ForeignKey('clients.client_key'), nullable=True, index=True)),
+        ]
+    }
 
     agent_key = Column(String(36), primary_key=True, default=get_key)
     agent_id = Column(String(100), unique=True, nullable=False, index=True)
@@ -48,7 +61,12 @@ class Agent(BaseModel):
     current_milestone_started_at = Column(DateTime(timezone=True), nullable=True)
 
     # Client type (claude-code, claude-desktop, codex, gemini-cli)
+    # DEPRECATED: use client_key instead
     client = Column(String(50), nullable=True, index=True)
+
+    # Link to Client model (new way)
+    client_key = Column(String(50), ForeignKey('clients.client_key'), nullable=True, index=True)
+    client_ref = relationship('Client')  # Named client_ref to avoid conflict with 'client' string field
 
     # Foreign keys to Model and Persona (nullable for backward compatibility)
     model_key = Column(String(36), ForeignKey('models.model_key'), nullable=True)
@@ -72,7 +90,7 @@ class Agent(BaseModel):
     updated_at = Column(DateTime(timezone=True), default=get_now, onupdate=get_now)
 
     _default_fields = [
-        'agent_key', 'agent_id', 'user_key', 'client', 'model_key', 'persona_key',
+        'agent_key', 'agent_id', 'user_key', 'client', 'client_key', 'model_key', 'persona_key',
         'focus', 'focused_mode', 'role', 'capabilities', 'status',
         # Team and user display info
         'team_key', 'team_name', 'user_name', 'user_initials',
@@ -88,7 +106,7 @@ class Agent(BaseModel):
 
     @classmethod
     def current_schema_version(cls) -> int:
-        return 6  # Added current_milestone_* fields for milestone tracking
+        return 7  # Added client_key FK for linking to Client model
 
     @classmethod
     def migrate(cls) -> bool:

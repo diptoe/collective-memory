@@ -11,7 +11,7 @@ from api.models.document import Document
 from api.models.message import Message
 from api.models.message_read import MessageRead
 from api.models.model import Model
-from api.models.client import ClientType, CLIENT_PERSONA_AFFINITIES, get_client_types, get_client_affinities, is_valid_client
+from api.models.client import Client, ClientType, CLIENT_PERSONA_AFFINITIES, get_client_types, get_client_affinities, is_valid_client, DEFAULT_CLIENTS
 from api.models.agent import Agent
 from api.models.agent_checkpoint import AgentCheckpoint
 from api.models.persona import Persona
@@ -46,8 +46,10 @@ __all__ = [
     'Message',
     'MessageRead',
     'Model',
+    'Client',
     'ClientType',
     'CLIENT_PERSONA_AFFINITIES',
+    'DEFAULT_CLIENTS',
     'get_client_types',
     'get_client_affinities',
     'is_valid_client',

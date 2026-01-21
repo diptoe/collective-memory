@@ -190,6 +190,7 @@ function CrossScopeBadge({ relationship }: { relationship: CrossScopeRelationshi
 // Scope icon component
 function ScopeIcon({ type }: { type: string }) {
   const icons: Record<string, string> = {
+    system: '⚙️',
     domain: '🌐',
     team: '👥',
     user: '👤',

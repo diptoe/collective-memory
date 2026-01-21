@@ -186,7 +186,11 @@ def _get_scope_stats(base_query, user, domain_filter=None):
     scope_map = {}
     for row in scope_results:
         scope_type = row.scope_type or 'domain'
-        scope_key = row.scope_key or row.domain_key
+        # For system scope, keep scope_key as None; for others, fallback to domain_key
+        if scope_type == 'system':
+            scope_key = None
+        else:
+            scope_key = row.scope_key or row.domain_key
 
         key = (scope_type, scope_key)
         if key not in scope_map:
@@ -225,7 +229,9 @@ def _get_scope_stats(base_query, user, domain_filter=None):
 
 def _resolve_scope_name(scope_type: str, scope_key: str) -> str:
     """Resolve scope key to human-readable name."""
-    if scope_type == 'domain':
+    if scope_type == 'system':
+        return 'System'
+    elif scope_type == 'domain':
         domain = Domain.query.filter_by(domain_key=scope_key).first()
         return domain.name if domain else scope_key
     elif scope_type == 'team':
@@ -244,7 +250,13 @@ def _get_entity_types_for_scope(scope_type: str, scope_key: str, domain_key: str
         func.count(Entity.entity_key).label('count')
     )
 
-    if scope_type == 'domain':
+    if scope_type == 'system':
+        # System scope: scope_type='system' and scope_key is None
+        query = query.filter(
+            Entity.scope_type == 'system',
+            Entity.scope_key.is_(None)
+        )
+    elif scope_type == 'domain':
         query = query.filter(
             db.or_(Entity.scope_type.is_(None), Entity.scope_type == 'domain'),
             Entity.domain_key == scope_key
@@ -263,7 +275,13 @@ def _get_entity_types_for_scope(scope_type: str, scope_key: str, domain_key: str
 def _get_relationship_count_for_scope(scope_type: str, scope_key: str, domain_key: str) -> int:
     """Get count of relationships where both entities are in the specified scope."""
     # Subquery to get entity keys in this scope
-    if scope_type == 'domain':
+    if scope_type == 'system':
+        # System scope: scope_type='system' and scope_key is None
+        entity_subq = db.session.query(Entity.entity_key).filter(
+            Entity.scope_type == 'system',
+            Entity.scope_key.is_(None)
+        ).subquery()
+    elif scope_type == 'domain':
         entity_subq = db.session.query(Entity.entity_key).filter(
             db.or_(Entity.scope_type.is_(None), Entity.scope_type == 'domain'),
             Entity.domain_key == scope_key

@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useDebugStore } from '@/lib/stores/debug-store';
-import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric, KnowledgeStatsData, KnowledgeDomain, Project, TeamProject, TeamProjectRole, Repository, ProjectRepository } from '@/types';
+import { Entity, Relationship, Persona, Conversation, ChatMessage, Agent, Message, ContextResult, Model, Client, ClientType, ClientStatus, LegacyClient, Activity, ActivitySummary, ActivityTimelinePoint, User, UserTeam, Session, Domain, Team, TeamMembership, TeamMemberRole, Scope, WorkSession, Metric, KnowledgeStatsData, KnowledgeDomain, Project, TeamProject, TeamProjectRole, Repository, ProjectRepository } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
 const PERSON_ID = process.env.NEXT_PUBLIC_PERSON_ID || 'web-ui';
@@ -13,8 +13,9 @@ interface RelationshipsResponse { relationships: Relationship[] }
 interface ModelsResponse { models: Model[] }
 interface ModelResponse extends Model {}
 interface ProvidersResponse { providers: string[] }
-interface ClientsResponse { clients: Client[] }
-interface ClientResponse extends Client {}
+interface ClientsResponse { clients: Client[] | LegacyClient[] }
+interface ClientResponse { client_key: string; name: string; description?: string; publisher?: string; entity_key?: string; status: ClientStatus; extra_data?: Record<string, unknown>; models_count?: number; personas_count?: number; created_at: string; updated_at: string }
+interface ClientEntityResponse { client_key: string; entity_key: string }
 interface PersonasResponse { personas: Persona[] }
 interface PersonaResponse extends Persona {}
 interface ConversationsResponse { conversations: Conversation[] }
@@ -252,7 +253,7 @@ export const api = {
       apiClient.get<ModelsResponse>('/models', { params }),
     get: (key: string) =>
       apiClient.get<ModelResponse>(`/models/${key}`),
-    create: (data: { name: string; provider: string; model_id: string; capabilities?: string[]; context_window?: number; max_output_tokens?: number; description?: string }) =>
+    create: (data: { name: string; provider: string; model_id: string; capabilities?: string[]; context_window?: number; max_output_tokens?: number; description?: string; client_key?: string }) =>
       apiClient.post<ModelResponse>('/models', data),
     update: (key: string, data: Record<string, unknown>) =>
       apiClient.put<ModelResponse>(`/models/${key}`, data),
@@ -268,12 +269,24 @@ export const api = {
 
   // Clients
   clients: {
-    list: () =>
-      apiClient.get<ClientsResponse>('/clients'),
-    get: (client: ClientType) =>
-      apiClient.get<ClientResponse>(`/clients/${client}`),
-    getPersonas: (client: ClientType) =>
-      apiClient.get<PersonasResponse>(`/clients/${client}/personas`),
+    list: (params?: { status?: string; include_counts?: boolean; legacy?: boolean }) =>
+      apiClient.get<ClientsResponse>('/clients', { params }),
+    get: (key: string) =>
+      apiClient.get<ClientResponse>(`/clients/${key}`),
+    create: (data: { client_key: string; name: string; description?: string; publisher?: string; extra_data?: Record<string, unknown> }) =>
+      apiClient.post<ClientResponse>('/clients', data),
+    update: (key: string, data: { name?: string; description?: string; publisher?: string; status?: ClientStatus; extra_data?: Record<string, unknown> }) =>
+      apiClient.put<ClientResponse>(`/clients/${key}`, data),
+    delete: (key: string) =>
+      apiClient.delete<ClientResponse>(`/clients/${key}`),
+    getModels: (key: string) =>
+      apiClient.get<ModelsResponse>(`/clients/${key}/models`),
+    getPersonas: (key: string) =>
+      apiClient.get<PersonasResponse>(`/clients/${key}/personas`),
+    seed: () =>
+      apiClient.post<ClientsResponse>('/clients/seed'),
+    ensureEntity: (key: string) =>
+      apiClient.post<ClientEntityResponse>(`/clients/${key}/entity`),
   },
 
   // Personas
@@ -284,7 +297,7 @@ export const api = {
       apiClient.get<PersonaResponse>(`/personas/${key}`, { params: { include_system_prompt: includeSystemPrompt } }),
     getByRole: (role: string, includeSystemPrompt = false) =>
       apiClient.get<PersonaResponse>(`/personas/by-role/${role}`, { params: { include_system_prompt: includeSystemPrompt } }),
-    create: (data: { name: string; role: string; system_prompt?: string; suggested_clients?: ClientType[]; color?: string; capabilities?: string[] }) =>
+    create: (data: { name: string; role: string; system_prompt?: string; suggested_clients?: ClientType[]; client_key?: string; color?: string; capabilities?: string[] }) =>
       apiClient.post<PersonaResponse>('/personas', data),
     update: (key: string, data: Record<string, unknown>) =>
       apiClient.put<PersonaResponse>(`/personas/${key}`, data),
@@ -319,6 +332,7 @@ export const api = {
     register: (data: {
       agent_id: string;
       client?: ClientType;
+      client_key?: string;
       model_key?: string;
       persona_key?: string;
       focus?: string;
@@ -616,5 +630,67 @@ export const api = {
         size: string;
         error?: string;
       }>('/database/health'),
+    consistency: (domainKey?: string) =>
+      apiClient.get<{
+        issues: {
+          milestones: Array<{
+            entity_key: string;
+            name: string;
+            issue_type: string;
+            current_scope_type: string | null;
+            current_scope_key: string | null;
+            expected_scope_type: string | null;
+            expected_scope_key: string | null;
+            work_session_key: string;
+          }>;
+          projects: Array<{
+            project_key: string;
+            name: string;
+            issue_type: string;
+            description?: string;
+            current_type?: string;
+            expected_type?: string;
+          }>;
+          teams: Array<{
+            team_key: string;
+            name: string;
+            issue_type: string;
+            description?: string;
+            current_type?: string;
+            expected_type?: string;
+          }>;
+          summary: {
+            milestone_scope_issues: number;
+            milestone_relationship_issues: number;
+            project_entity_issues: number;
+            team_entity_issues: number;
+          };
+        };
+        total_issues: number;
+        domain_key: string | null;
+      }>('/database/consistency', { params: domainKey ? { domain_key: domainKey } : {} }),
+    fixConsistency: (fixTypes: string[], domainKey?: string, dryRun = true) =>
+      apiClient.post<{
+        fixed: Array<{
+          type: string;
+          entity_key?: string;
+          project_key?: string;
+          team_key?: string;
+          name?: string;
+          new_scope_type?: string;
+          new_scope_key?: string;
+          would_set_scope_type?: string;
+          would_set_scope_key?: string;
+          dry_run?: boolean;
+        }>;
+        errors: Array<{
+          type: string;
+          entity_key?: string;
+          project_key?: string;
+          team_key?: string;
+          error: string;
+        }>;
+        dry_run: boolean;
+      }>('/database/consistency', { fix_types: fixTypes, domain_key: domainKey, dry_run: dryRun }),
   },
 };

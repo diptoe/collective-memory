@@ -84,21 +84,49 @@ class MigrationManager:
         Discover all BaseModel subclasses.
 
         Returns dict of table_name -> model_class.
+
+        Note: Order matters for foreign key dependencies.
+        Tables with FKs must be created after their referenced tables.
         """
         from api.models import (
-            Entity, Relationship, Message, Agent,
-            Persona, Conversation, ChatMessage, Document,
-            User, Session, Domain
+            Key, Entity, Relationship, Message, MessageRead, Agent, AgentCheckpoint,
+            Conversation, ChatMessage, Document,
+            User, Session, Domain, Team, TeamMembership,
+            Client, Model, Persona,  # Client must come before Model/Persona (FK dependency)
+            WorkSession, Project, TeamProject, Repository, ProjectRepository,
+            RepositoryStats, Commit, Metric
         )
         from api.models.activity import Activity
 
         models = {}
 
-        # Core models
+        # Core models - ORDER MATTERS for FK dependencies
         model_classes = [
-            Entity, Relationship, Message, Agent,
-            Persona, Conversation, ChatMessage, Document,
-            User, Session, Domain, Activity
+            # Key mapping (no dependencies)
+            Key,
+            # Base entities and relationships
+            Entity, Relationship, Document,
+            # Auth and multi-tenancy (no FKs to other app tables)
+            User, Session, Domain,
+            # Teams (depends on Domain, User)
+            Team, TeamMembership,
+            # Clients must come before Model/Persona (they have FKs to clients)
+            Client,
+            # Models and Personas (have FKs to clients)
+            Model, Persona,
+            # Agents and checkpoints
+            Agent, AgentCheckpoint,
+            # Messaging
+            Message, MessageRead,
+            # Conversations
+            Conversation, ChatMessage,
+            # Projects and repositories
+            Project, Repository, TeamProject, ProjectRepository,
+            RepositoryStats, Commit,
+            # Work sessions
+            WorkSession,
+            # Metrics and activity
+            Metric, Activity,
         ]
 
         for model_cls in model_classes:

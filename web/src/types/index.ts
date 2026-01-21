@@ -72,14 +72,34 @@ export interface Model {
   max_output_tokens?: number;
   description?: string;
   status: ModelStatus;
+  client_key?: string;
+  client?: Client;
   created_at: string;
   updated_at: string;
 }
 
 // Client types
 export type ClientType = 'claude-code' | 'claude-desktop' | 'codex' | 'gemini-cli' | 'cursor';
+export type ClientStatus = 'active' | 'deprecated';
 
+// New Client model (database entity)
 export interface Client {
+  client_key: string;
+  name: string;
+  description?: string;
+  publisher?: string;
+  entity_key?: string;
+  status: ClientStatus;
+  extra_data?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  // Counts for list view
+  models_count?: number;
+  personas_count?: number;
+}
+
+// Legacy Client type for backward compatibility
+export interface LegacyClient {
   client: ClientType;
   name: string;
   description: string;
@@ -97,7 +117,9 @@ export interface Persona {
     communication_style?: string;
   };
   capabilities: string[];
-  suggested_clients: ClientType[];
+  suggested_clients: ClientType[];  // Legacy, prefer client_key
+  client_key?: string;
+  client?: Client;
   avatar_url?: string;
   color: string;
   status: 'active' | 'inactive' | 'archived';
@@ -140,7 +162,9 @@ export interface ChatMessage {
 export interface Agent {
   agent_key: string;
   agent_id: string;
-  client?: ClientType;
+  client?: ClientType;  // Legacy string field
+  client_key?: string;
+  client_ref?: Client;  // Matches backend naming
   model_key?: string;
   persona_key?: string;
   role?: string;  // Legacy, prefer persona_key

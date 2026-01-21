@@ -188,12 +188,33 @@ def register_team_routes(api: Api):
                 return {'success': False, 'msg': 'Domain is required'}, 400
 
             try:
+                from api.models import Entity
+
                 team = Team.create_team(
                     domain_key=domain_key,
                     name=data['name'].strip(),
                     slug=data.get('slug'),
                     description=data.get('description'),
                 )
+
+                # Create a Team entity with entity_key = team_key (strong link)
+                existing_entity = Entity.get_by_key(team.team_key)
+                if not existing_entity:
+                    team_entity = Entity(
+                        entity_key=team.team_key,  # Strong link: entity_key matches team_key
+                        entity_type='Team',
+                        name=team.name,
+                        domain_key=domain_key,
+                        scope_type='domain',
+                        scope_key=domain_key,
+                        properties={
+                            'description': data.get('description'),
+                            'slug': team.slug,
+                        },
+                        source=Entity.create_source_bridge('team', team.team_key),
+                        confidence=1.0,
+                    )
+                    team_entity.save()
 
                 # Record activity
                 activity_service.record_create(

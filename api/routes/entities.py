@@ -104,7 +104,13 @@ def register_entity_routes(api: Api):
                         return {'success': False, 'msg': 'Access denied to this scope'}, 403
 
                     # Apply specific scope filter
-                    if scope_type_filter == 'domain':
+                    if scope_type_filter == 'system':
+                        # System scope: global entities visible to all (e.g., Client entities)
+                        query = query.filter(
+                            Entity.scope_type == 'system',
+                            Entity.scope_key.is_(None)
+                        )
+                    elif scope_type_filter == 'domain':
                         query = query.filter(
                             db.or_(Entity.scope_type.is_(None), Entity.scope_type == 'domain'),
                             Entity.domain_key == (scope_key_filter or user.domain_key)

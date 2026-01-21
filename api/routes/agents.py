@@ -6,7 +6,7 @@ Agent registration, status operations, and checkpointing.
 from flask import request, g
 from flask_restx import Api, Resource, Namespace, fields
 
-from api.models import Agent, AgentCheckpoint, Model, Persona, Session, Team, is_valid_client, get_client_affinities
+from api.models import Agent, AgentCheckpoint, Model, Persona, Session, Team, Client, is_valid_client, get_client_affinities
 from api.services.checkpoint import checkpoint_service
 from api.services.activity import activity_service
 from api.services.auth import require_auth, require_auth_strict
@@ -39,7 +39,8 @@ def register_agent_routes(api: Api):
     agent_model = ns.model('Agent', {
         'agent_key': fields.String(readonly=True, description='Unique agent identifier'),
         'agent_id': fields.String(required=True, description='Agent ID (e.g., claude-code-wayne-project)'),
-        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini-cli, cursor'),
+        'client': fields.String(description='Client type: claude-code, claude-desktop, codex, gemini-cli, cursor (deprecated)'),
+        'client_key': fields.String(description='Client key (e.g., client-claude-code)'),
         'model_key': fields.String(description='Foreign key to model'),
         'persona_key': fields.String(description='Foreign key to persona'),
         'focus': fields.String(description='Current work focus'),
@@ -56,6 +57,7 @@ def register_agent_routes(api: Api):
     agent_register = ns.model('AgentRegister', {
         'agent_id': fields.String(required=True, description='Agent ID'),
         'client': fields.String(required=True, description='Client type: claude-code, claude-desktop, codex, gemini-cli, cursor'),
+        'client_key': fields.String(description='Client key (e.g., client-claude-code) - optional, auto-derived from client'),
         'model_key': fields.String(description='Model key (optional)'),
         'persona_key': fields.String(description='Persona key (optional)'),
         'focus': fields.String(description='Current work focus'),
@@ -167,6 +169,18 @@ def register_agent_routes(api: Api):
                     'msg': f"Invalid client type: '{client}'. Valid options: claude-code, claude-desktop, codex, gemini-cli, cursor"
                 }, 400
 
+            # Get or derive client_key from client type
+            client_key = data.get('client_key')
+            if not client_key:
+                # Auto-derive from client type
+                client_key = Client.map_client_type_to_key(client)
+            elif not client_key.startswith('client-'):
+                client_key = f'client-{client_key}'
+
+            # Validate client_key exists in database (optional - may not be seeded yet)
+            client_ref = Client.get_by_key(client_key)
+            # Don't fail if client doesn't exist - it may not be seeded yet
+
             # Validate model_key if provided
             model_key = data.get('model_key')
             if model_key:
@@ -249,6 +263,8 @@ def register_agent_routes(api: Api):
 
                 if client:
                     existing.client = client
+                if client_key:
+                    existing.client_key = client_key
                 if model_key:
                     existing.model_key = model_key
                 if persona_key:
@@ -315,6 +331,7 @@ def register_agent_routes(api: Api):
                 agent_id=agent_id,  # Use processed agent_id with initials suffix
                 user_key=user_key,
                 client=client,
+                client_key=client_key,
                 model_key=model_key,
                 persona_key=persona_key,
                 focus=data.get('focus'),

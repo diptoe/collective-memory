@@ -5,6 +5,7 @@ import { ScopeStats } from '@/types';
 
 // Scope display helpers - using standard brand colors
 const SCOPE_ICONS: Record<string, string> = {
+  system: '⚙️',
   domain: '🌐',
   team: '👥',
   user: '👤',
@@ -26,9 +27,15 @@ export function ScopeCard({ scope, totalEntities }: ScopeCardProps) {
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3);
 
+  // Build query params - only include scope_key if it exists (system scope has null scope_key)
+  const queryParams = new URLSearchParams({ scope_type: scope.scope_type });
+  if (scope.scope_key) {
+    queryParams.set('scope_key', scope.scope_key);
+  }
+
   return (
     <Link
-      href={`/entities?scope_type=${scope.scope_type}&scope_key=${scope.scope_key}`}
+      href={`/entities?${queryParams.toString()}`}
       className="block rounded-xl border p-4 transition-all hover:shadow-md hover:-translate-y-0.5 bg-cm-ivory border-cm-sand hover:border-cm-terracotta/50"
     >
       {/* Header */}

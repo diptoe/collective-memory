@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 
 // Scope display helpers - using standard brand colors
 const SCOPE_ICONS: Record<string, string> = {
+  system: '⚙️',
   domain: '🌐',
   team: '👥',
   user: '👤',
@@ -63,10 +64,16 @@ export function ScopeTreemap({ scopes, totalEntities }: ScopeTreemapProps) {
             colSpan = 3;
           }
 
+          // Build query params - only include scope_key if it exists (system scope has null scope_key)
+          const queryParams = new URLSearchParams({ scope_type: scope.scope_type });
+          if (scope.scope_key) {
+            queryParams.set('scope_key', scope.scope_key);
+          }
+
           return (
             <Link
-              key={`${scope.scope_type}-${scope.scope_key}`}
-              href={`/entities?scope_type=${scope.scope_type}&scope_key=${scope.scope_key}`}
+              key={`${scope.scope_type}-${scope.scope_key || 'null'}`}
+              href={`/entities?${queryParams.toString()}`}
               className={cn(
                 "rounded-xl p-4 transition-all cursor-pointer",
                 "flex flex-col justify-between min-h-[100px]",
