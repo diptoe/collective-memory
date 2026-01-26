@@ -49,12 +49,12 @@ export function AgentPropertiesModal({ isOpen, onClose }: AgentPropertiesModalPr
     try {
       const [clientsRes, modelsRes, personasRes] = await Promise.all([
         api.clients.list({ status: 'active', include_counts: true }),
-        api.models.list({ status: 'active' }),
+        api.models.list({}),
         api.personas.list({}),
       ]);
 
       if (clientsRes.success && clientsRes.data) {
-        setClients(clientsRes.data.clients || []);
+        setClients((clientsRes.data.clients || []) as Client[]);
       }
       if (modelsRes.success && modelsRes.data) {
         setModels(modelsRes.data.models || []);

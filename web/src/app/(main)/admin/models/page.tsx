@@ -42,7 +42,7 @@ export default function AdminModelsPage() {
       try {
         const res = await api.clients.list({ status: 'active' });
         if (res.success && res.data?.clients) {
-          setClients(res.data.clients);
+          setClients(res.data.clients as Client[]);
         }
       } catch (err) {
         console.error('Failed to load clients:', err);
