@@ -9,7 +9,7 @@ from flask_restx import Api, Resource, Namespace, fields
 
 from api.models.metric import Metric, MetricTypes
 from api.models.base import db
-from api.services.auth import require_auth
+from api.services.auth import require_auth, require_write_access
 
 
 def register_metric_routes(api: Api):
@@ -89,9 +89,9 @@ def register_metric_routes(api: Api):
         @ns.doc('create_metric')
         @ns.expect(metric_model)
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_write_access
         def post(self):
-            """Record a single metric value."""
+            """Record a single metric value. Requires write access."""
             data = request.get_json()
 
             entity_key = data.get('entity_key')
@@ -130,10 +130,10 @@ def register_metric_routes(api: Api):
         @ns.doc('batch_metrics')
         @ns.expect(batch_request_model)
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_write_access
         def post(self):
             """
-            Record multiple metrics for an entity at once.
+            Record multiple metrics for an entity at once. Requires write access.
 
             All metrics share the same entity_key and recorded_at timestamp.
             Useful for recording all milestone metrics together.

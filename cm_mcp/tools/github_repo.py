@@ -13,7 +13,7 @@ from typing import Optional, Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from cm_mcp.config import config
-from cm_mcp.tools.utils import _make_request
+from cm_mcp.tools.utils import _make_request, is_guest_session, reject_guest_write
 
 import mcp.types as types
 
@@ -440,6 +440,10 @@ async def _handle_sync_repository(
     session_state: dict,
 ) -> list[types.TextContent]:
     """MCP handler wrapper for sync_repository."""
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("sync_repository")
+
     text = await sync_repository(
         arguments.get("repository_url"),
         arguments.get("create_if_missing", True)

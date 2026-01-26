@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Settings2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Agent, ClientType } from '@/types';
 import { AgentStatus } from '@/components/agent-status';
+import { AgentPropertiesModal } from '@/components/agent-properties-modal';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -26,6 +28,7 @@ export default function AgentsPage() {
   const [filterScope, setFilterScope] = useState<ScopeFilter>('my-agents');
   const [showInactive, setShowInactive] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [showProperties, setShowProperties] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'domain_admin';
   const userTeams = currentUser?.teams || [];
@@ -108,6 +111,13 @@ export default function AgentsPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowProperties(true)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-cm-coffee hover:text-cm-charcoal bg-cm-sand hover:bg-cm-sand/80 rounded-lg transition-colors"
+          >
+            <Settings2 className="w-4 h-4" />
+            Agent Properties
+          </button>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-cm-success" />
             <span className="text-sm text-cm-coffee">{activeAgents.length} Online</span>
@@ -229,6 +239,12 @@ export default function AgentsPage() {
           )}
         </div>
       )}
+
+      {/* Agent Properties Modal */}
+      <AgentPropertiesModal
+        isOpen={showProperties}
+        onClose={() => setShowProperties(false)}
+      />
     </div>
   );
 }

@@ -226,9 +226,62 @@ def seed_personas() -> Dict[str, Any]:
     }
 
 
+def seed_guest_user() -> Dict[str, Any]:
+    """
+    Seed guest user for demo access.
+
+    Creates a guest user with view-only permissions if it doesn't exist.
+    The guest user is added to the collective-memory team as a viewer.
+    """
+    from api.models import User, Team, TeamMembership, Domain
+    from api.services.auth import hash_password
+
+    GUEST_EMAIL = 'guest@diptoe.ai'
+    GUEST_DOMAIN = 'diptoe.ai'
+
+    # Check if exists
+    existing = User.get_by_email(GUEST_EMAIL)
+    if existing:
+        logger.info(f"Guest user already exists: {GUEST_EMAIL}")
+        return {'status': 'skipped', 'user_key': existing.user_key}
+
+    # Get diptoe.ai domain
+    domain = Domain.get_by_slug(GUEST_DOMAIN)
+    if not domain:
+        logger.warning(f"Domain '{GUEST_DOMAIN}' not found - cannot create guest user")
+        return {'status': 'error', 'msg': f'Domain {GUEST_DOMAIN} not found'}
+
+    # Create guest user
+    guest = User(
+        email=GUEST_EMAIL,
+        password_hash=hash_password('guest-demo-2024'),
+        first_name='Guest',
+        last_name='User',
+        role='guest',
+        status='active',
+        domain_key=domain.domain_key,
+    )
+    guest.save()
+
+    # Add to collective-memory team as viewer
+    team = Team.query.filter_by(slug='collective-memory').first()
+    if team:
+        membership = TeamMembership(
+            team_key=team.team_key,
+            user_key=guest.user_key,
+            role='viewer',
+        )
+        membership.save()
+        logger.info(f"Guest user created and added to team: {team.slug}")
+    else:
+        logger.info(f"Guest user created (no collective-memory team found)")
+
+    return {'status': 'created', 'user_key': guest.user_key}
+
+
 def seed_all() -> Dict[str, Any]:
     """
-    Seed all default data (clients, models, and personas).
+    Seed all default data (clients, models, personas, and guest user).
 
     Clients must be seeded first as models and personas reference them.
     Call this on application startup to ensure all defaults exist.
@@ -239,11 +292,13 @@ def seed_all() -> Dict[str, Any]:
     clients_result = seed_clients()
     models_result = seed_models()
     personas_result = seed_personas()
+    guest_result = seed_guest_user()
 
     summary = {
         'clients': clients_result,
         'models': models_result,
-        'personas': personas_result
+        'personas': personas_result,
+        'guest_user': guest_result,
     }
 
     total_created = (

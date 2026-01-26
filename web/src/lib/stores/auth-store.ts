@@ -72,3 +72,10 @@ export function isAdmin(user: User | null): boolean {
 export function isActive(user: User | null): boolean {
   return user?.status === 'active';
 }
+
+/**
+ * Check if user is a guest (view-only access)
+ */
+export function isGuest(user: User | null): boolean {
+  return user?.role === 'guest';
+}

@@ -5,6 +5,7 @@ Common utilities for MCP tool implementations.
 """
 
 import httpx
+import mcp.types as types
 from contextvars import ContextVar
 from typing import Any, Optional
 
@@ -85,3 +86,17 @@ async def _make_request(
         raise RuntimeError(
             f"CM API returned {e.response.status_code} for {e.request.url}.{body_snippet}"
         ) from e
+
+
+def is_guest_session(session_state: dict) -> bool:
+    """Check if current session belongs to a guest user."""
+    return session_state.get("user_role") == "guest"
+
+
+def reject_guest_write(tool_name: str) -> list[types.TextContent]:
+    """Return rejection message for guest write attempts."""
+    return [types.TextContent(
+        type="text",
+        text=f"[READ-ONLY MODE] The '{tool_name}' tool is not available for guest users. "
+             f"Guest access is view-only for demonstration purposes."
+    )]

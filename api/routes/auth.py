@@ -270,6 +270,41 @@ def register_auth_routes(api: Api):
 
             return response
 
+    @ns.route('/guest')
+    class GuestLogin(Resource):
+        @ns.doc('guest_login')
+        def post(self):
+            """Login as guest user for demo access (view-only)."""
+            GUEST_EMAIL = 'guest@diptoe.ai'
+
+            guest = User.get_by_email(GUEST_EMAIL)
+            if not guest or not guest.is_active:
+                return {'success': False, 'msg': 'Guest access not available'}, 404
+
+            try:
+                session = Session.create_for_user(
+                    user_key=guest.user_key,
+                    remember_me=False,
+                    user_agent=request.headers.get('User-Agent'),
+                    ip_address=request.remote_addr,
+                )
+
+                response_data = {
+                    'success': True,
+                    'msg': 'Guest login successful',
+                    'data': {
+                        'user': guest.to_dict(),
+                        'is_guest': True,
+                    }
+                }
+                response = make_response(jsonify(response_data))
+                set_session_cookie(response, session)
+
+                return response
+
+            except Exception as e:
+                return {'success': False, 'msg': str(e)}, 500
+
     @ns.route('/me')
     class CurrentUser(Resource):
         @ns.doc('get_current_user')
@@ -627,3 +662,92 @@ def register_auth_routes(api: Api):
 
             except Exception as e:
                 return {'success': False, 'msg': str(e)}, 500
+
+    # ===================
+    # Guest Settings
+    # ===================
+
+    @ns.route('/guest/settings')
+    class GuestSettings(Resource):
+        GUEST_EMAIL = 'guest@diptoe.ai'
+
+        @ns.doc('get_guest_settings')
+        @require_admin
+        def get(self):
+            """[Admin] Get guest access settings."""
+            guest = User.get_by_email(self.GUEST_EMAIL)
+
+            if not guest:
+                return {
+                    'success': True,
+                    'msg': 'Guest user not configured',
+                    'data': {
+                        'exists': False,
+                        'enabled': False,
+                        'email': self.GUEST_EMAIL,
+                    }
+                }
+
+            return {
+                'success': True,
+                'msg': 'Guest settings retrieved',
+                'data': {
+                    'exists': True,
+                    'enabled': guest.is_active,
+                    'email': guest.email,
+                    'user_key': guest.user_key,
+                    'created_at': guest.created_at.isoformat() if guest.created_at else None,
+                }
+            }
+
+        @ns.doc('update_guest_settings')
+        @require_admin
+        def put(self):
+            """[Admin] Enable or disable guest access."""
+            data = request.json or {}
+            enabled = data.get('enabled')
+
+            if enabled is None:
+                return {'success': False, 'msg': 'enabled field is required'}, 400
+
+            guest = User.get_by_email(self.GUEST_EMAIL)
+
+            if not guest:
+                if enabled:
+                    # Create guest user if enabling and doesn't exist
+                    from api.services.seeding import seed_guest_user
+                    result = seed_guest_user()
+                    if result.get('status') == 'error':
+                        return {'success': False, 'msg': result.get('msg', 'Failed to create guest user')}, 500
+                    return {
+                        'success': True,
+                        'msg': 'Guest access enabled',
+                        'data': {'enabled': True, 'user_key': result.get('user_key')}
+                    }
+                else:
+                    return {
+                        'success': True,
+                        'msg': 'Guest user does not exist',
+                        'data': {'enabled': False}
+                    }
+
+            # Toggle guest user status
+            guest.status = 'active' if enabled else 'inactive'
+            guest.save()
+
+            # Record activity
+            activity_service.record_update(
+                actor=g.current_user.user_key,
+                entity_type='User',
+                entity_key=guest.user_key,
+                entity_name='Guest User',
+                changes={'status': guest.status, 'guest_access': 'enabled' if enabled else 'disabled'},
+                domain_key=get_user_domain_key(),
+                user_key=get_user_key()
+            )
+
+            return {
+                'success': True,
+                'msg': f'Guest access {"enabled" if enabled else "disabled"}',
+                'data': {'enabled': enabled, 'user_key': guest.user_key}
+            }

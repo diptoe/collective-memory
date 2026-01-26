@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/utils';
 import { Markdown } from '@/components/markdown/markdown';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { useCanWrite } from '@/hooks/use-can-write';
 
 const MESSAGE_TYPES = ['status', 'announcement', 'request', 'task', 'message', 'acknowledged', 'waiting', 'resumed'] as const;
 const PRIORITIES = ['normal', 'high', 'urgent'] as const;
@@ -44,6 +45,7 @@ const typeColors: Record<string, string> = {
 
 export default function MessagesPage() {
   const { user } = useAuthStore();
+  const canWrite = useCanWrite();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [channel, setChannel] = useState('all');
@@ -263,7 +265,7 @@ export default function MessagesPage() {
               {unreadCount} unread
             </span>
           )}
-          {messages.length > 0 && (
+          {messages.length > 0 && canWrite && (
             <button
               onClick={handleClearMessages}
               disabled={clearing}
@@ -273,8 +275,13 @@ export default function MessagesPage() {
             </button>
           )}
           <button
-            onClick={() => setShowNewMessage(true)}
-            className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors"
+            onClick={() => canWrite && setShowNewMessage(true)}
+            disabled={!canWrite}
+            title={!canWrite ? 'Guest users cannot send messages' : undefined}
+            className={cn(
+              "px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg transition-colors",
+              canWrite ? "hover:bg-cm-sienna" : "opacity-50 cursor-not-allowed"
+            )}
           >
             + New Message
           </button>
@@ -495,15 +502,17 @@ export default function MessagesPage() {
                         {message.message_type}
                       </span>
                       <div className="flex items-center gap-3">
-                        <button
-                          onClick={(e) => handleReply(message, e)}
-                          className="text-cm-terracotta hover:text-cm-sienna transition-colors flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                          </svg>
-                          Reply
-                        </button>
+                        {canWrite && (
+                          <button
+                            onClick={(e) => handleReply(message, e)}
+                            className="text-cm-terracotta hover:text-cm-sienna transition-colors flex items-center gap-1"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                            Reply
+                          </button>
+                        )}
                         <span>{formatDateTime(message.created_at)}</span>
                       </div>
                     </div>

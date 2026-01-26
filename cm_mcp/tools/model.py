@@ -8,7 +8,7 @@ in Collective Memory (CM).
 import mcp.types as types
 from typing import Any
 
-from .utils import _make_request
+from .utils import _make_request, is_guest_session, reject_guest_write
 
 
 # ============================================================
@@ -233,6 +233,10 @@ async def update_focus(
     Args:
         focus: Description of current work (e.g., "Implementing auth module")
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("update_focus")
+
     focus = arguments.get("focus", "")
 
     agent_id = session_state.get("agent_id")
@@ -292,6 +296,10 @@ async def set_focused_mode(
         enabled: True to enable focused mode, False to disable
         duration_minutes: How long focused mode should last (default 10)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("set_focused_mode")
+
     enabled = arguments.get("enabled")
     duration_minutes = arguments.get("duration_minutes", 10)
 

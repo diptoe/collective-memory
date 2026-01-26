@@ -155,6 +155,28 @@ def require_domain_admin(f):
     return decorated
 
 
+def require_write_access(f):
+    """
+    Decorator to require write access (non-guest users).
+
+    Blocks guest users from performing write operations.
+    Use this for POST/PUT/DELETE operations that modify data.
+
+    Implies require_auth_strict.
+    """
+    @wraps(f)
+    @require_auth_strict
+    def decorated(*args, **kwargs):
+        if g.current_user.is_guest:
+            return {
+                'success': False,
+                'msg': 'Guest users have view-only access. Create an account to make changes.'
+            }, 403
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 def set_session_cookie(response, session, secure: bool = None):
     """
     Set session cookie on response.

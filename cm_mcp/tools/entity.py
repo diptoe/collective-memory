@@ -8,7 +8,7 @@ import json
 import mcp.types as types
 from typing import Any
 
-from .utils import _make_request
+from .utils import _make_request, is_guest_session, reject_guest_write
 
 
 # ============================================================
@@ -372,6 +372,10 @@ async def create_entity(
         scope_type: Optional scope type ('domain', 'team', 'user')
         scope_key: Optional scope key (team_key or user_key)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("create_entity")
+
     name = arguments.get("name")
     entity_type = arguments.get("entity_type")
     properties = arguments.get("properties", {})
@@ -484,6 +488,10 @@ async def update_entity(
         scope_type: New scope type - 'domain', 'team', or 'user' (optional)
         scope_key: New scope key - team_key or user_key (optional)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("update_entity")
+
     entity_key = arguments.get("entity_key")
 
     if not entity_key:
@@ -730,6 +738,10 @@ async def move_entity_scope(
         scope_key: Target scope key (domain_key, team_key, or user_key)
         include_related: Include related entities (default True, but conservative)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("move_entity_scope")
+
     entity_key = arguments.get("entity_key")
     scope_type = arguments.get("scope_type")
     scope_key = arguments.get("scope_key")

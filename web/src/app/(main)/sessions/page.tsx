@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { useCanWrite } from '@/hooks/use-can-write';
 import { WorkSession, Entity, UserTeam, Team, ClientType } from '@/types';
 import { cn } from '@/lib/utils';
 import { MilestoneMetricsPanel, extractAllMetrics } from '@/components/milestone-impact';
@@ -60,6 +61,7 @@ type ViewMode = 'active' | 'browse';
 
 export default function SessionsPage() {
   const { user } = useAuthStore();
+  const canWrite = useCanWrite();
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [userActiveSessions, setUserActiveSessions] = useState<WorkSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -310,15 +312,15 @@ export default function SessionsPage() {
                 Browse All
               </button>
               <button
-                onClick={() => setShowStartModal(true)}
-                disabled={!!activeSession}
+                onClick={() => canWrite && setShowStartModal(true)}
+                disabled={!!activeSession || !canWrite}
+                title={!canWrite ? 'Guest users cannot start sessions' : activeSession ? 'Close current session first' : 'Start new session'}
                 className={cn(
                   'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                  activeSession
-                    ? 'bg-cm-sand text-cm-coffee cursor-not-allowed'
+                  !canWrite || activeSession
+                    ? 'bg-cm-sand text-cm-coffee cursor-not-allowed opacity-50'
                     : 'bg-cm-terracotta text-cm-ivory hover:bg-cm-terracotta/90'
                 )}
-                title={activeSession ? 'Close current session first' : 'Start new session'}
               >
                 Start Session
               </button>
@@ -330,8 +332,13 @@ export default function SessionsPage() {
             <div className="text-center py-12">
               <p className="text-cm-coffee mb-4">No active sessions.</p>
               <button
-                onClick={() => setShowStartModal(true)}
-                className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-terracotta/90 transition-colors"
+                onClick={() => canWrite && setShowStartModal(true)}
+                disabled={!canWrite}
+                title={!canWrite ? 'Guest users cannot start sessions' : undefined}
+                className={cn(
+                  "px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg transition-colors",
+                  canWrite ? "hover:bg-cm-terracotta/90" : "opacity-50 cursor-not-allowed"
+                )}
               >
                 Start a Session
               </button>
@@ -348,6 +355,7 @@ export default function SessionsPage() {
                   formatTimeRemaining={formatTimeRemaining}
                   formatDate={formatDate}
                   autoExpand={shouldAutoExpand}
+                  canWrite={canWrite}
                 />
               ))}
             </div>
@@ -378,15 +386,15 @@ export default function SessionsPage() {
                 </button>
               )}
               <button
-                onClick={() => setShowStartModal(true)}
-                disabled={!!activeSession}
+                onClick={() => canWrite && setShowStartModal(true)}
+                disabled={!!activeSession || !canWrite}
+                title={!canWrite ? 'Guest users cannot start sessions' : activeSession ? 'Close current session first' : 'Start new session'}
                 className={cn(
                   'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                  activeSession
-                    ? 'bg-cm-sand text-cm-coffee cursor-not-allowed'
+                  !canWrite || activeSession
+                    ? 'bg-cm-sand text-cm-coffee cursor-not-allowed opacity-50'
                     : 'bg-cm-terracotta text-cm-ivory hover:bg-cm-terracotta/90'
                 )}
-                title={activeSession ? 'Close current session first' : 'Start new session'}
               >
                 Start Session
               </button>
@@ -457,6 +465,7 @@ export default function SessionsPage() {
                   onClose={() => handleCloseSession(session.session_key)}
                   formatTimeRemaining={formatTimeRemaining}
                   formatDate={formatDate}
+                  canWrite={canWrite}
                 />
               ))}
             </div>
@@ -561,6 +570,7 @@ function SessionCard({
   formatTimeRemaining,
   formatDate,
   autoExpand = false,
+  canWrite = true,
 }: {
   session: WorkSession;
   isActive: boolean;
@@ -569,6 +579,7 @@ function SessionCard({
   formatTimeRemaining: (seconds: number) => string;
   formatDate: (dateStr: string) => string;
   autoExpand?: boolean;
+  canWrite?: boolean;
 }) {
   const [expanded, setExpanded] = useState(autoExpand);
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -812,7 +823,7 @@ function SessionCard({
           </div>
           </div>
 
-          {session.status === 'active' && (
+          {session.status === 'active' && canWrite && (
             <div className="flex items-center gap-2 ml-4">
               <button
                 onClick={onExtend}

@@ -22,7 +22,7 @@ from flask_restx import Api, Resource, Namespace, fields
 from api.models import Message, MessageRead
 from api.models.message import VALID_SCOPES
 from api.services.activity import activity_service
-from api.services.auth import require_auth, require_auth_strict
+from api.services.auth import require_auth, require_auth_strict, require_write_access
 
 
 def get_user_domain_key() -> str | None:
@@ -306,10 +306,10 @@ def register_message_routes(api: Api):
         @ns.doc('post_message')
         @ns.expect(message_create)
         @ns.marshal_with(response_model, code=201)
-        @require_auth
+        @require_write_access
         def post(self):
             """
-            Post a new message. Automatically assigned to user's domain.
+            Post a new message. Requires write access. Automatically assigned to user's domain.
 
             Scope auto-detection:
             - If to_key is set and looks like agent_key: agent-agent or user-agent
@@ -561,9 +561,9 @@ def register_message_routes(api: Api):
     class ClearAllMessages(Resource):
         @ns.doc('clear_all_messages')
         @ns.marshal_with(response_model)
-        @require_auth_strict
+        @require_write_access
         def delete(self):
-            """Delete all messages for user's domain. Requires authentication."""
+            """Delete all messages for user's domain. Requires write access."""
             from api.models import db
 
             user_domain = get_user_domain_key()
@@ -661,9 +661,9 @@ def register_message_routes(api: Api):
         @ns.doc('confirm_message')
         @ns.param('confirmed_by', 'Key of agent/user confirming', type=str, required=True)
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_write_access
         def post(self, message_key):
-            """Confirm task completion on a message."""
+            """Confirm task completion on a message. Requires write access."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
@@ -689,9 +689,9 @@ def register_message_routes(api: Api):
 
         @ns.doc('unconfirm_message')
         @ns.marshal_with(response_model)
-        @require_auth_strict
+        @require_write_access
         def delete(self, message_key):
-            """Remove confirmation from a message. Requires authentication."""
+            """Remove confirmation from a message. Requires write access."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
@@ -722,9 +722,9 @@ def register_message_routes(api: Api):
         @ns.doc('update_message_entity_links')
         @ns.expect(entity_links_model)
         @ns.marshal_with(response_model)
-        @require_auth
+        @require_write_access
         def put(self, message_key):
-            """Update entity links on a message."""
+            """Update entity links on a message. Requires write access."""
             message = Message.get_by_key(message_key)
             if not message:
                 return {'success': False, 'msg': 'Message not found'}, 404
@@ -833,9 +833,9 @@ def register_message_routes(api: Api):
 
         @ns.doc('delete_message_thread')
         @ns.marshal_with(response_model)
-        @require_auth_strict
+        @require_write_access
         def delete(self, message_key):
-            """Delete a message and all its replies. Requires authentication."""
+            """Delete a message and all its replies. Requires write access."""
             from api.models import db
 
             message = Message.get_by_key(message_key)

@@ -10,7 +10,7 @@ import asyncio
 import logging
 
 from api.models import WorkSession, Entity, Project, Metric, db
-from api.services.auth import require_auth_strict
+from api.services.auth import require_auth_strict, require_write_access
 from api.services.activity import activity_service
 
 logger = logging.getLogger(__name__)
@@ -231,10 +231,10 @@ def register_work_session_routes(api: Api):
 
         @ns.doc('start_work_session')
         @ns.expect(create_session_model)
-        @require_auth_strict
+        @require_write_access
         def post(self):
             """
-            Start a new work session.
+            Start a new work session. Requires write access.
 
             Requires a project_key. Only one active session per user per project is allowed.
             """
@@ -388,9 +388,9 @@ def register_work_session_routes(api: Api):
 
         @ns.doc('update_work_session')
         @ns.expect(update_session_model)
-        @require_auth_strict
+        @require_write_access
         def put(self, session_key):
-            """Update work session (name, summary)."""
+            """Update work session (name, summary). Requires write access."""
             user = g.current_user
             session = WorkSession.get_by_key(session_key)
 
@@ -447,9 +447,9 @@ def register_work_session_routes(api: Api):
     class ExtendWorkSession(Resource):
         @ns.doc('extend_work_session')
         @ns.expect(extend_session_model)
-        @require_auth_strict
+        @require_write_access
         def post(self, session_key):
-            """Extend the auto-close time for an active session."""
+            """Extend the auto-close time for an active session. Requires write access."""
             user = g.current_user
             session = WorkSession.get_by_key(session_key)
 
@@ -489,9 +489,9 @@ def register_work_session_routes(api: Api):
     class CloseWorkSession(Resource):
         @ns.doc('close_work_session')
         @ns.expect(close_session_model)
-        @require_auth_strict
+        @require_write_access
         def post(self, session_key):
-            """Close a work session."""
+            """Close a work session. Requires write access."""
             user = g.current_user
             session = WorkSession.get_by_key(session_key)
 
@@ -549,10 +549,11 @@ def register_work_session_routes(api: Api):
     @ns.param('session_key', 'Work session identifier')
     class WorkSessionActivity(Resource):
         @ns.doc('record_work_session_activity')
-        @require_auth_strict
+        @require_write_access
         def post(self, session_key):
             """
             Record activity in a work session (updates last_activity_at and auto_close_at).
+            Requires write access.
 
             Call this endpoint when work is done within a session to prevent auto-close.
             """

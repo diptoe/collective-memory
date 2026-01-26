@@ -9,7 +9,7 @@ import subprocess
 import re
 from typing import Any
 
-from .utils import _make_request, get_session_pat
+from .utils import _make_request, get_session_pat, is_guest_session, reject_guest_write
 
 
 # ============================================================
@@ -1501,6 +1501,10 @@ async def update_my_identity(
         model_key: New model key (optional, keeps current if not provided)
         focus: Current work focus (optional)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("update_my_identity")
+
     new_agent_id = arguments.get("agent_id")
     new_persona = arguments.get("persona")
     new_model_key = arguments.get("model_key")

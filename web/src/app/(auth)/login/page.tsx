@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/stores/auth-store';
 
@@ -73,11 +74,37 @@ export default function LoginPage() {
     }
   };
 
+  const handleGuestLogin = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      const response = await api.auth.guestLogin();
+      if (response.success && response.data) {
+        setUser(response.data.user, response.data.session);
+        router.push('/');
+      } else {
+        setError(response.msg || 'Guest login failed');
+      }
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { msg?: string } } };
+      setError(error.response?.data?.msg || 'Guest login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
+          <Image
+            src="/cm-logo.svg"
+            alt="Collective Memory"
+            width={64}
+            height={64}
+            className="mx-auto mb-4"
+          />
           <h1 className="font-serif text-3xl font-semibold text-cm-charcoal">
             Collective Memory
           </h1>
@@ -146,6 +173,21 @@ export default function LoginPage() {
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
+
+          {/* Guest Access Section */}
+          <div className="mt-6 pt-6 border-t border-cm-sand">
+            <button
+              type="button"
+              onClick={handleGuestLogin}
+              disabled={isLoading}
+              className="w-full py-2.5 px-4 bg-cm-sand text-cm-charcoal rounded-md font-medium hover:bg-cm-sand/80 focus:outline-none focus:ring-2 focus:ring-cm-sand/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isLoading ? 'Loading...' : 'Access as Guest'}
+            </button>
+            <p className="mt-2 text-xs text-cm-coffee text-center">
+              View-only access to explore the platform
+            </p>
+          </div>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-cm-coffee">

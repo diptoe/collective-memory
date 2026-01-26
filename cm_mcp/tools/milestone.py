@@ -8,7 +8,7 @@ import mcp.types as types
 from typing import Any
 from datetime import datetime, timezone
 
-from .utils import _make_request
+from .utils import _make_request, is_guest_session, reject_guest_write
 
 
 # ============================================================
@@ -153,6 +153,10 @@ async def update_milestone(
         commits_made: Optional - number of commits made so far
         complexity_rating: Optional - 1=trivial, 5=very complex
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("update_milestone")
+
     milestone_key = arguments.get("milestone_key")
 
     # Collect metrics from arguments
@@ -270,6 +274,10 @@ async def record_milestone(
         collaboration_rating: Optional - 1=poor, 5=excellent
         complexity_rating: Optional - 1=trivial, 5=very complex
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("record_milestone")
+
     name = arguments.get("name")
     status = arguments.get("status", "completed")
     properties = arguments.get("properties", {})

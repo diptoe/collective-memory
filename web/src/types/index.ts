@@ -319,7 +319,7 @@ export interface ActivityTimelinePoint {
 }
 
 // User authentication types
-export type UserRole = 'admin' | 'domain_admin' | 'user';
+export type UserRole = 'admin' | 'domain_admin' | 'user' | 'guest';
 export type UserStatus = 'active' | 'suspended' | 'pending';
 
 export interface UserTeam {

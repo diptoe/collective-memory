@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ClientLayout } from '@/components/client-layout';
+import { GuestBanner } from '@/components/guest-banner';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { api } from '@/lib/api';
 
@@ -164,8 +165,11 @@ export default function MainLayout({
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 min-h-0 overflow-auto">
-        <ClientLayout>{children}</ClientLayout>
+      <main className="flex-1 min-h-0 overflow-auto flex flex-col">
+        <GuestBanner />
+        <div className="flex-1 min-h-0 overflow-auto">
+          <ClientLayout>{children}</ClientLayout>
+        </div>
       </main>
     </div>
   );

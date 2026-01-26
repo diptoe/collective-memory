@@ -409,6 +409,8 @@ export const api = {
       apiClient.post<AuthUserResponse>('/auth/register', data),
     login: (email: string, password: string, rememberMe = false) =>
       apiClient.post<AuthUserResponse>('/auth/login', { email, password, remember_me: rememberMe }),
+    guestLogin: () =>
+      apiClient.post<AuthUserResponse>('/auth/guest'),
     logout: () =>
       apiClient.post('/auth/logout'),
     me: () =>
@@ -459,6 +461,14 @@ export const api = {
       apiClient.delete<{ user_key: string }>(`/auth/admin/sessions/${sessionKey}`),
     cleanup: () =>
       apiClient.post<{ deleted_count: number }>('/auth/admin/sessions/cleanup'),
+  },
+
+  // Guest Settings (admin only)
+  guestSettings: {
+    get: () =>
+      apiClient.get<{ exists: boolean; enabled: boolean; email: string; user_key?: string; created_at?: string }>('/auth/guest/settings'),
+    update: (enabled: boolean) =>
+      apiClient.put<{ enabled: boolean; user_key?: string }>('/auth/guest/settings', { enabled }),
   },
 
   // Domains (admin only)

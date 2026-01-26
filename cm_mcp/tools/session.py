@@ -8,7 +8,7 @@ import mcp.types as types
 from typing import Any
 from datetime import datetime
 
-from .utils import _make_request
+from .utils import _make_request, is_guest_session, reject_guest_write
 
 
 # ============================================================
@@ -275,6 +275,10 @@ async def start_session(
         name: Optional - a descriptive name for the session
         team_key: Optional - team scope for the session
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("start_session")
+
     project_key = arguments.get("project_key")
     name = arguments.get("name")
     team_key = arguments.get("team_key")
@@ -389,6 +393,10 @@ async def end_session(
         session_key: Optional - specific session to close (defaults to active session)
         summary: Optional - summary of work done in the session
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("end_session")
+
     session_key = arguments.get("session_key")
     summary = arguments.get("summary")
 
@@ -505,6 +513,10 @@ async def extend_session(
         session_key: Optional - specific session to extend (defaults to active session)
         hours: Optional - hours to extend (default: 1.0, max: 8.0)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("extend_session")
+
     session_key = arguments.get("session_key")
     hours = arguments.get("hours", 1.0)
 
@@ -572,6 +584,10 @@ async def update_session(
         name: Optional - new name for the session
         summary: Optional - summary or notes about the session
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("update_session")
+
     session_key = arguments.get("session_key")
     name = arguments.get("name")
     summary = arguments.get("summary")

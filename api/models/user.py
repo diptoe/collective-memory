@@ -39,7 +39,7 @@ class User(BaseModel):
     last_name = Column(String(100), nullable=False)
 
     # Role and status
-    role = Column(String(20), default='user', nullable=False, index=True)  # admin, domain_admin, user
+    role = Column(String(20), default='user', nullable=False, index=True)  # admin, domain_admin, user, guest
     status = Column(String(20), default='active', nullable=False, index=True)  # active, suspended, pending
 
     # Personal Access Token for MCP/API access
@@ -96,6 +96,11 @@ class User(BaseModel):
         return self.role in ('admin', 'domain_admin')
 
     @property
+    def is_guest(self) -> bool:
+        """Check if user has guest role (view-only access)."""
+        return self.role == 'guest'
+
+    @property
     def is_active(self) -> bool:
         """Check if user is active."""
         return self.status == 'active'
@@ -148,8 +153,8 @@ class User(BaseModel):
         self.save()
 
     def set_role(self, role: str) -> None:
-        """Set user role (admin, domain_admin, or user)."""
-        if role not in ('admin', 'domain_admin', 'user'):
+        """Set user role (admin, domain_admin, user, or guest)."""
+        if role not in ('admin', 'domain_admin', 'user', 'guest'):
             raise ValueError(f"Invalid role: {role}")
         self.role = role
         self.save()

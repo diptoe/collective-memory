@@ -9,6 +9,7 @@ import { EntityCard } from '@/components/entity-card';
 import { KnowledgeNav } from '@/components/knowledge';
 import { cn } from '@/lib/utils';
 import { TYPE_COLORS } from '@/lib/graph/layout';
+import { useCanWrite } from '@/hooks/use-can-write';
 
 interface EntityTypeInfo {
   type: string;
@@ -31,6 +32,7 @@ const SCOPE_COLORS: Record<string, string> = {
 function EntitiesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const canWrite = useCanWrite();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entityTypes, setEntityTypes] = useState<EntityTypeInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -311,7 +313,14 @@ function EntitiesContent() {
           />
           <ScopeFilter />
           {!browseAll && (
-            <button className="px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg hover:bg-cm-sienna transition-colors text-sm">
+            <button
+              disabled={!canWrite}
+              title={!canWrite ? 'Guest users cannot create entities' : undefined}
+              className={cn(
+                "px-4 py-2 bg-cm-terracotta text-cm-ivory rounded-lg transition-colors text-sm",
+                canWrite ? "hover:bg-cm-sienna" : "opacity-50 cursor-not-allowed"
+              )}
+            >
               + New {filterType}
             </button>
           )}

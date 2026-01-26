@@ -8,7 +8,7 @@ import json
 import mcp.types as types
 from typing import Any
 
-from .utils import _make_request
+from .utils import _make_request, is_guest_session, reject_guest_write
 
 
 # ============================================================
@@ -158,6 +158,10 @@ async def create_relationship(
         relationship_type: Type of relationship (e.g., WORKS_ON, KNOWS, USES)
         properties: Optional properties dictionary
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("create_relationship")
+
     from_entity_key = arguments.get("from_entity_key")
     to_entity_key = arguments.get("to_entity_key")
     relationship_type = arguments.get("relationship_type")
@@ -217,6 +221,10 @@ async def delete_relationship(
     Args:
         relationship_key: The unique key of the relationship to delete
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("delete_relationship")
+
     relationship_key = arguments.get("relationship_key")
 
     if not relationship_key:

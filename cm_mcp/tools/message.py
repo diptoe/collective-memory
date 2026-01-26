@@ -7,7 +7,7 @@ MCP tools for inter-agent messaging queue operations in Collective Memory (CM).
 import mcp.types as types
 from typing import Any
 
-from .utils import _make_request
+from .utils import _make_request, is_guest_session, reject_guest_write
 
 
 # ============================================================
@@ -215,6 +215,10 @@ async def send_message(
         entity_keys: Optional list of entity keys to link this message to in the knowledge graph
         team_key: Optional team key to scope message to a specific team (null = domain-wide)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("send_message")
+
     channel = arguments.get("channel", "general")
     content = arguments.get("content")
     message_type = arguments.get("message_type", "message")
@@ -493,6 +497,10 @@ async def mark_message_read(
     Args:
         message_key: The message key to mark as read
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("mark_message_read")
+
     message_key = arguments.get("message_key")
 
     if not message_key:
@@ -540,6 +548,10 @@ async def link_message_entities(
         entity_keys: List of entity keys to link
         mode: How to update links - 'add' (default), 'replace', or 'remove'
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("link_message_entities")
+
     message_key = arguments.get("message_key")
     entity_keys = arguments.get("entity_keys", [])
     mode = arguments.get("mode", "add")
@@ -593,6 +605,10 @@ async def mark_all_messages_read(
         channel: Only mark messages in this channel as read (optional)
         team_key: Only mark messages in this team as read (optional)
     """
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("mark_all_messages_read")
+
     channel = arguments.get("channel")
     team_key = arguments.get("team_key")
 

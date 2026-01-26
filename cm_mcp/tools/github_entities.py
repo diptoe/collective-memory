@@ -12,7 +12,7 @@ from typing import Optional, Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from cm_mcp.config import config
-from cm_mcp.tools.utils import _make_request
+from cm_mcp.tools.utils import _make_request, is_guest_session, reject_guest_write
 
 import mcp.types as types
 
@@ -452,6 +452,10 @@ async def _handle_create_commit_entity(
     session_state: dict,
 ) -> list[types.TextContent]:
     """MCP handler wrapper for create_commit_entity."""
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("create_commit_entity")
+
     text = await create_commit_entity(
         arguments.get("repository_url"),
         arguments.get("sha"),
@@ -466,6 +470,10 @@ async def _handle_create_issue_entity(
     session_state: dict,
 ) -> list[types.TextContent]:
     """MCP handler wrapper for create_issue_entity."""
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("create_issue_entity")
+
     text = await create_issue_entity(
         arguments.get("repository_url"),
         arguments.get("issue_number"),
@@ -480,6 +488,10 @@ async def _handle_link_work_item(
     session_state: dict,
 ) -> list[types.TextContent]:
     """MCP handler wrapper for link_work_item."""
+    # Guest check - block write operations for guest users
+    if is_guest_session(session_state):
+        return reject_guest_write("link_work_item")
+
     text = await link_work_item(
         arguments.get("source_key"),
         arguments.get("target_key"),
